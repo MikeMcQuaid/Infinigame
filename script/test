@@ -1,0 +1,102 @@
+#!/bin/bash
+# script/test: compile every assembly and run the tests.
+#
+# With no arguments this needs no Unity licence. It compiles the project with the C# compiler
+# bundled inside the Unity editor, against the editor's own assemblies, then runs the EditMode
+# tests on the editor's Mono. That exercises everything in Assets/Infinigame/Core; the rest is
+# only checked for compile errors.
+#
+# script/test --unity also runs the EditMode and PlayMode tests inside Unity. That needs a
+# licence (script/setup) and the project closed in the editor. The PlayMode run saves pictures
+# to Logs/Screenshots.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+script/bootstrap
+resources="$(dirname "$(dirname "$(script/unity --path)")")/Resources"
+scripting=$resources/Scripting
+packages=$resources/PackageManager/BuiltInPackages
+managed=$scripting/Managed/UnityEngine
+mono=$scripting/MonoBleedingEdge
+nunit=$packages/com.unity.ext.nunit/net472/unity-custom/nunit.framework.dll
+sources=Assets/Infinigame
+out=obj/check
+
+# Reference assemblies are rebuilt whenever the editor version changes.
+version=$(awk '/^m_EditorVersion:/ { print $2 }' ProjectSettings/ProjectVersion.txt)
+[ "$(cat $out/version 2>/dev/null)" = "$version" ] || rm -rf $out
+mkdir -p $out
+echo "$version" > $out/version
+
+for dll in "$scripting/NetStandard/ref/2.1.0/netstandard.dll" "$scripting"/NetStandard/compat/2.1.0/shims/netfx/*.dll \
+  "$managed"/UnityEngine*.dll "$managed/Unity.Scripting.dll"; do
+  echo "-r:\"$dll\""
+done > $out/engine.rsp
+for dll in "$managed"/UnityEditor*.dll; do echo "-r:\"$dll\""; done > $out/editor.rsp
+
+player="UNITY_6000_6_OR_NEWER;UNITY_6000_0_OR_NEWER;UNITY_2022_3_OR_NEWER;UNITY_2021_3_OR_NEWER;UNITY_2020_3_OR_NEWER;UNITY_2019_4_OR_NEWER"
+player="$player;UNITY_STANDALONE;UNITY_STANDALONE_OSX;NET_STANDARD_2_1;NET_STANDARD;CSHARP_7_3_OR_NEWER;ENABLE_INPUT_SYSTEM;DEBUG;TRACE;UNITY_ASSERTIONS"
+editor="$player;UNITY_EDITOR;UNITY_EDITOR_OSX;UNITY_EDITOR_64;UNITY_INCLUDE_TESTS;UNITY_TESTS_FRAMEWORK"
+
+# compile <kind> <name> <defines> <csc arguments and sources...>
+# Prints errors and the warnings worth acting on, such as obsolete Unity APIs.
+compile() {
+  local kind=$1 name=$2 defines=$3
+  shift 3
+  rm -f "$out/$name"
+  "$scripting/DotNetSdk/dotnet" "$scripting"/DotNetSdk/sdk/*/Roslyn/bincore/csc.dll -nologo -nostdlib+ -langversion:9.0 -unsafe+ \
+    -nowarn:CS0169,CS0649,CS0414,CS1591,CS0436,CS8632,CS0282 -target:"$kind" -out:"$out/$name" -define:"$defines" "@$out/engine.rsp" "$@" \
+    > "$out/$name.log" 2>&1 || true
+  grep -E "error|warning CS(0219|0168|0162|0105|8321|0618|0612)" "$out/$name.log" | sed "s|$PWD/||" || true
+  [ -f "$out/$name" ] || { echo "==> $name failed to compile" >&2; exit 1; }
+}
+
+# Packages that ship as source: the two forwarders into the engine, the Input System and the test framework.
+[ -f $out/Unity.Mathematics.dll ] || compile library Unity.Mathematics.dll "$editor" "$packages"/com.unity.mathematics/Unity.Mathematics/*.cs
+[ -f $out/Unity.Burst.dll ] || compile library Unity.Burst.dll "$editor" "$packages"/com.unity.burst/Runtime/*.cs
+if [ ! -f $out/Unity.InputSystem.dll ]; then
+  # Unity unpacks it into Library the first time the project is opened; before that, fetch it
+  input=$(echo Library/PackageCache/com.unity.inputsystem@*/InputSystem)
+  if [ ! -d "$input" ]; then
+    mkdir -p $out/inputsystem
+    curl -fsSL "https://packages.unity.com/com.unity.inputsystem/-/com.unity.inputsystem-$(sed -n 's/.*"com.unity.inputsystem": "\(.*\)".*/\1/p' Packages/manifest.json).tgz" \
+      | tar -xz -C $out/inputsystem
+    input=$out/inputsystem/package/InputSystem
+  fi
+  find "$input" -name "*.cs" -not -path "*/InputForUI/*" > $out/inputsystem.rsp
+  compile library Unity.InputSystem.dll "$player;UNITY_INPUT_SYSTEM_PLATFORM_SCROLL_DELTA" @$out/inputsystem.rsp
+fi
+if [ ! -f $out/UnityEngine.TestRunner.dll ]; then
+  find "$packages/com.unity.test-framework/UnityEngine.TestRunner" -name "*.cs" > $out/testrunner.rsp
+  compile library UnityEngine.TestRunner.dll "$editor" @$out/editor.rsp -r:"$nunit" @$out/testrunner.rsp
+fi
+[ -f $out/TestRunner.exe ] || compile exe TestRunner.exe "$editor" -r:"$nunit" script/lib/TestRunner.cs
+
+# The project's own assemblies, mirroring their .asmdef references.
+assembly() {
+  local name=$1 directory=$2
+  shift 2
+  echo "==> Compiling $name"
+  find "$directory" -name "*.cs" > "$out/$name.rsp"
+  compile library "$name.dll" "$editor" -r:$out/Unity.Mathematics.dll -r:$out/Unity.Burst.dll "$@" "@$out/$name.rsp"
+}
+assembly Infinigame.Core $sources/Core
+assembly Infinigame.Runtime $sources/Runtime -r:$out/Infinigame.Core.dll -r:$out/Unity.InputSystem.dll
+assembly Infinigame.Editor $sources/Editor @$out/editor.rsp
+assembly Infinigame.Tests.EditMode $sources/Tests/EditMode -r:$out/Infinigame.Core.dll -r:"$nunit"
+assembly Infinigame.Tests.PlayMode $sources/Tests/PlayMode -r:$out/Infinigame.Core.dll -r:$out/Infinigame.Runtime.dll -r:"$nunit" -r:$out/UnityEngine.TestRunner.dll
+
+echo "==> Running EditMode tests outside Unity"
+MONO_PATH="$mono/lib/mono/unityjit-macos:$mono/lib/mono/unityjit-macos/Facades:$managed:$(dirname "$nunit"):$out" \
+  "$mono/bin/mono" $out/TestRunner.exe $out/Infinigame.Tests.EditMode.dll < /dev/null
+
+[ "${1:-}" = --unity ] || exit 0
+for platform in EditMode PlayMode; do
+  echo "==> Running $platform tests in Unity"
+  script/unity -batchmode -runTests -testPlatform $platform -testResults "$PWD/Logs/$platform.xml" -logFile Logs/$platform.log || failed=1
+  [ -f Logs/$platform.xml ] || { tail -20 Logs/$platform.log; exit 1; }
+  grep -o '<test-case [^>]*result="Failed"[^>]*' Logs/$platform.xml | grep -o 'fullname="[^"]*"' || true
+  grep -o '<test-run [^>]*' Logs/$platform.xml | grep -o ' \(result\|total\|passed\|failed\)="[^"]*"' | tr -d '\n'
+  echo
+done
+[ -z "${failed:-}" ]

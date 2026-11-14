@@ -1,0 +1,7 @@
+{
+    "name": "Infinigame.Editor",
+    "rootNamespace": "Infinigame.Editor",
+    "includePlatforms": [
+        "Editor"
+    ]
+}

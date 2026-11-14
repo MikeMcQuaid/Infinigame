@@ -1,0 +1,10 @@
+#!/bin/bash
+# script/build: build the macOS app to Build/Infinigame.app. Needs a Unity licence (script/setup)
+# and the project closed in the editor.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+script/bootstrap
+script/unity -batchmode -quit -buildTarget StandaloneOSX -executeMethod Infinigame.Editor.EditorTools.BuildMac -logFile Logs/build.log \
+  || { tail -40 Logs/build.log; exit 1; }
+echo "==> Built Build/Infinigame.app"

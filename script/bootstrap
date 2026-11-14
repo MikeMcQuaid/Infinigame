@@ -1,0 +1,19 @@
+#!/bin/bash
+# script/bootstrap: make sure the tools this project depends on are installed.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+version=$(awk '/^m_EditorVersion:/ { print $2 }' ProjectSettings/ProjectVersion.txt)
+if script/unity --path &>/dev/null; then
+  echo "==> Unity $version is installed"
+  exit
+fi
+
+if [ ! -d "/Applications/Unity Hub.app" ]; then
+  echo "==> Installing Unity Hub"
+  brew install --cask unity-hub
+fi
+echo "==> Unity $version is missing"
+echo "Open Unity Hub, sign in, then choose Installs > Install Editor and pick $version."
+echo "Run script/bootstrap again when it has finished."
+exit 1

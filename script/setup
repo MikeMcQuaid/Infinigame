@@ -1,0 +1,37 @@
+#!/bin/bash
+# script/setup: get a fresh clone ready to work on, including a Unity licence for this user.
+#
+# Unity licences belong to one operating-system user. Signing in to Unity Hub licenses your own
+# account. Any other account that runs Unity from the command line (script/build,
+# script/test --unity), such as a sandbox user, needs its own activation, which this does with
+# the Unity CLI. Its sign-in happens in a browser, so two-factor accounts work, and the browser
+# can belong to a different user from the one running this script.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+script/bootstrap
+if ! command -v unity &>/dev/null; then
+  if [ ! -w "$(brew --prefix)/Caskroom" ]; then
+    echo "The Unity CLI is missing and $(id -un) cannot install it. Run script/setup once as a user who can use Homebrew." >&2
+    exit 1
+  fi
+  echo "==> Installing the Unity CLI"
+  brew install --cask unity-cli
+fi
+
+export UNITY_NO_BANNER=1
+if unity license status &>/dev/null; then
+  echo "==> $(id -un) has a Unity licence"
+  exit
+fi
+
+echo "==> $(id -un) has no Unity licence"
+if [ ! -t 0 ]; then
+  echo "Run script/setup in a terminal as $(id -un) to activate one."
+  exit 1
+fi
+# Prints a sign-in URL: open it in any browser where you can sign in to your Unity account.
+unity auth status &>/dev/null || unity auth login
+echo "==> Activating Unity Personal, which accepts its licence terms for $(id -un)"
+unity license activate --personal --accept-eula
+unity license status

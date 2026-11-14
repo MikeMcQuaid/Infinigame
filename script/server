@@ -1,0 +1,7 @@
+#!/bin/bash
+# script/server: open the game in the Unity editor. It opens on the game scene: press Play.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+script/bootstrap
+exec script/unity "$@"

@@ -1,0 +1,17 @@
+#!/bin/bash
+# script/unity: run the Unity editor this project is pinned to, against this project.
+# Arguments are passed straight to Unity. `script/unity --path` only prints the editor's path.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+version=$(awk '/^m_EditorVersion:/ { print $2 }' ProjectSettings/ProjectVersion.txt)
+unity=${UNITY:-/Applications/Unity/Hub/Editor/$version/Unity.app/Contents/MacOS/Unity}
+if [ ! -x "$unity" ]; then
+  echo "Unity $version was not found at $unity. Run script/bootstrap." >&2
+  exit 1
+fi
+if [ "${1:-}" = --path ]; then
+  echo "$unity"
+  exit
+fi
+exec "$unity" -projectPath "$PWD" "$@"

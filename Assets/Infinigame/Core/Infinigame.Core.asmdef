@@ -1,0 +1,8 @@
+{
+    "name": "Infinigame.Core",
+    "rootNamespace": "Infinigame.Core",
+    "references": [
+        "Unity.Burst",
+        "Unity.Mathematics"
+    ]
+}

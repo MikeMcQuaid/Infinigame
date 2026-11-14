@@ -1,0 +1,10 @@
+{
+    "name": "Infinigame.Runtime",
+    "rootNamespace": "Infinigame",
+    "references": [
+        "Infinigame.Core",
+        "Unity.Burst",
+        "Unity.InputSystem",
+        "Unity.Mathematics"
+    ]
+}
