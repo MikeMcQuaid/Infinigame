@@ -1,5 +1,6 @@
 #!/bin/bash
-# script/setup: get a fresh clone ready to work on, including a Unity licence for this user.
+# script/setup: get a fresh clone ready to work on: a Unity licence for this user, and a sign-in
+# to Claude or ChatGPT for the game's scanner and hermit.
 #
 # Unity licences belong to one operating-system user. Signing in to Unity Hub licenses your own
 # account. Any other account that runs Unity from the command line (script/build,
@@ -10,16 +11,27 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 script/bootstrap
-if ! command -v unity &>/dev/null; then
-  if [ ! -w "$(brew --prefix)/Caskroom" ]; then
-    echo "The Unity CLI is missing and $(id -un) cannot install it. Run script/setup once as a user who can use Homebrew." >&2
-    exit 1
-  fi
-  echo "==> Installing the Unity CLI"
-  brew install --cask unity-cli
-fi
-
 export UNITY_NO_BANNER=1
+
+# The scanner's journal and the hermit's talk are written by Claude or by ChatGPT, whichever you
+# choose in the game's settings, through your own account: the game is built with no key. Here
+# that means Anthropic's ant, paid for from your account's API credits, which Claude Max, Ultra
+# and Team plans include every month once claimed (claude.ai, Settings, Billing), or OpenAI's
+# codex, which counts against the Codex use your ChatGPT plan includes. A key in
+# ANTHROPIC_API_KEY or OPENAI_API_KEY works too, and the game's settings can also take a key or
+# sign you in to ChatGPT themselves. Without any of these the game still plays; those two just
+# stay quiet.
+voices=""
+if [ -n "${ANTHROPIC_API_KEY:-}" ] || [ -n "$(ant profile list 2>/dev/null)" ]; then voices="Claude"; fi
+if [ -n "${OPENAI_API_KEY:-}" ] || codex login status &>/dev/null; then voices="${voices:+$voices and }ChatGPT"; fi
+if [ -n "$voices" ]; then
+  echo "==> $(id -un) can reach $voices for the scanner and the hermit"
+elif [ -t 0 ] && command -v ant &>/dev/null; then
+  echo "==> Signing $(id -un) in to Claude for the scanner and the hermit: approve in the browser"
+  ant auth login || echo "==> Not signed in. The game plays without it; sign in or give a key under Settings on its menu."
+else
+  echo "==> For the scanner and the hermit to speak, sign in or give a key under Settings on the game's menu"
+fi
 if unity license status &>/dev/null; then
   echo "==> $(id -un) has a Unity licence"
   exit

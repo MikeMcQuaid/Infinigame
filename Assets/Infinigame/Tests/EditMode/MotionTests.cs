@@ -1,3 +1,4 @@
+using System.Linq;
 using Infinigame.Core;
 using NUnit.Framework;
 using Unity.Mathematics;
@@ -8,8 +9,8 @@ namespace Infinigame.Tests
     {
         public const float Dt = 1f / 60f;
         public static readonly SolarSystemDescriptor Solar = SolarSystemDescriptor.Generate(1);
-        public static BodyDescriptor Planet => Solar.bodies[1];
-        public static BodyDescriptor Moon => Solar.bodies[2];
+        public static BodyDescriptor Planet => Solar.bodies[SolarSystemDescriptor.Home];
+        public static BodyDescriptor Moon => Solar.bodies[SolarSystemDescriptor.Moon];
 
         public static float3 Land(BodyDescriptor body) => body.FindLanding(3);
 
@@ -103,7 +104,7 @@ namespace Infinigame.Tests
             var s = Spawn(World.Planet, out _);
             float3 start = s.position;
             Run(ref s, new WalkerInput { move = new float2(0, 1) }, World.Planet, 10f);
-            Assert.That(math.distance(start, s.position), Is.InRange(35f, 52f));
+            Assert.That(math.distance(start, s.position), Is.InRange(9f * Tuning.WalkSpeed, 10.2f * Tuning.WalkSpeed));
         }
 
         [Test]
@@ -164,6 +165,59 @@ namespace Infinigame.Tests
         }
 
         [Test]
+        public void TheJetpackCarriesYouForwardAndSteeringInTheAirNeverSlowsALeap()
+        {
+            var s = Spawn(World.Planet, out _);
+            float3 forward = s.forward;
+            float Along() => math.dot(s.velocity, forward);
+            // straight up off the ground, then leaning into the jetpack
+            Walker.Step(ref s, new WalkerInput { jump = true }, World.Planet, World.Dt);
+            for (float t = 0; t < 1f; t += World.Dt) Walker.Step(ref s, new WalkerInput { jump = true, move = new float2(0, 1) }, World.Planet, World.Dt);
+            Assert.Greater(Along(), Tuning.SprintSpeed + 2f, "faster than a run");
+            Assert.LessOrEqual(Along(), Walker.JetpackSpeed + 0.5f);
+            // out of fuel and still holding forward, the speed it gave is kept until the ground
+            float carried = Along();
+            for (float t = 0; t < 0.4f && !s.grounded; t += World.Dt) Walker.Step(ref s, new WalkerInput { move = new float2(0, 1) }, World.Planet, World.Dt);
+            Assert.GreaterOrEqual(Along(), carried - 0.5f);
+        }
+
+        [Test]
+        public void ALeapOffTheSmallestMoonCanBeFlownHome()
+        {
+            // off faster than anything so small a moon's pull could ever bring back
+            var moon = World.Solar.bodies.Where(body => body.kind == BodyKind.Rock).OrderBy(body => body.radius).First();
+            var s = Spawn(moon, out float3 direction);
+            s.position += direction * 150f;
+            s.velocity = direction * (2f * math.sqrt(2f * moon.surfaceGravity * moon.radius) + 2f);
+            (s.grounded, s.height) = (false, 150f);
+            // looking straight down at it and pushing forward
+            for (float t = 0; t < 60f && !s.grounded; t += World.Dt) Walker.Step(ref s, new WalkerInput { move = new float2(0, 1), pitch = -1.5f }, moon, World.Dt);
+            Assert.IsTrue(s.grounded, "back on the ground");
+            Assert.Less(Combat.Fall(s.impact), 10f, "and little the worse for it");
+        }
+
+        [Test]
+        public void WellOffTheGroundThePackPushesHardWhereYouLookButCannotClimbTheHomeWorld()
+        {
+            var s = Spawn(World.Planet, out float3 direction);
+            s.position += direction * 60f;
+            (s.grounded, s.height) = (false, 60f);
+            float3 forward = s.forward;
+            Run(ref s, new WalkerInput { move = new float2(0, 1) }, World.Planet, 1f);
+            Assert.Greater(math.dot(s.velocity, forward), Tuning.SprintSpeed, "across: faster than a run within a second, and on no fuel");
+            Assert.AreEqual(Walker.JetpackFuel, s.fuel);
+            // looking straight up and pushing, without the burn
+            Run(ref s, new WalkerInput { move = new float2(0, 1), pitch = 1.5f }, World.Planet, 1.5f);
+            Assert.Less(math.dot(s.velocity, math.normalize(s.position)), -3f, "still falling");
+            // and someone with no pack gets nothing
+            var bare = Spawn(World.Planet, out _);
+            bare.position += direction * 60f;
+            (bare.grounded, bare.height) = (false, 60f);
+            Run(ref bare, new WalkerInput { move = new float2(0, 1), bare = true }, World.Planet, 1f);
+            Assert.LessOrEqual(math.dot(bare.velocity, forward), Tuning.WalkSpeed + 0.1f);
+        }
+
+        [Test]
         public void JetpackCannotEscapeTheMoon()
         {
             var s = Spawn(World.Moon, out _);
@@ -194,10 +248,10 @@ namespace Infinigame.Tests
         [Test]
         public void WalksALapOfTheMoonInUnderFiveMinutes()
         {
-            for (uint seed = 1; seed <= 3; seed++)
+            for (uint seed = 1; seed <= 8; seed++)
             {
-                var moon = SolarSystemDescriptor.Generate(seed).bodies[2];
-                Assert.Less(LapTime(moon, World.Land(moon), 300f), 300f, $"seed {seed}");
+                var moon = SolarSystemDescriptor.Generate(seed).bodies[SolarSystemDescriptor.Moon];
+                Assert.Less(LapTime(moon, World.Land(moon), 300f), 290f, $"seed {seed}");
             }
         }
 
@@ -206,7 +260,7 @@ namespace Infinigame.Tests
         {
             for (uint seed = 1; seed <= 2; seed++)
             {
-                var planet = SolarSystemDescriptor.Generate(seed).bodies[1];
+                var planet = SolarSystemDescriptor.Generate(seed).bodies[SolarSystemDescriptor.Home];
                 Assert.Less(LapTime(planet, World.Land(planet), 3600f), 3600f, $"seed {seed}");
             }
         }
@@ -298,7 +352,7 @@ namespace Infinigame.Tests
         {
             for (uint seed = 1; seed <= 3; seed++)
             {
-                Assert.Less(LapTime(SolarSystemDescriptor.Generate(seed).bodies[2], 30f, 15f, out float lowest), 15f, $"seed {seed}");
+                Assert.Less(LapTime(SolarSystemDescriptor.Generate(seed).bodies[SolarSystemDescriptor.Moon], 30f, 15f, out float lowest), 15f, $"seed {seed}");
                 Assert.Greater(lowest, 0f, "the hull must not touch the ground");
             }
         }
@@ -308,7 +362,7 @@ namespace Infinigame.Tests
         {
             for (uint seed = 1; seed <= 3; seed++)
             {
-                Assert.Less(LapTime(SolarSystemDescriptor.Generate(seed).bodies[1], 150f, 60f, out float lowest), 60f, $"seed {seed}");
+                Assert.Less(LapTime(SolarSystemDescriptor.Generate(seed).bodies[SolarSystemDescriptor.Home], 150f, 60f, out float lowest), 60f, $"seed {seed}");
                 Assert.Greater(lowest, 0f, "the hull must not touch the ground");
             }
         }

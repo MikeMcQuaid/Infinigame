@@ -14,4 +14,23 @@ if [ "${1:-}" = --path ]; then
   echo "$unity"
   exit
 fi
+
+# A licence is tied to one user and to a network hardware address that changes now and then.
+# Unity Hub refreshes it for whoever is signed in there. A user activated by script/setup has
+# only the Unity CLI to do that, so check before every launch.
+# Exit status 4 means no licence. Anything else, such as a CLI that will not run, is left for
+# Unity itself to report.
+export UNITY_NO_BANNER=1
+if command -v unity &>/dev/null; then
+  unity license status &>/dev/null || status=$?
+  if [ "${status:-0}" = 4 ]; then
+    unity license activate --personal --accept-eula >/dev/null || {
+      echo "$(id -un) has no Unity licence. Run script/setup." >&2
+      exit 1
+    }
+  fi
+fi
+# Burst decides it is on a Mac by looking for /Volumes, which some sandboxes hide. It then fails
+# to load, so run without it there: jobs still work, only slower.
+[ -r /Volumes ] || set -- -burst-disable-compilation "$@"
 exec "$unity" -projectPath "$PWD" "$@"

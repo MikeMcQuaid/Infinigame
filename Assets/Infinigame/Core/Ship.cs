@@ -16,6 +16,8 @@ namespace Infinigame.Core
     {
         public float3 position, velocity, angularVelocity;
         public quaternion rotation;
+        // The hardest knock since this was last cleared: speed into whatever was hit, m/s.
+        public float impact;
         public bool landed;
     }
 
@@ -25,6 +27,8 @@ namespace Infinigame.Core
     public static class Ship
     {
         public const float Clearance = 1.2f, Acceleration = 60f, SideSpeed = 40f, HoverHeight = 8f;
+        // How wide a patch of level ground a ship needs under it to set down without burying a wing, as a radius.
+        public const float Pad = 12f;
         const float TurnResponse = 8f, RollLevelling = 2f, Friction = 4f;
 
         // Stands in for air resistance: slow near the ground, fast in open space.
@@ -51,7 +55,8 @@ namespace Infinigame.Core
             }
 
             float3 up = math.normalize(s.position);
-            float altitude = math.length(s.position) - Floor(body, up);
+            // height above what can be seen, which for a giant is its cloud tops, though a ship can sink far into those
+            float altitude = math.max(0f, math.length(s.position) - Surface(body, up));
             float boost = input.boost ? 2f : 1f, nearness = 1f - math.smoothstep(0.5f * body.radius, 1.5f * body.radius, altitude);
 
             // rotation: rate commands, eased so the ship has some weight
@@ -70,7 +75,7 @@ namespace Infinigame.Core
                 // terrain following: the hover engines lift the ship over whatever lies under or ahead of it
                 if (thrust.y >= 0f)
                 {
-                    float clear = altitude;
+                    float clear = math.length(s.position) - Floor(body, up);
                     for (float t = 0.25f; t < 0.8f; t += 0.25f)
                         clear = math.min(clear, math.length(s.position) - Floor(body, math.normalize(s.position + s.velocity * t)));
                     s.velocity += up * math.max(0f, math.min((HoverHeight - clear) * 6f, 250f) - math.dot(s.velocity, up));
@@ -94,10 +99,15 @@ namespace Infinigame.Core
             float3 normal = body.GroundRadius(newUp) < body.SeaRadius ? newUp : body.GroundNormal(newUp);
             s.position = newUp * floor;
             float into = math.dot(s.velocity, normal);
-            if (into < 0f) s.velocity -= normal * (into * 1.2f);
+            if (into < 0f)
+            {
+                s.impact = math.max(s.impact, -into);
+                s.velocity -= normal * (into * 1.2f);
+            }
             s.velocity *= math.max(0f, 1f - Friction * dt);
             s.rotation = math.slerp(s.rotation, Upright(s.rotation, normal), math.saturate(6f * dt));
-            if (math.lengthsq(s.velocity) < 1f && (input.land || (thrust.y <= 0f && thrust.z <= 0f)))
+            // only ground can be settled on: not a giant's depths, a star or a station's hull
+            if (body.kind == BodyKind.Rock && math.lengthsq(s.velocity) < 1f && (input.land || (thrust.y <= 0f && thrust.z <= 0f)))
             {
                 s.landed = true;
                 s.velocity = s.angularVelocity = float3.zero;
@@ -105,8 +115,30 @@ namespace Infinigame.Core
             }
         }
 
-        // Ships sit on the ground or float on the sea.
-        static float Floor(BodyDescriptor body, float3 direction) => math.max(body.GroundRadius(direction), body.SeaRadius);
+        // Whether the ground straight below is no place to set down: a slope steeper than a ship
+        // can sit on, or a hollow whose sides would stand a metre into its wings. A ship perches
+        // on a rise happily enough, and the sea is flat.
+        public static bool Rough(BodyDescriptor body, float3 direction)
+        {
+            direction = math.normalize(direction);
+            float middle = body.GroundRadius(direction), span = 0.7f * Pad;
+            if (body.kind != BodyKind.Rock || middle < body.SeaRadius) return false;
+            float3 along = math.normalize(math.cross(direction, new float3(0.2f, 0.9f, 0.4f))), across = math.cross(direction, along);
+            for (int i = 0; i < 4; i++)
+            {
+                float3 reach = (along * math.cos(i * math.PI / 4f) + across * math.sin(i * math.PI / 4f)) * span;
+                float one = body.GroundRadius(math.normalize(direction * middle + reach)), other = body.GroundRadius(math.normalize(direction * middle - reach));
+                if (math.abs(one - other) > 0.8f * span || one + other - 2f * middle > 2f) return true;
+            }
+            return false;
+        }
+
+        // What is seen from above: the ground, the sea or a giant's cloud tops.
+        public static float Surface(BodyDescriptor body, float3 direction) => math.max(body.GroundRadius(direction), body.SeaRadius);
+
+        // How low a ship can go. It sits on the ground and floats on the sea, but nothing holds it up
+        // in a giant's clouds: it can sink a quarter of the way to the centre, if the heat lets it.
+        public static float Floor(BodyDescriptor body, float3 direction) => body.kind == BodyKind.Gas ? 0.75f * body.radius : Surface(body, direction);
 
         static quaternion Upright(quaternion rotation, float3 up) =>
             quaternion.LookRotationSafe(Walker.Project(math.rotate(rotation, new float3(0, 0, 1)), up), up);

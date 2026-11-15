@@ -1,5 +1,5 @@
 #!/bin/bash
-# script/server: open the game in the Unity editor. It opens on the game scene: press Play.
+# script/editor: open the game in the Unity editor. It opens on the game scene: press Play.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

@@ -6,6 +6,20 @@ using UnityEngine.SceneManagement;
 
 namespace Infinigame.Editor
 {
+    // Music dropped into Resources/Music is played from disk as it goes, not held whole in memory:
+    // a track is minutes long.
+    class MusicImport : AssetPostprocessor
+    {
+        void OnPreprocessAudio()
+        {
+            if (!assetPath.Contains("/Resources/Music/")) return;
+            var importer = (AudioImporter)assetImporter;
+            var settings = importer.defaultSampleSettings;
+            settings.loadType = AudioClipLoadType.Streaming;
+            importer.defaultSampleSettings = settings;
+        }
+    }
+
     [InitializeOnLoad]
     static class EditorTools
     {

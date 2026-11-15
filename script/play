@@ -1,0 +1,17 @@
+#!/bin/bash
+# script/play: play the game as a standalone app, outside the editor. Builds it first if the
+# project has changed since the last build, or if the last build was made where Burst cannot run
+# (script/unity says where) and so is slow. It starts full screen; Option-Return switches to a window.
+#
+# The game's own log goes to Logs/Player.log and a record of its frame rate to Logs/frames.log,
+# both inside the project where whoever is tuning it can read them.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+app=Build/Infinigame.app
+if [ ! -d $app ] || [ -n "$(find Assets Packages ProjectSettings -newer $app -print -quit)" ] ||
+  { [ -r /Volumes ] && [ -z "$(find $app -name "lib_burst_generated*" -print -quit)" ]; }; then
+  script/build
+fi
+mkdir -p Logs
+open $app --args -logFile "$PWD/Logs/Player.log" -frameLog "$PWD/Logs/frames.log"

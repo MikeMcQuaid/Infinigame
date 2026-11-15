@@ -5,6 +5,7 @@
         "Infinigame.Core",
         "Unity.Burst",
         "Unity.InputSystem",
-        "Unity.Mathematics"
+        "Unity.Mathematics",
+        "UnityEngine.UI"
     ]
 }

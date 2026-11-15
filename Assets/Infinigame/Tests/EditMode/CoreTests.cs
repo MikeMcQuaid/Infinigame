@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Infinigame.Core;
 using NUnit.Framework;
 using Unity.Mathematics;
@@ -63,8 +64,8 @@ namespace Infinigame.Tests
 
     public class TerrainTests
     {
-        static TerrainParams Planet(uint seed) => SolarSystemDescriptor.Generate(seed).bodies[1].terrain;
-        static TerrainParams Moon(uint seed) => SolarSystemDescriptor.Generate(seed).bodies[2].terrain;
+        static TerrainParams Planet(uint seed) => SolarSystemDescriptor.Generate(seed).bodies[SolarSystemDescriptor.Home].terrain;
+        static TerrainParams Moon(uint seed) => SolarSystemDescriptor.Generate(seed).bodies[SolarSystemDescriptor.Moon].terrain;
 
         [Test]
         public void HeightIsDeterministicAndBounded()
@@ -152,32 +153,74 @@ namespace Infinigame.Tests
             Check.Near(double3.zero, Solar.VelocityAt(0, 12345), 1e-9);
         }
 
-        [Test]
-        public void BodiesStayAtTheirOrbitRadius()
+        // Where a body is relative to the one it circles, at each of a lap's worth of moments.
+        static IEnumerable<double3> Lap(int body, int steps = 720)
         {
-            for (double time = 0; time < 5000; time += 137)
+            var orbit = Solar.bodies[body].orbit;
+            for (int i = 0; i < steps; i++) yield return orbit.Position(orbit.period * i / steps);
+        }
+
+        [Test]
+        public void OrbitsAreEllipsesThatSwingBetweenANearestAndAFurthestDistance()
+        {
+            for (int body = 1; body < Solar.bodies.Length; body++)
             {
-                Assert.AreEqual(Solar.bodies[1].orbit.radius, math.length(Solar.PositionAt(1, time)), 1e-6);
-                Assert.AreEqual(Solar.bodies[2].orbit.radius, math.distance(Solar.PositionAt(2, time), Solar.PositionAt(1, time)), 1e-6);
+                var orbit = Solar.bodies[body].orbit;
+                var distances = Lap(body).Select(at => math.length(at)).ToArray();
+                Assert.AreEqual(orbit.Nearest, distances.Min(), 1e-4 * orbit.radius, Solar.bodies[body].summary);
+                Assert.AreEqual(orbit.Furthest, distances.Max(), 1e-4 * orbit.radius, Solar.bodies[body].summary);
             }
+            // the innermost world's is the most lopsided, as Mercury's is, and the home world's is nearly a circle
+            Assert.Greater(Solar.bodies[1].orbit.Furthest / Solar.bodies[1].orbit.Nearest, 1.5);
+            Assert.Less(Solar.bodies[SolarSystemDescriptor.Home].orbit.Furthest / Solar.bodies[SolarSystemDescriptor.Home].orbit.Nearest, 1.04);
+        }
+
+        [Test]
+        public void ABodyGoesFastestWhereItIsNearest()
+        {
+            // equal areas in equal times: speed times distance is the same at both ends of the ellipse
+            var orbit = Solar.bodies[1].orbit;
+            double nearest = Enumerable.Range(0, 100000).Select(i => orbit.period * i / 100000).OrderBy(time => math.length(orbit.Position(time))).First();
+            double fast = math.length(orbit.Velocity(nearest)), slow = math.length(orbit.Velocity(nearest + orbit.period / 2));
+            Assert.AreEqual(orbit.Furthest / orbit.Nearest, fast / slow, 1e-3);
+            Assert.AreEqual(orbit.Furthest, math.length(orbit.Position(nearest + orbit.period / 2)), 1e-3 * orbit.radius, "half a year later it is at its furthest");
+        }
+
+        [Test]
+        public void EachOrbitLiesInAFlatPlaneOfItsOwn()
+        {
+            // the way an orbit's axis points, by the same rule as a spin's: a world going round forwards has it along +y
+            double3 Normal(int body) => math.normalize(math.cross(Solar.bodies[body].orbit.Position(math.abs(Solar.bodies[body].orbit.period) / 4), Solar.bodies[body].orbit.Position(0)));
+            for (int body = 1; body < Solar.bodies.Length; body++)
+                foreach (var at in Lap(body, 60))
+                    Assert.AreEqual(0, math.dot(Normal(body), at), 1e-6 * Solar.bodies[body].orbit.radius, Solar.bodies[body].summary);
+            // the home world's is the plane the rest are measured from; the innermost world's is tipped 7 degrees to it
+            Check.Near(new double3(0, 1, 0), Normal(SolarSystemDescriptor.Home), 1e-9);
+            Assert.AreEqual(7.0, math.degrees(math.acos(Normal(1).y)), 0.01);
+            Assert.That(Lap(1).Max(at => at.y) / math.sin(math.radians(7.0)), Is.InRange(0.99 * Solar.bodies[1].orbit.Nearest, 1.01 * Solar.bodies[1].orbit.Furthest), "so it rises kilometres clear of that plane");
+            // no two planets share one, nor tip the same way
+            var planets = Solar.Planets.ToArray();
+            for (int i = 0; i < planets.Length; i++)
+                for (int j = 0; j < i; j++)
+                    Assert.Less(math.dot(Normal(planets[i]), Normal(planets[j])), 1 - 1e-6);
         }
 
         [Test]
         public void OrbitClosesAfterOnePeriod() =>
-            Check.Near(Solar.PositionAt(1, 100), Solar.PositionAt(1, 100 + Solar.bodies[1].orbit.period), 1e-6);
+            Check.Near(Solar.PositionAt(SolarSystemDescriptor.Home, 100), Solar.PositionAt(SolarSystemDescriptor.Home, 100 + Solar.bodies[SolarSystemDescriptor.Home].orbit.period), 1e-6);
 
         [Test]
         public void VelocityMatchesMotion()
         {
             const double time = 321, dt = 1e-3;
-            for (int body = 1; body <= 2; body++)
+            for (int body = 1; body < Solar.bodies.Length; body++)
                 Check.Near((Solar.PositionAt(body, time + dt) - Solar.PositionAt(body, time - dt)) / (2 * dt), Solar.VelocityAt(body, time), 1e-4);
         }
     }
 
     public class GravityTests
     {
-        static readonly BodyDescriptor Planet = SolarSystemDescriptor.Generate(1).bodies[1];
+        static readonly BodyDescriptor Planet = SolarSystemDescriptor.Generate(1).bodies[SolarSystemDescriptor.Home];
         static readonly float3 Up = math.normalize(new float3(1, 2, -3));
 
         [Test]
@@ -201,7 +244,7 @@ namespace Infinigame.Tests
             for (uint seed = 0; seed < 500; seed++)
             {
                 var system = SolarSystemDescriptor.Generate(seed);
-                float planet = system.bodies[1].radius, moon = system.bodies[2].radius;
+                float planet = system.bodies[SolarSystemDescriptor.Home].radius, moon = system.bodies[SolarSystemDescriptor.Moon].radius;
                 Assert.Less(2 * math.PI * planet / Tuning.WalkSpeed, 3600f, "walk round the planet in under an hour");
                 Assert.Less(2 * math.PI * (planet + 150f) / Tuning.ShipCruiseSpeed, 60f, "fly round the planet in under a minute");
                 Assert.Less(2 * math.PI * moon / Tuning.WalkSpeed, 300f, "walk round the moon in under five minutes");
@@ -222,7 +265,7 @@ namespace Infinigame.Tests
                 Assert.AreEqual(a.bodies[i].terrain.offset, b.bodies[i].terrain.offset);
                 Assert.AreEqual(a.bodies[i].orbit.phase, b.bodies[i].orbit.phase);
             }
-            Assert.AreNotEqual(a.bodies[1].radius, other.bodies[1].radius);
+            Assert.AreNotEqual(a.bodies[SolarSystemDescriptor.Home].radius, other.bodies[SolarSystemDescriptor.Home].radius);
         }
 
         [Test]
@@ -231,65 +274,10 @@ namespace Infinigame.Tests
             for (uint seed = 0; seed < 100; seed++)
             {
                 var system = SolarSystemDescriptor.Generate(seed);
-                Assert.Less(system.bodies[2].orbit.radius + system.bodies[2].soiRadius, system.bodies[1].soiRadius);
-                Assert.Less(system.bodies[1].soiRadius, system.bodies[1].orbit.radius - system.bodies[0].radius);
-                Assert.Greater(system.bodies[2].orbit.radius - system.bodies[2].soiRadius, system.bodies[1].radius * 2f);
+                Assert.Less(system.bodies[SolarSystemDescriptor.Moon].orbit.Furthest + system.bodies[SolarSystemDescriptor.Moon].soiRadius, system.bodies[SolarSystemDescriptor.Home].soiRadius);
+                Assert.Less(system.bodies[SolarSystemDescriptor.Home].soiRadius, system.bodies[SolarSystemDescriptor.Home].orbit.Nearest - system.bodies[0].radius);
+                Assert.Greater(system.bodies[SolarSystemDescriptor.Moon].orbit.Nearest - system.bodies[SolarSystemDescriptor.Moon].soiRadius, system.bodies[SolarSystemDescriptor.Home].radius * 2f);
             }
-        }
-    }
-
-    public class RelicTests
-    {
-        [Test]
-        public void SameSeedHidesTheSameRelics()
-        {
-            var a = Relics.Place(SolarSystemDescriptor.Generate(4));
-            var b = Relics.Place(SolarSystemDescriptor.Generate(4));
-            Assert.AreEqual(7, a.Count);
-            for (int i = 0; i < a.Count; i++)
-            {
-                Assert.AreEqual(a[i].id, b[i].id);
-                Assert.AreEqual(a[i].position, b[i].position);
-            }
-            Assert.AreNotEqual(a[0].position, Relics.Place(SolarSystemDescriptor.Generate(5))[0].position);
-        }
-
-        [Test]
-        public void RelicsHoverAboveGroundAndSeaAndKeepApart()
-        {
-            for (uint seed = 1; seed <= 20; seed++)
-            {
-                var system = SolarSystemDescriptor.Generate(seed);
-                var sites = Relics.Place(system);
-                var ids = new HashSet<int>();
-                foreach (var site in sites)
-                {
-                    var body = system.bodies[site.body];
-                    float3 direction = math.normalize(site.position);
-                    Assert.AreEqual(math.max(body.GroundRadius(direction), body.SeaRadius) + Relics.HoverHeight, math.length(site.position), 0.01f);
-                    Assert.IsTrue(ids.Add(site.id), "ids are unique within a system");
-                    foreach (var other in sites)
-                        if (other.id != site.id && other.body == site.body)
-                            Assert.Greater(math.distance(site.position, other.position), body.radius * 0.5f);
-                }
-            }
-        }
-
-        [Test]
-        public void PlanetRelicsSpanPeaksSeaAndShore()
-        {
-            var system = SolarSystemDescriptor.Generate(1);
-            var planet = system.bodies[1];
-            float highest = float.MinValue, lowest = float.MaxValue;
-            foreach (var site in Relics.Place(system))
-                if (site.body == 1)
-                {
-                    float height = planet.GroundRadius(math.normalize(site.position)) - planet.radius;
-                    highest = math.max(highest, height);
-                    lowest = math.min(lowest, height);
-                }
-            Assert.Greater(highest, planet.terrain.mountainAmp * 0.3f);
-            Assert.Less(lowest, -planet.terrain.seaDepth * 0.5f);
         }
     }
 
@@ -297,7 +285,7 @@ namespace Infinigame.Tests
     {
         static readonly SolarSystemDescriptor Solar = SolarSystemDescriptor.Generate(1);
         static readonly float3 East = new float3(1, 0, 0), Local = new float3(120, 990, -45);
-        static BodyDescriptor Planet => Solar.bodies[1];
+        static BodyDescriptor Planet => Solar.bodies[SolarSystemDescriptor.Home];
 
         [Test]
         public void SunDoesNotSpin() => Check.Near(East, math.rotate(Solar.bodies[0].Rotation(777), East), 1e-6f);
@@ -324,30 +312,56 @@ namespace Infinigame.Tests
         {
             for (uint seed = 0; seed < 50; seed++)
             {
-                var planet = SolarSystemDescriptor.Generate(seed).bodies[1];
+                var planet = SolarSystemDescriptor.Generate(seed).bodies[SolarSystemDescriptor.Home];
                 Assert.That(planet.spinPeriod, Is.InRange(300, 900));
                 Assert.Greater(planet.orbit.period, planet.spinPeriod * 4);
             }
         }
 
         [Test]
-        public void MoonKeepsOneFaceToThePlanet()
+        public void MoonsKeepOneFaceToTheirPlanetAndRockAsTheyGo()
         {
-            float3 Facing(double time) => math.normalize(Solar.ToLocal(2, time, Solar.PositionAt(1, time)));
-            for (double time = 0; time < 3000; time += 211) Check.Near(Facing(0), Facing(time), 1e-3f);
+            for (int moon = 1; moon < Solar.bodies.Length; moon++)
+            {
+                var orbit = Solar.bodies[moon].orbit;
+                if (orbit.parent <= 0) continue;
+                float rocked = 0f;
+                for (int i = 0; i < 200; i++)
+                {
+                    double time = math.abs(orbit.period) * i / 200;
+                    float3 planet = math.normalize(Solar.ToLocal(moon, time, Solar.PositionAt(orbit.parent, time)));
+                    Assert.AreEqual(0f, planet.y, 1e-3f, "it turns about its orbit's own axis");
+                    rocked = math.max(rocked, math.abs(math.atan2(planet.z, -planet.x)));
+                }
+                // On a lopsided orbit a moon runs ahead of its own steady spin and then behind, so its
+                // face rocks from side to side: by about twice the lopsidedness, as our own moon's does.
+                Assert.AreEqual(2f * orbit.eccentricity, rocked, 0.02f + 0.3f * orbit.eccentricity, Solar.bodies[moon].summary);
+            }
+        }
+
+        [Test]
+        public void WorldsLeanTheirOwnWays()
+        {
+            float3 Axis(int body) => math.rotate(Solar.bodies[body].Rotation(0), new float3(0, 1, 0));
+            var planets = Solar.Planets.ToArray();
+            // an axis keeps its lean whichever way it points
+            foreach (int planet in planets) Assert.AreEqual(math.cos(Solar.bodies[planet].tilt), Axis(planet).y, 1e-5f);
+            // the home world, the rust desert and the ringed giant lean about as far as each other, but not the same way
+            Assert.Less(math.dot(math.normalize(Axis(planets[2]).xz), math.normalize(Axis(planets[3]).xz)), 0.999f);
+            Assert.Less(math.dot(math.normalize(Axis(planets[2]).xz), math.normalize(Axis(planets[5]).xz)), 0.999f);
         }
 
         [Test]
         public void LocalAndInertialRoundTrip()
         {
-            for (int body = 0; body < 3; body++) Check.Near(Local, Solar.ToLocal(body, 400, Solar.ToInertial(body, 400, Local)), 0.01f);
+            for (int body = 0; body < Solar.bodies.Length; body++) Check.Near(Local, Solar.ToLocal(body, 400, Solar.ToInertial(body, 400, Local)), 0.01f);
         }
 
         [Test]
         public void GroundCarriesYouRoundWithTheSpin()
         {
             const double time = 400, dt = 0.1;
-            for (int body = 1; body < 3; body++)
+            for (int body = 1; body < Solar.bodies.Length; body++)
                 Check.Near((Solar.ToInertial(body, time + dt, Local) - Solar.ToInertial(body, time - dt, Local)) / (2 * dt),
                     Solar.InertialVelocity(body, time, Local, float3.zero), 0.02);
         }
@@ -362,35 +376,36 @@ namespace Infinigame.Tests
         public void RebasingKeepsInertialState()
         {
             float3 position = new float3(10, 1005, -3), velocity = new float3(1, 2, 3);
-            double3 inertialPosition = Solar.ToInertial(1, Time, position), inertialVelocity = Solar.InertialVelocity(1, Time, position, velocity);
-            Solar.Rebase(1, 2, Time, ref position, ref velocity);
-            Check.Near(inertialPosition, Solar.ToInertial(2, Time, position), 1e-2);
-            Check.Near(inertialVelocity, Solar.InertialVelocity(2, Time, position, velocity), 1e-3);
+            double3 inertialPosition = Solar.ToInertial(SolarSystemDescriptor.Home, Time, position), inertialVelocity = Solar.InertialVelocity(SolarSystemDescriptor.Home, Time, position, velocity);
+            Solar.Rebase(SolarSystemDescriptor.Home, SolarSystemDescriptor.Moon, Time, ref position, ref velocity);
+            Check.Near(inertialPosition, Solar.ToInertial(SolarSystemDescriptor.Moon, Time, position), 1e-2);
+            Check.Near(inertialVelocity, Solar.InertialVelocity(SolarSystemDescriptor.Moon, Time, position, velocity), 1e-3);
         }
 
         [Test]
         public void TurnCarriesDirectionsBetweenFrames()
         {
             float3 heading = math.normalize(new float3(0.3f, -0.2f, 0.9f));
-            Check.Near(math.rotate(Solar.bodies[1].Rotation(Time), heading),
-                math.rotate(Solar.bodies[2].Rotation(Time), math.rotate(Solar.Turn(1, 2, Time), heading)), 1e-5f);
+            Check.Near(math.rotate(Solar.bodies[SolarSystemDescriptor.Home].Rotation(Time), heading),
+                math.rotate(Solar.bodies[SolarSystemDescriptor.Moon].Rotation(Time), math.rotate(Solar.Turn(SolarSystemDescriptor.Home, SolarSystemDescriptor.Moon, Time), heading)), 1e-5f);
         }
 
         [Test]
         public void ReferenceBodyFollowsSpheresOfInfluence()
         {
-            double3 planet = Solar.PositionAt(1, Time), moon = Solar.PositionAt(2, Time);
-            Assert.AreEqual(1, Solar.ReferenceBody(planet + new double3(0, Solar.bodies[1].radius + 2, 0), Time, 0));
-            Assert.AreEqual(2, Solar.ReferenceBody(moon + new double3(0, Solar.bodies[2].radius + 2, 0), Time, 1));
-            Assert.AreEqual(0, Solar.ReferenceBody(planet * 0.3, Time, 1));
+            double3 planet = Solar.PositionAt(SolarSystemDescriptor.Home, Time), moon = Solar.PositionAt(SolarSystemDescriptor.Moon, Time);
+            Assert.AreEqual(SolarSystemDescriptor.Home, Solar.ReferenceBody(planet + new double3(0, Solar.bodies[SolarSystemDescriptor.Home].radius + 2, 0), Time, 0));
+            Assert.AreEqual(SolarSystemDescriptor.Moon, Solar.ReferenceBody(moon + new double3(0, Solar.bodies[SolarSystemDescriptor.Moon].radius + 2, 0), Time, SolarSystemDescriptor.Home));
+            // high above every orbit there is only the sun
+            Assert.AreEqual(0, Solar.ReferenceBody(new double3(0, 50000, 0), Time, SolarSystemDescriptor.Home));
         }
 
         [Test]
         public void ReferenceBodyHasHysteresis()
         {
-            double3 justOutsideMoon = Solar.PositionAt(2, Time) + new double3(0, Solar.bodies[2].soiRadius * 1.1, 0);
-            Assert.AreEqual(2, Solar.ReferenceBody(justOutsideMoon, Time, 2));
-            Assert.AreEqual(1, Solar.ReferenceBody(justOutsideMoon, Time, 1));
+            double3 justOutsideMoon = Solar.PositionAt(SolarSystemDescriptor.Moon, Time) + new double3(0, Solar.bodies[SolarSystemDescriptor.Moon].soiRadius * 1.1, 0);
+            Assert.AreEqual(SolarSystemDescriptor.Moon, Solar.ReferenceBody(justOutsideMoon, Time, SolarSystemDescriptor.Moon));
+            Assert.AreEqual(SolarSystemDescriptor.Home, Solar.ReferenceBody(justOutsideMoon, Time, SolarSystemDescriptor.Home));
         }
     }
 

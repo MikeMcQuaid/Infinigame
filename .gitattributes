@@ -1,0 +1,10 @@
+# Written by Unity or by the screenshot tour, not by hand: GitHub folds their diffs away and
+# leaves them out of the language count.
+*.meta linguist-generated=true
+/ProjectSettings/** linguist-generated=true
+/Packages/packages-lock.json linguist-generated=true
+/Assets/Settings/** linguist-generated=true
+/Assets/Scenes/*.unity linguist-generated=true
+/Assets/Infinigame/Resources/*.mat linguist-generated=true
+/Assets/Infinigame/Icon.png linguist-generated=true
+/docs/*.jpg linguist-generated=true

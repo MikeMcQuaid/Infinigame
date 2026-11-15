@@ -22,3 +22,7 @@
 *.opendb
 *.VC.db
 .DS_Store
+/tmp/
+# the scene the test runner makes for the length of a run
+/Assets/InitTestScene*
+/.claude/worktrees/

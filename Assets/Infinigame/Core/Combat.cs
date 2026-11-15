@@ -1,0 +1,300 @@
+using System.Collections.Generic;
+using Unity.Mathematics;
+using Random = Unity.Mathematics.Random;
+
+namespace Infinigame.Core
+{
+    // Raiders are ships that hunt the player's ship; drones hover over the ground and hunt the player
+    // on foot; the base is the raiders' station, which shoots at whatever comes near.
+    public enum FoeKind { Raider, Drone, Base }
+
+    // Position is relative to the body's centre, like the player's.
+    public struct Foe
+    {
+        public FoeKind kind;
+        public float3 position, velocity, forward;
+        // how big a target it is, as the radius of a ball
+        public float health, cooldown, size;
+        // A raider fires in bursts, and breaks away after each pass before turning back.
+        public int burst;
+        public bool away;
+        public uint seed;
+    }
+
+    // A shot in flight, the player's or a foe's.
+    public struct Bolt
+    {
+        public float3 position, velocity;
+        // homing is how fast it can turn towards a foe, in radians a second; blast is how wide a hole it leaves
+        public float life, damage, homing, blast;
+        // level: a landing charge, which leaves the ground flat where it bursts instead of holed
+        public bool hostile, level;
+    }
+
+    // Something the player fires.
+    public struct Weapon
+    {
+        public string name;
+        public float speed, damage, period, spread, homing, blast, life;
+        // how many bolts leave at once, and which sound it makes
+        public int pellets, voice;
+        // A firearm also has rounds in its magazine, seconds to change one, degrees that a shot
+        // throws the aim up by and a widening of its spread with each shot fired in a hurry.
+        public int clip;
+        public float reload, kick, bloom;
+        // what has to have been won before it can be used
+        public Gear needs;
+    }
+
+    // Where a bolt ended: against a foe, the player or the ground.
+    public struct Strike
+    {
+        public float3 at;
+        public float blast;
+        // ground: it struck the ground or the sea. level: it was a landing charge. Otherwise it
+        // struck something's hull, a foe's when foe says which.
+        public bool ground, level;
+        public int foe;
+    }
+
+    // Fighting, as plain arithmetic: how foes move and shoot, what a bolt hits and what a fall,
+    // a crash or heat costs. Foes are tougher the further the game has gone.
+    public static class Combat
+    {
+        public const float ShipRadius = 4f, PersonRadius = 0.9f;
+        const float RaiderBolt = 420f, DroneBolt = 32f, TurretBolt = 520f, RaiderReach = 650f, DroneReach = 38f, TurretReach = 2200f, Hover = 1.8f;
+        // A blast this wide is a nuclear one: the only kind the raiders' citadel cannot shrug off.
+        public const float Nuclear = 50f;
+
+        // The ship's weapons, each won from the raiders in its turn: quick cannons, missiles that
+        // chase, a lance that hits like a hammer and torpedoes that crack worlds.
+        public static readonly Weapon[] Guns =
+        {
+            new Weapon { name = "Pulse cannons", speed = 900f, damage = 12f, period = 0.09f, blast = 2.5f, life = 3f, pellets = 1, voice = 0, needs = Gear.Ship },
+            new Weapon { name = "Seeker missiles", speed = 420f, damage = 60f, period = 1.1f, homing = 2.4f, blast = 9f, life = 7f, pellets = 1, voice = 1, needs = Gear.Missiles },
+            new Weapon { name = "Lance", speed = 3500f, damage = 45f, period = 0.8f, blast = 4f, life = 1.2f, pellets = 1, voice = 2, needs = Gear.Lance },
+            new Weapon { name = "Nuclear torpedoes", speed = 260f, damage = 800f, period = 3.5f, blast = 60f, life = 30f, pellets = 1, voice = 10, needs = Gear.Nukes },
+        };
+
+        // What is carried on foot. These are firearms: their bullets are too quick to dodge, they
+        // run dry and have to be reloaded, and they climb and scatter when fired fast.
+        public static readonly Weapon[] Arms =
+        {
+            new Weapon
+            {
+                name = "Pistol", speed = 380f, damage = 22f, period = 0.15f, spread = 0.004f, blast = 0.3f, life = 1.2f, pellets = 1, voice = 3,
+                clip = 12, reload = 1.5f, kick = 1.1f, bloom = 0.004f, needs = Gear.Pistol,
+            },
+            new Weapon
+            {
+                name = "Shotgun", speed = 360f, damage = 9f, period = 0.9f, spread = 0.055f, blast = 0.3f, life = 0.28f, pellets = 9, voice = 4,
+                clip = 6, reload = 2.6f, kick = 4.5f, needs = Gear.Shotgun,
+            },
+            new Weapon
+            {
+                name = "Rifle", speed = 800f, damage = 15f, period = 0.1f, spread = 0.003f, blast = 0.3f, life = 1.2f, pellets = 1, voice = 9,
+                clip = 30, reload = 2.2f, kick = 0.7f, bloom = 0.0035f, needs = Gear.Rifle,
+            },
+            new Weapon
+            {
+                name = "Sniper rifle", speed = 1400f, damage = 140f, period = 1.4f, blast = 0.6f, life = 2f, pellets = 1, voice = 5,
+                clip = 5, reload = 3f, kick = 6f, needs = Gear.Sniper,
+            },
+            // the one thing carried that can bring a ship down: its missiles chase, as the ship's own do
+            new Weapon
+            {
+                name = "Launcher", speed = 240f, damage = 70f, period = 1.2f, homing = 3f, blast = 8f, life = 9f, pellets = 1, voice = 1,
+                clip = 2, reload = 3.2f, kick = 5f, needs = Gear.Launcher,
+            },
+        };
+
+        // How much a foe can take and how hard it hits, at a level of threat that starts at 1.
+        public static float Health(FoeKind kind, int depth) => (kind == FoeKind.Raider ? 60f : kind == FoeKind.Drone ? 35f : 1500f) * (1f + 0.25f * (depth - 1));
+        public static float Damage(FoeKind kind, int depth) => (kind == FoeKind.Raider ? 6f : kind == FoeKind.Drone ? 9f : 8f) * (1f + 0.2f * (depth - 1));
+
+        // Hull or health lost each second to the sun's radiation out in deep space, without a shield against it.
+        public const float Radiation = 12f;
+
+        // Health lost to landing this hard on foot. A jump costs nothing; forty metres on the home world kills.
+        public static float Fall(float impact) => math.max(0f, impact - 11f) * 6f;
+
+        // Hull lost to hitting something this hard. A landing costs nothing; flying into a hillside is the end.
+        public static float Crash(float impact) => math.max(0f, impact - 12f) * 1.6f;
+
+        // Hull lost to striking a rock of a belt or a ring this hard: a dent, however fast, and never the last of a hull.
+        public static float Graze(float impact, float hull) => math.min(math.min(2f + 0.1f * impact, 10f), math.max(0f, hull - 5f));
+
+        // Hull or health lost each second to heat past what it can take, both in kelvin.
+        public static float Scorch(float kelvin, float limit) => math.max(0f, kelvin - limit) * 0.04f;
+
+        // size is how big a target the foe is: a raider or a drone has its own, the base takes its station's.
+        public static Foe Spawn(FoeKind kind, float3 position, float3 facing, int depth, uint seed, float size = 0f) => new Foe
+        {
+            kind = kind, position = position, forward = math.normalizesafe(facing, new float3(0, 0, 1)), health = Health(kind, depth), cooldown = 1.5f, seed = seed | 1u,
+            size = kind == FoeKind.Raider ? 10f : kind == FoeKind.Drone ? 1.2f : size,
+        };
+
+        public static Bolt Fire(float3 from, float3 direction, float3 inherit, float speed, float damage, bool hostile, float blast = 1.5f) =>
+            new Bolt { position = from, velocity = inherit + direction * speed, damage = damage, hostile = hostile, life = 3f, blast = blast };
+
+        // The player pulls the trigger: one bolt, or a spread of them. wild widens the spread, for a
+        // firearm fired fast, on the run or in the air.
+        public static void Fire(in Weapon weapon, float3 from, float3 direction, float3 inherit, ref Random rnd, List<Bolt> into, float wild = 0f)
+        {
+            for (int i = 0; i < weapon.pellets; i++)
+                into.Add(new Bolt
+                {
+                    position = from, velocity = inherit + math.normalize(direction + rnd.NextFloat3Direction() * ((weapon.spread + wild) * rnd.NextFloat())) * weapon.speed,
+                    damage = weapon.damage, life = weapon.life, homing = weapon.homing, blast = weapon.blast,
+                });
+        }
+
+        // Moves one foe a step towards its quarry and says whether it fired.
+        public static bool Hunt(ref Foe foe, BodyDescriptor body, float3 target, float3 targetVelocity, int depth, float dt, out Bolt shot)
+        {
+            shot = default;
+            var rnd = new Random(foe.seed = (foe.seed * 747796405u + 2891336453u) | 1u);
+            float3 to = target - foe.position, up = math.normalizesafe(foe.position, new float3(0, 1, 0));
+            float distance = math.max(math.length(to), 1e-3f);
+            foe.cooldown -= dt;
+
+            if (foe.kind == FoeKind.Base)
+            {
+                // the station does not move: its guns track whatever is in reach and fire from its hull
+                if (distance > TurretReach || foe.cooldown > 0f) return false;
+                foe.cooldown = 0.45f + rnd.NextFloat(0.3f);
+                float3 muzzle = foe.position + to / distance * foe.size;
+                float flight = math.distance(target, muzzle) / TurretBolt;
+                shot = Fire(muzzle, math.normalize(target + targetVelocity * flight - muzzle + rnd.NextFloat3Direction() * (0.012f * distance)), float3.zero, TurretBolt, Damage(foe.kind, depth), true, 3f);
+                shot.life = 5f;
+                return true;
+            }
+
+            if (foe.kind == FoeKind.Drone)
+            {
+                // close to a dozen paces, then circle, never quite still
+                float3 level = Walker.Project(to, up), toward = math.normalizesafe(level, foe.forward);
+                float3 round = math.cross(up, toward) * (foe.seed % 2u == 0u ? 1f : -1f);
+                float gap = math.length(level);
+                foe.velocity = Walker.MoveTowards(foe.velocity, gap > 16f ? toward * 10f : gap < 9f ? round * 2f - toward * 3f : round * 3.5f, 14f * dt);
+                foe.position += foe.velocity * dt;
+                up = math.normalize(foe.position);
+                // it rides at head height over ground or water
+                float floor = Ship.Surface(body, up);
+                foe.position = up * math.max(floor + 0.8f, math.lerp(math.length(foe.position), floor + Hover, math.saturate(6f * dt)));
+                foe.forward = to / distance;
+                if (distance > DroneReach || foe.cooldown > 0f) return false;
+                foe.cooldown = 1.4f + rnd.NextFloat(0.8f);
+                shot = Fire(foe.position, math.normalize(to + targetVelocity * (distance / DroneBolt)), float3.zero, DroneBolt, Damage(foe.kind, depth), true, 1.2f);
+                return true;
+            }
+
+            float altitude = math.length(foe.position) - Ship.Surface(body, up);
+            // a pass ends close in; the next begins once there is room to turn
+            foe.away = foe.away ? distance < 500f : distance < 110f;
+            float3 side = math.cross(up, to / distance) * (foe.seed % 2u == 0u ? 1f : -1f);
+            // aim where the quarry will be when the bolt gets there
+            float3 aim = math.normalize(to + (targetVelocity - foe.velocity) * (distance / RaiderBolt));
+            float3 want = foe.away ? math.normalize(side * 0.7f + up * 0.35f - to / distance) : aim;
+            if (altitude < 80f) want = math.normalize(want + up * ((80f - altitude) / 30f));
+            foe.forward = Turn(foe.forward, want, 1.3f * dt);
+            foe.velocity = Walker.MoveTowards(foe.velocity, foe.forward * (0.9f * Ship.MaxSpeed(body, altitude)), 90f * dt);
+            foe.position += foe.velocity * dt;
+            up = math.normalize(foe.position);
+            foe.position = up * math.max(math.length(foe.position), Ship.Surface(body, up) + 10f);
+
+            if (foe.away || distance > RaiderReach || foe.cooldown > 0f || math.dot(foe.forward, aim) < 0.998f) return false;
+            if (foe.burst <= 0) foe.burst = 3;
+            foe.cooldown = --foe.burst > 0 ? 0.14f : 1.2f + rnd.NextFloat(0.8f);
+            // not every shot is true
+            shot = Fire(foe.position + foe.forward * 12f, math.normalize(aim + rnd.NextFloat3Direction() * 0.02f), foe.velocity, RaiderBolt, Damage(foe.kind, depth), true, 2.5f);
+            return true;
+        }
+
+        // Moves every bolt a step, takes health from the foes that the player's bolts hit and
+        // drops the spent ones. Returns the damage done to the player, a sphere of this size and
+        // motion. Where bolts ended against something goes into struck.
+        public static float Step(List<Bolt> bolts, List<Foe> foes, BodyDescriptor body, float3 player, float3 playerVelocity, float playerRadius, float dt, List<Strike> struck)
+        {
+            float hurt = 0f;
+            for (int i = bolts.Count - 1; i >= 0; i--)
+            {
+                var bolt = bolts[i];
+                if (bolt.homing > 0f)
+                {
+                    // a missile swings towards the nearest foe ahead of it
+                    float speed = math.length(bolt.velocity), nearest = float.MaxValue;
+                    float3 heading = bolt.velocity / speed, chase = heading;
+                    foreach (var foe in foes)
+                    {
+                        float3 to = foe.position - bolt.position;
+                        float away = math.length(to);
+                        if (away >= nearest || math.dot(to, heading) < 0.3f * away) continue;
+                        nearest = away;
+                        chase = math.normalize(to + foe.velocity * (away / speed));
+                    }
+                    bolt.velocity = Turn(heading, chase, bolt.homing * dt) * speed;
+                }
+                float3 step = bolt.velocity * dt, at = bolt.position + step;
+                bool hit = false, ground = false;
+                int struckFoe = -1;
+                if (bolt.hostile)
+                {
+                    if (hit = Crosses(bolt.position, step - playerVelocity * dt, player, playerRadius)) hurt += bolt.damage;
+                }
+                else
+                    for (int f = 0; f < foes.Count && !hit; f++)
+                    {
+                        var foe = foes[f];
+                        if (!(hit = Crosses(bolt.position, step - foe.velocity * dt, foe.position, foe.size))) continue;
+                        struckFoe = f;
+                        // nothing short of a nuclear blast marks the citadel
+                        if (foe.kind != FoeKind.Base || bolt.blast >= Nuclear) foe.health -= bolt.damage;
+                        foes[f] = foe;
+                        // it ends on the near side of what it hit
+                        at = foe.position - math.normalizesafe(step) * math.min(foe.size, math.distance(bolt.position, foe.position));
+                    }
+                // the ground stops what misses
+                if (!hit) hit = ground = math.length(at) < Ship.Surface(body, math.normalize(at));
+                if (hit) struck?.Add(new Strike { at = at, blast = bolt.blast, ground = ground, level = bolt.level, foe = struckFoe });
+                if (hit && !bolt.hostile && bolt.blast >= 5f)
+                    // a big enough bang catches whatever else is near, less the further off it is
+                    for (int f = 0; f < foes.Count; f++)
+                    {
+                        var foe = foes[f];
+                        float near = math.distance(foe.position, at) - foe.size;
+                        if (near <= 0f || near >= bolt.blast || (foe.kind == FoeKind.Base && bolt.blast < Nuclear)) continue;
+                        foe.health -= bolt.damage * (1f - near / bolt.blast);
+                        foes[f] = foe;
+                    }
+                if (hit || (bolt.life -= dt) <= 0f)
+                {
+                    bolts[i] = bolts[bolts.Count - 1];
+                    bolts.RemoveAt(bolts.Count - 1);
+                    continue;
+                }
+                bolt.position = at;
+                bolts[i] = bolt;
+            }
+            return hurt;
+        }
+
+        // Whether a step from a point passes through a sphere.
+        public static bool Crosses(float3 from, float3 step, float3 centre, float radius)
+        {
+            float along = math.saturate(math.dot(centre - from, step) / math.max(math.lengthsq(step), 1e-9f));
+            return math.distancesq(from + step * along, centre) < radius * radius;
+        }
+
+        // Swings one direction towards another by no more than an angle.
+        public static float3 Turn(float3 from, float3 to, float radians)
+        {
+            float angle = math.acos(math.clamp(math.dot(from, to), -1f, 1f));
+            if (angle <= radians) return to;
+            float3 axis = math.cross(from, to);
+            // facing dead away: any axis across the heading will do
+            if (math.lengthsq(axis) < 1e-8f) axis = math.cross(from, math.abs(from.y) < 0.9f ? new float3(0, 1, 0) : new float3(1, 0, 0));
+            return math.normalize(math.rotate(quaternion.AxisAngle(math.normalize(axis), radians), from));
+        }
+    }
+}

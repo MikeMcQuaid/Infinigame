@@ -1,3 +1,4 @@
+using Infinigame.Core;
 using UnityEngine;
 
 namespace Infinigame
@@ -8,9 +9,12 @@ namespace Infinigame
     {
         public readonly int quads, buildsPerFrame, waterQuads;
         public readonly float splitFactor, finestQuad, scatter;
+        // The fewest pixels tall a plant, rock or animal can be and still be worth drawing.
+        public readonly float pixels;
 
-        LodSettings(int quads, float splitFactor, float finestQuad, int buildsPerFrame, int waterQuads, float scatter)
+        LodSettings(int quads, float splitFactor, float finestQuad, int buildsPerFrame, int waterQuads, float scatter, float pixels)
         {
+            this.pixels = pixels;
             this.quads = quads;
             this.splitFactor = splitFactor;
             this.finestQuad = finestQuad;
@@ -22,12 +26,16 @@ namespace Infinigame
         // Indexed by quality level: Mobile, VR, PC.
         static readonly LodSettings[] Tiers =
         {
-            new LodSettings(16, 1.5f, 1.5f, 2, 40, 0.3f),
-            new LodSettings(24, 2f, 1f, 3, 64, 0.6f),
-            new LodSettings(32, 2.5f, 0.75f, 6, 96, 1f),
+            new LodSettings(16, 1.5f, 1.5f, 2, 40, 0.3f, 8f),
+            new LodSettings(24, 2f, 1f, 3, 64, 0.6f, 5f),
+            new LodSettings(64, 3.4f, 0.5f, 10, 160, 2f, 3f),
         };
 
         public static int Tier => Mathf.Clamp(QualitySettings.GetQualityLevel(), 0, Tiers.Length - 1);
         public static LodSettings Current => Tiers[Tier];
+
+        // How far off something this many metres tall is still worth drawing. The view widens with
+        // speed, but ranges are worked out for the resting view so they do not breathe with it.
+        public float Range(float height) => Detail.Range(height, pixels, Camera.main.pixelHeight, 70f);
     }
 }
