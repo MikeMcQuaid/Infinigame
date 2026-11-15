@@ -131,6 +131,16 @@ Shader "Infinigame/Hull"
                 inputData.viewDirectionWS = GetWorldSpaceNormalizeViewDir(input.positionWS);
                 inputData.shadowCoord = TransformWorldToShadowCoord(input.positionWS);
                 inputData.fogCoord = InitializeInputDataFog(float4(input.positionWS, 1.0), input.fogFactor);
+                // Screen derivatives keep the grown relief attached to the surface without a UV seam.
+                float grain = Noise(input.place.xyz * 22.0);
+                float veins = abs(Noise(input.place.xyz * 4.0) - 0.5);
+                float relief = (grain * 0.008 + smoothstep(0.02, 0.08, veins) * 0.012)
+                    * (1 - smoothstep(0.03, 0.15, max(length(ddx(input.place.xyz)), length(ddy(input.place.xyz)))));
+                float3 dx = ddx(input.positionWS), dy = ddy(input.positionWS);
+                float3 acrossX = cross(dy, inputData.normalWS), acrossY = cross(inputData.normalWS, dx);
+                float determinant = dot(dx, acrossX);
+                if (abs(determinant) > 1e-8)
+                    inputData.normalWS = normalize(inputData.normalWS - (ddx(relief) * acrossX + ddy(relief) * acrossY) / determinant);
                 inputData.bakedGI = SampleSH(inputData.normalWS);
                 inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(input.positionCS);
                 inputData.shadowMask = half4(1, 1, 1, 1);
@@ -138,9 +148,9 @@ Shader "Infinigame/Hull"
                 SurfaceData surface = (SurfaceData)0;
                 // the inside is all soot
                 float soot = outside ? 0.94 * scorch : 0.94;
-                surface.albedo = lerp(_BaseColor.rgb, half3(0.02, 0.018, 0.016), soot);
+                surface.albedo = lerp(_BaseColor.rgb * (0.72 + grain * 0.32 + smoothstep(0.02, 0.08, veins) * 0.2), half3(0.02, 0.018, 0.016), soot);
                 surface.metallic = _Metallic * (1.0 - soot);
-                surface.smoothness = _Smoothness * (1.0 - 0.85 * soot);
+                surface.smoothness = lerp(0.35, 0.65, grain) * (1.0 - 0.85 * soot);
                 surface.occlusion = 1.0;
                 surface.alpha = 1.0;
                 surface.emission = _Glow.rgb * (1.0 - scorch) + Fire(edge * (0.45 + 0.3 * ember)) * (0.05 / rim)

@@ -9,7 +9,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 app=Build/Infinigame.app
-if [ ! -d $app ] || [ -n "$(find Assets Packages ProjectSettings -newer $app -print -quit)" ] ||
+if [ ! -d $app ] || [ -n "$(find Assets Packages ProjectSettings STORY.md MISSIONS.md FACTIONS.md COLONIES.md -newer $app -print -quit)" ] ||
   { [ -r /Volumes ] && [ -z "$(find $app -name "lib_burst_generated*" -print -quit)" ]; }; then
   script/build
 fi

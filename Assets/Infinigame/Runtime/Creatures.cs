@@ -117,7 +117,10 @@ namespace Infinigame
                         float quirk = math.frac((here.seed % 1000u) * 0.37f + i * 0.61f), size = 0.8f + 0.4f * quirk;
                         Quaternion facing = Quaternion.LookRotation(forward, math.normalize(position));
                         if (kind.creature == Creature.Fish) facing *= Quaternion.AngleAxis(14f * math.sin(beat * 7f + quirk * 40f), Vector3.up);
-                        var matrix = Matrix4x4.TRS(position, facing, Vector3.one * (size * shrink));
+                        // Whole populations dwindle as the presence consumes a world, recovering under protection.
+                        float survival = math.saturate((1 - body.blight - quirk * 0.85f) * 8);
+                        if (survival <= 0) continue;
+                        var matrix = Matrix4x4.TRS(position, facing, Vector3.one * (size * shrink * survival));
                         kind.bodies.Add(matrix);
                         Seen.Add(new Scannable { name = kind.name, foot = position, height = kind.height * size, girth = kind.girth * size });
                         if (kind.creature != Creature.Bird) continue;

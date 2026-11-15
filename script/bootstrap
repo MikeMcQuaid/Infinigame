@@ -1,6 +1,6 @@
 #!/bin/bash
 # script/bootstrap: install what the project depends on. Homebrew installs Unity Hub, the Unity
-# CLI, Anthropic's ant and OpenAI's codex from the Brewfile, then the Unity CLI installs the
+# CLI, Claude Code and OpenAI's codex from the Brewfile, then the Unity CLI installs the
 # editor version the project is pinned to.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -8,16 +8,16 @@ cd "$(dirname "$0")/.."
 # Only call Homebrew when something is missing: a user without write access to it, such as a
 # sandbox user, cannot even run its checks.
 if [ ! -d "/Applications/Unity Hub.app" ] || ! command -v unity &>/dev/null ||
-  { { ! command -v ant &>/dev/null || ! command -v codex &>/dev/null; } && [ -w "$(brew --prefix)/bin" ]; }; then
+  { { ! command -v claude &>/dev/null || ! command -v codex &>/dev/null; } && [ -w "$(brew --prefix)/bin" ]; }; then
   brew bundle --no-upgrade || true
 fi
 if [ ! -d "/Applications/Unity Hub.app" ] || ! command -v unity &>/dev/null; then
   echo "Unity Hub and the Unity CLI could not be installed. Run brew bundle to see why." >&2
   exit 1
 fi
-# ant and codex are only for the scanner and the hermit: either will do, and the game plays without them
-command -v ant &>/dev/null || command -v codex &>/dev/null ||
-  echo "==> Neither Anthropic's ant nor OpenAI's codex is installed, so the scanner and the hermit will stay quiet" >&2
+# Claude Code and Codex are only for the scanner and the hermit: either will do, and the game plays without them
+command -v claude &>/dev/null || command -v codex &>/dev/null ||
+  echo "==> Neither Claude Code nor OpenAI's codex is installed, so the game will use authored dialogue and observed scanner facts" >&2
 if ! script/unity --path &>/dev/null; then
   version=$(awk '/^m_EditorVersion:/ { print $2 }' ProjectSettings/ProjectVersion.txt)
   echo "==> Installing Unity $version"

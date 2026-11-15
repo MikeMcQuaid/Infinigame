@@ -7,11 +7,17 @@ namespace Infinigame
 {
     // The game's models, each built from code with MeshKit: the player's ship and its cockpit, the
     // hermit's camp, the raiders with their drones, missiles and citadel and the life of stranger worlds.
-    public static class Models
+    public static partial class Models
     {
         static Material Paint(Color colour, float metallic = 0f, float smoothness = 0.3f)
         {
             var material = Shapes.Material("Lit", colour);
+            material.SetTexture("_BaseMap", Machined);
+            material.SetTextureScale("_BaseMap", Vector2.one * 2);
+            material.SetTexture("_BumpMap", machinedNormal);
+            material.SetTextureScale("_BumpMap", Vector2.one * 2);
+            material.SetFloat("_BumpScale", 0.3f);
+            material.EnableKeyword("_NORMALMAP");
             material.SetFloat("_Metallic", metallic);
             material.SetFloat("_Smoothness", smoothness);
             return material;
@@ -624,14 +630,14 @@ namespace Infinigame
             });
             Vent(new Vector3(-0.439f, 0.3f, 1.75f), Vector3.right, 0.12f, 0.06f);
 
-            // Along the right wall, ahead of the pilot, is a jump seat for a passenger: "Copilot"
+            // Along the right wall is a low cradle for the recovery machine: "Copilot"
             // is its base, far enough forward that whoever sits there shows at the edge of the view.
-            var guest = new Vector3(0.47f, 0f, 1.5f);
+            var guest = new Vector3(0.47f, 0.43f, 2f);
+            foreach (float side in new[] { -1f, 1f })
+                trim.Rod(guest + new Vector3(side * 0.1f, -0.4f, 0), guest + new Vector3(side * 0.1f, -0.09f, 0), 0.025f, 12);
             Child(cockpit, "Copilot").localPosition = guest;
             trim.Box(guest + new Vector3(0f, -0.09f, 0f), new Vector3(0.3f, 0.06f, 0.3f), 0.02f);
             Pillow(leather, guest + new Vector3(0f, -0.035f, 0.01f), new Vector3(0.28f, 0.07f, 0.28f));
-            trim.Place(Move(guest + new Vector3(0f, 0.3f, -0.17f)) * Turn(-10f, 0f, 0f), () => trim.Box(Vector3.zero, new Vector3(0.3f, 0.66f, 0.04f), 0.015f));
-            leather.Place(Move(guest + new Vector3(0f, 0.3f, -0.135f)) * Turn(80f, 0f, 0f), () => Pillow(leather, Vector3.zero, new Vector3(0.26f, 0.06f, 0.5f)));
 
             // A panel under the canopy bow: a switch and its lamp for each thing the pilot sets, the
             // levers standing clear above it when on, and under those a lamp for each warning. Then
@@ -668,7 +674,13 @@ namespace Infinigame
             Material Worn(Color colour, float metallic, float smoothness)
             {
                 var material = Shapes.Solid(Surface.Dust, colour);
-                material.SetFloat("_Metallic", metallic);
+                material.SetTexture("_BaseMap", Machined);
+            material.SetTextureScale("_BaseMap", Vector2.one * 2);
+            material.SetTexture("_BumpMap", machinedNormal);
+            material.SetTextureScale("_BumpMap", Vector2.one * 2);
+            material.SetFloat("_BumpScale", 0.3f);
+            material.EnableKeyword("_NORMALMAP");
+            material.SetFloat("_Metallic", metallic);
                 material.SetFloat("_Smoothness", smoothness);
                 return material;
             }
@@ -750,188 +762,10 @@ namespace Infinigame
         // beaked skull for a prow, a spine and ribs caging a furnace, forward-raked blade wings that
         // read as an inverted star from ahead and a burning pentagram round its engines. The second
         // mesh is everything that glows.
-        public static (Mesh hull, Mesh lights) Raider()
-        {
-            var hull = new MeshKit();
-            var lights = new MeshKit(hull);
+        public static (Mesh hull, Mesh lights) Raider() => MobileBody(true);
 
-            // The prow: a cranium, a hooked beak, brows and cheeks melted together, with the eye
-            // sockets and the hollow under the jaw scooped out.
-            hull.Blob(p =>
-            {
-                p.x = Mathf.Abs(p.x);
-                float skull = Melt(Ellipsoid(p, new Vector3(0f, 0.3f, 7.2f), new Vector3(1.5f, 1.25f, 2.6f)), Capsule(p, new Vector3(0f, -0.1f, 8.5f), new Vector3(0f, -0.9f, 11f), 0.95f, 0.12f), 0.5f);
-                skull = Melt(skull, Capsule(p, new Vector3(0.35f, 0.95f, 8.9f), new Vector3(1.35f, 0.9f, 7.6f), 0.33f, 0.3f), 0.3f);
-                skull = Melt(skull, Ellipsoid(p, new Vector3(1.1f, -0.25f, 7.6f), new Vector3(0.55f, 0.5f, 1f)), 0.35f);
-                skull = Carve(skull, Capsule(p, new Vector3(0.5f, 0.45f, 9.3f), new Vector3(1.5f, 0.55f, 8f), 0.36f, 0.36f), 0.15f);
-                return Carve(skull, Ellipsoid(p, new Vector3(0f, -1.5f, 7.4f), new Vector3(0.9f, 0.9f, 2.2f)), 0.3f);
-            }, new Vector3(-2.6f, -2.6f, 4.2f), new Vector3(2.6f, 2.6f, 11.6f), 0.2f);
+        public static (Mesh shell, Mesh lights) Drone() => MobileBody(false);
 
-            // The spine: a beam threaded through vertebrae, each with a spike raked back, tallest amidships.
-            hull.Place(Move(0f, 1.1f, -1.2f), () => hull.Box(Vector3.zero, new Vector3(0.5f, 0.45f, 12.4f), 0.1f));
-            hull.Place(Move(0f, -1.75f, -1.2f), () => hull.Box(Vector3.zero, new Vector3(0.4f, 0.3f, 11f), 0.08f));
-            for (int i = 0; i < 12; i++)
-            {
-                float z = 4.4f - i, tall = 1.1f + 1.5f * Mathf.Sin(Mathf.PI * (i + 1) / 13f);
-                hull.Box(new Vector3(0f, 1.15f, z), new Vector3(0.95f, 0.75f, 0.6f), 0.14f);
-                hull.Spike(new Vector3(0f, 1.4f, z), new Vector3(0f, 1.4f + tall, z - 0.9f), 0.22f);
-                hull.Spike(new Vector3(0f, -1.85f, z), new Vector3(0f, -2.5f, z - 0.5f), 0.16f);
-            }
-
-            hull.Mirror(() =>
-            {
-                lights.Ball(new Vector3(0.95f, 0.5f, 8.55f), new Vector3(0.32f, 0.2f, 0.5f), 10);
-                // horns sweep forward from the temples, and prongs from the jaw
-                Horn(hull, Path(5, new Vector3(1.2f, 0.8f, 6.4f), new Vector3(2.3f, 1.5f, 6.6f), new Vector3(2.9f, 2.3f, 8.2f), new Vector3(2.6f, 2.7f, 10.2f)), 0.42f);
-                Horn(hull, Path(5, new Vector3(0.9f, -0.7f, 6.8f), new Vector3(1.5f, -1.3f, 8.2f), new Vector3(1.2f, -1.6f, 10f), new Vector3(0.6f, -1.3f, 11f)), 0.3f);
-                hull.Spike(new Vector3(0.6f, 1.3f, 6.2f), new Vector3(0.9f, 2.3f, 5.4f), 0.2f);
-
-                // ribs curl down from the spine and hook in under the keel
-                for (int i = 0; i < 10; i++)
-                {
-                    float z = 4f - 1.05f * i, size = 0.75f + 0.25f * Mathf.Sin(Mathf.PI * i / 9f);
-                    var rib = Path(4, new Vector3(0.4f, 1.2f, z), new Vector3(1.5f * size, 1.25f, z - 0.1f), new Vector3(2.15f * size, 0.3f, z - 0.3f), new Vector3(1.9f * size, -0.9f, z - 0.5f), new Vector3(1f * size, -1.7f, z - 0.6f), new Vector3(0.3f, -1.72f, z - 0.45f));
-                    hull.Sweep(rib, k => Oval(6, Mathf.Lerp(0.2f, 0.06f, k / (rib.Length - 1f)), Mathf.Lerp(0.26f, 0.08f, k / (rib.Length - 1f))), Vector3.forward);
-                }
-
-                // The wings are blades pitched so that they show from ahead as well as from the side:
-                // a long pair raked up and forward, a shorter pair down and out, each with a saw edge.
-                void Wing(Vector3[] spine, Vector3 across, float chord)
-                {
-                    hull.Blade(spine, across, t => chord * 0.45f * Mathf.Pow(1f - t, 0.7f) * (1f + 0.35f * Mathf.Abs(Mathf.Sin(t * 22f))) + 0.03f, t => chord * Mathf.Pow(1f - t, 1.3f) + 0.05f, t => 0.38f * (1f - t) + 0.04f);
-                    foreach (float t in new[] { 0.25f, 0.5f, 0.72f })
-                    {
-                        Vector3 root = spine[Mathf.RoundToInt(t * (spine.Length - 1))];
-                        hull.Spike(root, root - across.normalized * chord * (1.5f - t) + Vector3.back * chord * 0.8f, 0.2f);
-                    }
-                }
-                Wing(Path(6, new Vector3(1.3f, 0.9f, -2.5f), new Vector3(3.6f, 2.6f, -1.5f), new Vector3(5.8f, 4.4f, 1f), new Vector3(7f, 5.6f, 4.6f)), new Vector3(-0.45f, 0.54f, 0.7f), 3.4f);
-                Wing(Path(6, new Vector3(1.3f, -0.7f, -3.2f), new Vector3(4f, -1.6f, -2.6f), new Vector3(6.6f, -2.8f, -0.6f), new Vector3(8.4f, -3.4f, 2.4f)), new Vector3(-0.25f, -0.65f, 0.7f), 2.7f);
-
-                // buttresses off the engine block, and runes burning along its flanks
-                foreach (float up in new[] { -1f, 1f })
-                {
-                    var fin = Path(4, new Vector3(1.1f, up * 0.9f, -6.6f), new Vector3(1.9f, up * 1.7f, -8.4f), new Vector3(2.4f, up * 2.2f, -10.6f));
-                    hull.Blade(fin, new Vector3(1f, up, 0f), t => 0.5f * (1f - t) + 0.02f, t => 0.9f * (1f - t) + 0.02f, t => 0.25f * (1f - t) + 0.03f);
-                }
-                for (int i = 0; i < 5; i++)
-                    lights.Place(Move(1.31f, 0.25f, -6.5f - 0.5f * i) * Turn(i % 2 == 0 ? 25f : -25f, 0f, 0f), () => lights.Box(Vector3.zero, new Vector3(0.05f, 0.7f, 0.12f)));
-                hull.Box(new Vector3(1.36f, -0.55f, -7.6f), new Vector3(0.2f, 0.5f, 2.6f), 0.08f);
-                // armour lapped over the block, and pipes feeding the nozzles
-                for (int i = 0; i < 4; i++)
-                    hull.Place(Move(1.02f, 1.02f, -6.4f - 0.72f * i) * Turn(0f, 0f, -45f) * Turn(8f, 0f, 0f), () => hull.Box(Vector3.zero, new Vector3(1f, 0.14f, 0.8f), 0.05f));
-                hull.Tube(Path(5, new Vector3(1.2f, -0.9f, -6.2f), new Vector3(1.55f, -1.1f, -7.4f), new Vector3(1.3f, -0.9f, -8.8f), new Vector3(0.8f, -0.7f, -9.2f)), 0.13f, 6);
-                hull.Tube(Path(5, new Vector3(0.5f, 1.3f, -6.1f), new Vector3(0.75f, 1.62f, -7.6f), new Vector3(0.72f, 1.1f, -9f)), 0.11f, 6);
-                for (int i = 0; i < 3; i++) hull.Spike(new Vector3(1.3f, 0.9f - 0.7f * i, -8.9f), new Vector3(1.75f, 1.1f - 0.9f * i, -10.3f), 0.14f);
-            });
-
-            // The keel is a dagger with four edges, hooked forward.
-            var keel = Path(6, new Vector3(0f, -1.7f, -2f), new Vector3(0f, -3.6f, -1.4f), new Vector3(0f, -5.4f, 0.2f), new Vector3(0f, -6.6f, 2.6f));
-            hull.Blade(keel, Vector3.right, t => 0.9f * (1f - t) + 0.02f, t => 0.9f * (1f - t) + 0.02f, t => 0.3f * (1f - t) + 0.03f);
-            hull.Blade(keel, Vector3.forward, t => 0.8f * (1f - t) + 0.02f, t => 1.4f * (1f - t) + 0.02f, t => 0.3f * (1f - t) + 0.03f);
-
-            // The furnace inside the ribs, banded with iron hoops.
-            lights.Sweep(new[] { new Vector3(0f, -0.25f, -6f), new Vector3(0f, -0.25f, 4.6f) }, i => Oval(10, 0.85f, 0.95f), Vector3.up);
-            for (int i = 0; i < 11; i++)
-                hull.Place(Move(0f, -0.25f, 4.25f - 1.05f * i) * Turn(90f, 0f, 0f), () => Band(hull, 0.8f, 1.02f, -0.16f, 0.16f, 10));
-
-            // The engine block: three nozzles in an inverted triangle, with fire in each.
-            hull.Box(new Vector3(0f, 0f, -7.6f), new Vector3(2.6f, 2.5f, 3.2f), 0.3f);
-            hull.Place(Move(0f, 1.25f, -7.4f) * Turn(-8f, 0f, 0f), () => hull.Box(Vector3.zero, new Vector3(1.6f, 0.5f, 2.6f), 0.15f));
-            foreach (var at in new[] { new Vector2(-0.72f, 0.5f), new Vector2(0.72f, 0.5f), new Vector2(0f, -0.62f) })
-                hull.Place(Move(at.x, at.y, -9f) * Turn(-90f, 0f, 0f), () =>
-                {
-                    hull.Lathe(new[] { 0.5f, -0.3f, 0.52f, 0.4f, 0.62f, 1f, 0.66f, 1.4f, 0.58f, 1.4f, 0.5f, 0.9f, 0.4f, 0.3f }, 12);
-                    lights.Lathe(new[] { 0.4f, 0.3f, 0f, 0.3f }, 12);
-                    lights.Lathe(new[] { 0.4f, 0.3f, 0.5f, 0.9f }, 12);
-                });
-            foreach (float angle in new[] { 45f, 135f, 225f, 315f })
-                hull.Place(Turn(0f, 0f, angle), () => hull.Spike(new Vector3(1.5f, 0f, -8.8f), new Vector3(1.9f, 0f, -11f), 0.22f));
-
-            // The pentagram: an iron hoop behind the wings carrying a burning star, spiked at its five points.
-            hull.Place(Move(0f, 0f, -5.2f), () =>
-            {
-                hull.Place(Turn(90f, 0f, 0f), () => hull.Torus(4.8f, 0.24f, 48, 6));
-                Pentagram(lights, 4.75f, 0.16f, false);
-                for (int i = 0; i < 5; i++)
-                    hull.Place(Turn(0f, 0f, -90f + 72f * i), () =>
-                    {
-                        hull.Spike(new Vector3(4.9f, 0f, 0f), new Vector3(6.9f, 0f, 0.5f), 0.3f);
-                        hull.Place(Turn(0f, 0f, 36f), () => hull.Spike(new Vector3(4.9f, 0f, 0f), new Vector3(5.8f, 0f, 0f), 0.2f));
-                        hull.Rod(new Vector3(0.9f, 0f, -0.3f), new Vector3(4.8f, 0f, -0.12f), 0.13f, 5);
-                    });
-            });
-            return (hull.Mesh("Raider"), lights.Mesh("Raider lights"));
-        }
-
-        // A hovering hunter 1.6 m across, facing +z, inside a ball of radius 1.2: a horned iron skull
-        // with fire in its eye sockets, over a spiked collar hung with chains. The second mesh is
-        // the eyes, the sigil on its brow and the fire that holds it up.
-        public static (Mesh shell, Mesh lights) Drone()
-        {
-            var shell = new MeshKit();
-            var lights = new MeshKit(shell);
-            shell.Blob(p =>
-            {
-                p.x = Mathf.Abs(p.x);
-                // cranium, upper jaw, a scowling brow and the cheekbone
-                float skull = Melt(Ellipsoid(p, new Vector3(0f, 0.22f, -0.04f), new Vector3(0.42f, 0.38f, 0.46f)), Ellipsoid(p, new Vector3(0f, -0.13f, 0.27f), new Vector3(0.23f, 0.2f, 0.22f)), 0.12f);
-                skull = Melt(skull, Capsule(p, new Vector3(0.03f, 0.2f, 0.45f), new Vector3(0.37f, 0.36f, 0.24f), 0.07f, 0.08f), 0.05f);
-                skull = Melt(skull, Capsule(p, new Vector3(0.2f, -0.05f, 0.36f), new Vector3(0.4f, 0.02f, 0.08f), 0.07f, 0.06f), 0.06f);
-                // then the eye socket, the nostril, the hollow of the cheek and the hollow underneath
-                skull = Carve(skull, Ellipsoid(p, new Vector3(0.18f, 0.09f, 0.4f), new Vector3(0.115f, 0.085f, 0.16f)), 0.03f);
-                skull = Carve(skull, Capsule(p, new Vector3(0.025f, -0.02f, 0.5f), new Vector3(0.06f, -0.14f, 0.5f), 0.03f, 0.05f), 0.02f);
-                skull = Carve(skull, Ellipsoid(p, new Vector3(0.33f, -0.2f, 0.2f), new Vector3(0.1f, 0.12f, 0.2f)), 0.06f);
-                return Carve(skull, Ellipsoid(p, new Vector3(0f, -0.42f, 0.02f), new Vector3(0.3f, 0.22f, 0.4f)), 0.08f);
-            }, new Vector3(-0.62f, -0.5f, -0.62f), new Vector3(0.62f, 0.72f, 0.66f), 0.036f);
-            // the lower jaw hangs open
-            shell.Blob(p =>
-            {
-                p.x = Mathf.Abs(p.x);
-                return Melt(Capsule(p, new Vector3(0.3f, -0.16f, 0.02f), new Vector3(0.24f, -0.4f, 0.2f), 0.05f, 0.045f), Capsule(p, new Vector3(0.24f, -0.4f, 0.2f), new Vector3(0f, -0.44f, 0.42f), 0.045f, 0.055f), 0.04f);
-            }, new Vector3(-0.45f, -0.58f, -0.12f), new Vector3(0.45f, -0.05f, 0.56f), 0.036f);
-
-            shell.Mirror(() =>
-            {
-                lights.Ball(new Vector3(0.18f, 0.09f, 0.31f), 0.05f, 10);
-                Horn(shell, Path(6, new Vector3(0.33f, 0.38f, -0.02f), new Vector3(0.62f, 0.48f, -0.08f), new Vector3(0.82f, 0.66f, 0.08f), new Vector3(0.76f, 0.8f, 0.36f)), 0.125f, 8, 0.12f);
-                shell.Spike(new Vector3(0.2f, 0.52f, 0.1f), new Vector3(0.3f, 0.78f, -0.02f), 0.05f);
-                // fangs along both jaws, the eye teeth longest
-                for (int i = 0; i < 4; i++)
-                {
-                    float angle = (12f + 22f * i) * Mathf.Deg2Rad;
-                    var root = new Vector3(0.2f * Mathf.Sin(angle), -0.29f, 0.29f + 0.17f * Mathf.Cos(angle));
-                    shell.Spike(root, root + new Vector3(0.01f, i == 1 ? -0.15f : -0.09f, 0.02f), 0.03f);
-                    var lower = Vector3.Lerp(new Vector3(0.03f, -0.4f, 0.43f), new Vector3(0.2f, -0.37f, 0.25f), i / 3f);
-                    shell.Spike(lower, lower + new Vector3(0f, i == 2 ? 0.12f : 0.07f, 0.01f), 0.026f);
-                }
-            });
-            for (int i = 0; i < 4; i++) shell.Spike(new Vector3(0f, 0.57f - 0.01f * i * i, 0.16f - 0.15f * i), new Vector3(0f, 0.8f - 0.03f * i, 0.02f - 0.2f * i), 0.05f);
-
-            // The collar: an iron ring on four struts, ringed with spikes and hung with three chains that end in hooks.
-            shell.Place(Move(0f, -0.56f, 0f), () => shell.Torus(0.42f, 0.04f, 28, 8));
-            for (int i = 0; i < 12; i++)
-            {
-                float angle = 2f * Mathf.PI * i / 12f;
-                var around = new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle));
-                shell.Spike(around * 0.42f + Vector3.down * 0.56f, around * (i % 2 == 0 ? 0.62f : 0.52f) + Vector3.down * (i % 2 == 0 ? 0.9f : 0.78f), 0.045f);
-                if (i % 3 == 0) shell.Rod(around * 0.26f + Vector3.down * 0.3f, around * 0.42f + Vector3.down * 0.56f, 0.025f, 6);
-                if (i % 4 != 2) continue;
-                Vector3 top = around * 0.3f + Vector3.down * 0.6f, end = around * 0.3f + Vector3.down * 0.98f;
-                shell.Rod(around * 0.42f + Vector3.down * 0.56f, top, 0.02f, 5);
-                Chain(shell, top, end, 0f, 0.13f, 0.014f);
-                shell.Spike(end, end + Vector3.down * 0.16f, 0.035f);
-            }
-
-            // The fire that holds it up, and a pentagram burning on its brow.
-            lights.Lathe(new[] { 0f, -0.92f, 0.06f, -0.78f, 0.12f, -0.6f, 0.14f, -0.45f, 0.1f, -0.3f, 0f, -0.26f }, 10);
-            lights.Ball(new Vector3(0f, -0.26f, 0.18f), new Vector3(0.13f, 0.07f, 0.14f), 10);
-            var brow = new Vector3(0f, 0.5f, 0.33f);
-            lights.Place(Aim(brow, brow + new Vector3(0f, 0.72f, 0.69f), Vector3.up) * Move(0f, 0f, 0.012f), () => Pentagram(lights, 0.085f, 0.008f));
-            return (shell.Mesh("Drone"), lights.Mesh("Drone lights"));
-        }
-
-        // A missile 1.2 m long, nose towards +z: a slim body with a boat tail, four swept fins and four small canards.
         public static Mesh Missile()
         {
             var kit = new MeshKit();
@@ -1124,7 +958,13 @@ namespace Infinigame
             Material Worn(Color colour, float metallic, float smoothness)
             {
                 var material = Shapes.Solid(Surface.Rock, colour);
-                material.SetFloat("_Metallic", metallic);
+                material.SetTexture("_BaseMap", Machined);
+            material.SetTextureScale("_BaseMap", Vector2.one * 2);
+            material.SetTexture("_BumpMap", machinedNormal);
+            material.SetTextureScale("_BumpMap", Vector2.one * 2);
+            material.SetFloat("_BumpScale", 0.3f);
+            material.EnableKeyword("_NORMALMAP");
+            material.SetFloat("_Metallic", metallic);
                 material.SetFloat("_Smoothness", smoothness);
                 return material;
             }
@@ -1210,53 +1050,7 @@ namespace Infinigame
         static void Add(Transform root, string name, MeshKit mesh, Material material, bool shadows = true) =>
             Shapes.Part(root, name, mesh.Mesh(name), material, Vector3.zero, Vector3.one, shadows);
 
-        public static (Mesh body, Mesh light, Mesh leg) Sentry()
-        {
-            MeshKit body = new MeshKit(), light = new MeshKit(), leg = new MeshKit();
-            body.Box(new Vector3(0, 0.2f, 0), new Vector3(0.85f, 0.8f, 0.5f), 0.14f);
-            body.Ball(new Vector3(0, 0.72f, 0), 0.27f, 12);
-            foreach (float side in new[] { -1f, 1f })
-                body.Rod(new Vector3(side * 0.48f, 0.3f, 0), new Vector3(side * 0.55f, 0, 0.4f), 0.12f, 8);
-            light.Box(new Vector3(0, 0.72f, 0.25f), new Vector3(0.4f, 0.08f, 0.06f));
-            leg.Rod(Vector3.zero, new Vector3(0, -0.75f, 0), 0.12f, 8);
-            leg.Box(new Vector3(0, -0.78f, 0.08f), new Vector3(0.28f, 0.16f, 0.45f), 0.04f);
-            return (body.Mesh("Sentry"), light.Mesh("Sentry eyes"), leg.Mesh("Sentry leg"));
-        }
-
-        public static (Mesh body, Mesh light) Mind()
-        {
-            MeshKit body = new MeshKit(), light = new MeshKit();
-            body.Ball(Vector3.zero, 1.3f, 20);
-            for (int i = 0; i < 12; i++)
-            {
-                float angle = i * Mathf.PI / 6;
-                Vector3 point = new Vector3(Mathf.Cos(angle), Mathf.Sin(angle) * 0.7f, Mathf.Sin(angle * 3) * 0.4f) * 1.4f;
-                body.Rod(point, point + Vector3.down * 1.2f, 0.11f, 8, 0.035f);
-                light.Ball(point, 0.2f, 10);
-            }
-            return (body.Mesh("Controlling mind"), light.Mesh("Neural lights"));
-        }
-
-        public static Transform Robot()
-        {
-            var root = new GameObject("Robot").transform;
-            MeshKit plate = new MeshKit(), cable = new MeshKit(), glow = new MeshKit();
-            plate.Box(new Vector3(0, 1.1f, 0), new Vector3(0.6f, 0.65f, 0.35f), 0.1f);
-            plate.Box(new Vector3(0, 1.65f, 0), new Vector3(0.48f, 0.4f, 0.4f), 0.09f);
-            glow.Box(new Vector3(0, 1.7f, 0.21f), new Vector3(0.34f, 0.045f, 0.015f));
-            foreach (float side in new[] { -1f, 1f })
-            {
-                cable.Rod(new Vector3(side * 0.38f, 1.35f, 0), new Vector3(side * 0.4f, 0.7f, 0.04f), 0.065f, 10);
-                plate.Box(new Vector3(side * 0.4f, 0.9f, 0), new Vector3(0.2f, 0.35f, 0.2f), 0.04f);
-                cable.Rod(new Vector3(side * 0.18f, 0.9f, 0), new Vector3(side * 0.18f, 0.15f, 0), 0.07f, 10);
-                plate.Box(new Vector3(side * 0.18f, 0.35f, 0), new Vector3(0.23f, 0.4f, 0.25f), 0.05f);
-                plate.Box(new Vector3(side * 0.18f, 0.09f, 0.07f), new Vector3(0.25f, 0.18f, 0.4f), 0.04f);
-            }
-            Add(root, "Plate", plate, Paint(new Color(0.52f, 0.58f, 0.65f), 0.8f, 0.4f));
-            Add(root, "Conduits", cable, Paint(new Color(0.08f, 0.12f, 0.15f), 0.6f, 0.4f));
-            Add(root, "Visor", glow, Shapes.Material("Glow", new Color(0.2f, 3, 5)), false);
-            return root;
-        }
+        public static Transform Robot() => Fabricator();
 
         public static Transform Camp()
         {
@@ -1274,17 +1068,17 @@ namespace Infinigame
             metal.Box(new Vector3(0, 0.2f, 0), new Vector3(5, 0.4f, 5), 0.1f);
             if (kind == Core.Building.Radar)
             {
-                metal.Rod(Vector3.zero, new Vector3(0, 9, 0), 0.3f, 10);
+                metal.Rod(Vector3.zero, new Vector3(0, 9, 0), 0.3f, Curves);
                 metal.Box(new Vector3(0, 8, 0), new Vector3(5, 1.5f, 0.3f), 0.2f);
             }
             else if (kind == Core.Building.Mine || kind == Core.Building.Drill)
             {
-                metal.Rod(new Vector3(0, 0.5f, 0), new Vector3(0, 5, 0), 0.6f, 12, 0.2f);
-                foreach (float x in new[] { -2f, 2f }) metal.Rod(new Vector3(x, 0, 0), new Vector3(0, 5, 0), 0.18f, 8);
+                metal.Rod(new Vector3(0, 0.5f, 0), new Vector3(0, 5, 0), 0.6f, Curves, 0.2f);
+                foreach (float x in new[] { -2f, 2f }) metal.Rod(new Vector3(x, 0, 0), new Vector3(0, 5, 0), 0.18f, 20);
             }
             else if (kind == Core.Building.Turret)
             {
-                metal.Rod(Vector3.zero, new Vector3(0, 2.5f, 0), 1, 12, 0.7f);
+                metal.Rod(Vector3.zero, new Vector3(0, 2.5f, 0), 1, Curves, 0.7f);
                 metal.Box(new Vector3(0, 2.6f, 1), new Vector3(0.5f, 0.5f, 3), 0.08f);
             }
             else
@@ -1294,14 +1088,26 @@ namespace Infinigame
                 metal.Box(new Vector3(0, 3, 0), new Vector3(5, 0.4f, 4), 0.1f);
                 if (kind == Core.Building.Workshop)
                 {
-                    var suit = Robot(); suit.name = "Powered armour"; suit.SetParent(root, false); suit.localScale = Vector3.one * 1.25f;
-                    var helm = new MeshKit();
-                    helm.Box(new Vector3(0, 2.1f, 0), new Vector3(0.7f, 0.65f, 0.6f), 0.07f);
-                    for (int i = -2; i <= 2; i++) helm.Rod(new Vector3(i * 0.1f, 1.8f, 0.31f), new Vector3(i * 0.1f, 2.36f, 0.31f), 0.018f, 6);
-                    Add(root, "Fluted great helm", helm, Paint(new Color(0.25f, 0.3f, 0.35f), 0.9f, 0.5f));
-                    glow.Box(new Vector3(0, 2.2f, 0.33f), new Vector3(0.5f, 0.035f, 0.03f));
+                    var suit = Traveller(); suit.name = "Powered armour"; suit.SetParent(root, false); suit.localPosition = Vector3.up * 0.45f;
                 }
             }
+            MeshKit plates = new MeshKit(), cables = new MeshKit();
+            foreach (float side in new[] { -1f, 1f })
+            {
+                for (int i = 0; i < 6; i++)
+                {
+                    float z = -1.7f + i * 0.65f;
+                    Pillow(plates, new Vector3(side * 1.9f, 1.45f, z), new Vector3(0.9f, 2.4f, 0.58f), Curves);
+                    metal.Rod(new Vector3(side * 2.4f, 0.4f, z), new Vector3(side * 2.4f, 2.7f, z), 0.055f, 16);
+                    for (int j = 0; j < 5; j++)
+                        cables.Box(new Vector3(side * 2.37f, 0.9f + j * 0.12f, z), new Vector3(0.06f, 0.04f, 0.38f), 0.015f);
+                }
+                for (int j = 0; j < 3; j++)
+                    cables.Tube(Path(24, new Vector3(side * 2.2f, 0.5f, -2), new Vector3(side * 2.6f, 1.5f, -2.4f), new Vector3(side * 2.2f, 3 + j * 0.09f, -1), new Vector3(0, 3 + j * 0.09f, 0)), 0.045f, 12);
+                Piston(metal, plates, new Vector3(side * 2.7f, 0.2f, -1.5f), new Vector3(side * 2.1f, 2.9f, -1.5f), 0.13f);
+            }
+            Add(root, "Service panels", plates, Alloy);
+            Add(root, "Conduits and vents", cables, Rubber);
             glow.Box(new Vector3(0, 0.45f, 2.5f), new Vector3(4, 0.08f, 0.08f));
             Add(root, "Iron", metal, Paint(new Color(0.25f, 0.3f, 0.35f), 0.7f, 0.4f));
             Add(root, "Power", glow, Shapes.Material("Glow", new Color(0.2f, 2, 3)), false);

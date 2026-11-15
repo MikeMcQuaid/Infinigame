@@ -13,22 +13,16 @@ cd "$(dirname "$0")/.."
 script/bootstrap
 export UNITY_NO_BANNER=1
 
-# The scanner's journal and the hermit's talk are written by Claude or by ChatGPT, whichever you
-# choose in the game's settings, through your own account: the game is built with no key. Here
-# that means Anthropic's ant, paid for from your account's API credits, which Claude Max, Ultra
-# and Team plans include every month once claimed (claude.ai, Settings, Billing), or OpenAI's
-# codex, which counts against the Codex use your ChatGPT plan includes. A key in
-# ANTHROPIC_API_KEY or OPENAI_API_KEY works too, and the game's settings can also take a key or
-# sign you in to ChatGPT themselves. Without any of these the game still plays; those two just
-# stay quiet.
+# Optional text replies use the player's own Claude Code or Codex sign-in, or an API key.
+# The game has authored guidance and observed scanner facts when neither is available.
 voices=""
-if [ -n "${ANTHROPIC_API_KEY:-}" ] || [ -n "$(ant profile list 2>/dev/null)" ]; then voices="Claude"; fi
+if [ -n "${ANTHROPIC_API_KEY:-}" ] || claude auth status 2>/dev/null | grep -q '"loggedIn": *true'; then voices="Claude"; fi
 if [ -n "${OPENAI_API_KEY:-}" ] || codex login status &>/dev/null; then voices="${voices:+$voices and }ChatGPT"; fi
 if [ -n "$voices" ]; then
   echo "==> $(id -un) can reach $voices for the scanner and the hermit"
-elif [ -t 0 ] && command -v ant &>/dev/null; then
+elif [ -t 0 ] && command -v claude &>/dev/null; then
   echo "==> Signing $(id -un) in to Claude for the scanner and the hermit: approve in the browser"
-  ant auth login || echo "==> Not signed in. The game plays without it; sign in or give a key under Settings on its menu."
+  claude auth login || echo "==> Not signed in. The game plays without it; sign in or give a key under Settings on its menu."
 else
   echo "==> For the scanner and the hermit to speak, sign in or give a key under Settings on the game's menu"
 fi

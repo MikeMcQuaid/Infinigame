@@ -44,7 +44,7 @@ Detail tiers are Unity quality levels (Mobile, VR, PC), with per-platform defaul
 
 ## The campaign
 
-`Core/Campaign.cs` is a table of missions and recovered equipment. Ownership is the stable `Player.kit` bit set; `Player.fitted` holds the suit modules chosen at a workshop. `Suit` validates the slots and power budget. `Game` owns progression and saves it.
+`MISSIONS.md` is the mission table, loaded by `Core/Narrative.cs` into `Campaign`. `STORY.md`, `FACTIONS.md` and `COLONIES.md` supply the plot, faction context and building costs. `Editor/ContentImport.cs` packages copies as Resources text assets. Mission locations are fixed before terrain is changed. Ownership is the stable `Player.kit` bit set; `Player.fitted` holds the suit modules chosen at a workshop. `Suit` validates the slots and power budget. `Game` owns progression and saves it.
 
 `Outpost` draws the shield and rooms, spawns their controlling mind and sentries and opens the prize when the mind dies. The citadel is a ship-sized tunnel with a timed escape after its core is destroyed. The later colony phase moves a moon onto the final mind's world and powers the gate.
 
@@ -56,7 +56,7 @@ The recovery robot (`Hermit.cs`) briefs each mission from the table, so the stor
 
 1. a key the player has given it (environment or clipboard), sent straight to the maker's API with `UnityWebRequest`;
 2. for ChatGPT, OpenAI's Sign in with ChatGPT, done by the game in the player's browser;
-3. on a desktop, the makers' own command-line tools with the sign-ins they keep: `ant`, then Claude Code, for Claude; `codex` for ChatGPT.
+3. on a desktop, the makers' own command-line tools with the sign-ins they keep: Claude Code for Claude; `codex` for ChatGPT.
 
 The game can start each tool's own sign-in from the settings page. It never shows a sign-in form itself. Every caller goes through `Oracle.Ask`, a delegate that tests replace with a script, and has a fallback for when no model answers.
 
@@ -69,12 +69,12 @@ The game can start each tool's own sign-in from the settings page. It never show
 - `Hud.cs` builds one uGUI canvas in front of the camera, from code. It reads state and never changes it. Markers for worlds, foes and mission goals are placed each frame by `Mark`, which hides what a world is in the way of, keeps names from overlapping and holds a guide mark at the edge of the screen when its place is out of view.
 - `Core/Synth.cs` computes every sound effect as samples, and `Core/Riffs.cs` writes a song for each system. `Sounds.cs` and `Music.cs` play them. Audio files dropped into `Resources/Music` replace the synthesised song. `Playlist` schedules complete tracks with equal-power crossfades; `Music` uses two streaming decks per mood.
 - `Speech.cs` speaks the robot's lines with the existing macOS system voice. Other platforms use text.
-- `Models.cs`, `MeshKit.cs` and `Shapes.cs` build every mesh and material: the ship and its cockpit, the robot and its workshop, raiders, drones and the citadel. `Arms.cs` builds the powered gauntlets.
+- `Models*.cs`, `MeshKit.cs` and `Shapes.cs` build every mesh and material: the ship and its cockpit, the robot and its workshop, raiders, drones and the citadel. `Arms.cs` builds the powered gauntlets.
 - `Cockpit.cs` drives the ship's instruments. `Models.Ship` names every part that moves or lights, `Player.Tick` fills a `Readings` struct with what the ship is doing, and `Cockpit.Show` eases each needle, lamp, switch and the stick to match. Nothing on the dash is decoration.
 
 ## Saving
 
-A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, the mission stage, the gear bit set, fitted modules, colony resources, presence clock, moonfall, gate state, journal and talk. Worlds are never saved, since the seed remakes them. Settings that belong to the device (detail, music, speech) are `PlayerPrefs`. What the player has given the oracle is a separate file that never travels with a save.
+A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, the mission stage, the gear bit set, fitted modules, colony resources, presence clock, moonfall, gate state, journal, talk and breached outpost walls. Worlds are never saved, since the seed remakes them. Settings that belong to the device (detail, music, speech) are `PlayerPrefs`. What the player has given the oracle is a separate file that never travels with a save.
 
 ## Tests and tooling
 
@@ -86,7 +86,7 @@ A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, 
 
 | To add | Start in |
 |---|---|
-| A mission, or something it wins | `Core/Campaign.cs`, then whatever asks `Player.Has` |
+| A mission, or something it wins | `MISSIONS.md`, then whatever asks `Player.Has` |
 | A weapon | `Combat.Guns` or `Combat.Arms`, a voice in `Synth.cs`, a model in `Arms.cs` |
 | A foe | `FoeKind`, `Combat.Hunt`, a model in `Models.cs`, drawing in `Battle.Update` |
 | An explosion, smoke or fire | `Effects.cs`, called from where `Battle.Tick` handles strikes |
@@ -104,3 +104,5 @@ A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, 
 `Presence`, `Colony` and `Moonfall` keep the new simulation in the core. `Frontier` steps the colonies only during play, draws the buildings and robots and stages the moon impact. Game saves hold those states, the clock, collected resources, loadout and gate power. `SolarSystemDescriptor.Beyond` uses a separate random stream; `Generate` retains the original system's draws. The gate is appended by `Game.Load`, leaving existing body indices stable.
 
 `Radar` draws a transparent sphere and 3D contacts separately from the canvas. `DeviceControls` supplies touch and XR input through `Controls`. The iOS native bridge stores account data in Keychain. Speech remains local to macOS; other platforms show dialogue as text. `Platforms` configures device exports and the Windows OpenXR loader and Valve Index profile. The platform settings are generated by code when building.
+
+Procedural machine models share cached meshes, with separate articulated joints driven by `MachineMotion`. Presence bodies use curved carapaces, sensory organs and rooted neural folds. `Models.Surfaces` generates the metal finish in memory. Terrain blast pools use a level surface bounded by the crater, with slow shader flow.

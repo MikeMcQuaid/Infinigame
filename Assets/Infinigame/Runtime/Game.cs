@@ -40,6 +40,7 @@ namespace Infinigame
             public Moonfall fall = new Moonfall();
             public Colony cargo = new Colony { world = -1, robots = 0 };
             public List<Colony> colonies = new List<Colony>();
+            public List<Ruin> ruins = new List<Ruin>();
             public float look = DesktopControls.Sensitivity;
             public List<Entry> journal = new List<Entry>();
             public List<string> talk = new List<string>();
@@ -66,6 +67,7 @@ namespace Infinigame
         public Presence Presence => save.presence;
         public Moonfall Fall => save.fall;
         public List<Colony> Colonies => save.colonies;
+        public List<Ruin> Ruins => save.ruins;
         public Colony Cargo => save.cargo;
         public bool GatePowered => save.gate;
         public Colony Settlement => Colonies.FirstOrDefault(colony => colony.world == System.Reference && math.distance(Player.Position, colony.site) < 120);
@@ -122,8 +124,8 @@ namespace Infinigame
             : Voice >= 0 ? new[]
             {
                 $"Have {Page} write", $"MODEL   ·   {Oracle.Model(Voice).name.ToUpperInvariant()}", $"THINKING   ·   {Oracle.Effort(Voice).ToUpperInvariant()}",
-                Oracle.Roads(Voice)[0], Oracle.Roads(Voice)[1], "Use the key on the clipboard", "Forget key and sign-in", "Back",
-            }
+            }.Concat(Oracle.Roads(Voice)).Concat(new[] { "Use the key on the clipboard", "Forget key and sign-in", "Back" }).ToArray()
+            : Page == "Voice" ? new[] { "System voice", "Daniel", "Eddy", "Text only", "Back" }
             : Page == Settings ? new[]
             {
                 $"DETAIL   ·   {QualitySettings.names[QualitySettings.GetQualityLevel()].ToUpperInvariant()}", $"MUSIC   ·   {(Music.Muted ? "OFF" : "ON")}",
@@ -136,8 +138,9 @@ namespace Infinigame
         // On a voice's page: how the player stands with it and what it has been asked for so far,
         // and what the highlighted item would do.
         public string Standing => Voice < 0 ? null : $"{signedIn[Voice]}{(Voice == Oracle.Voice ? "   ·   IN USE" : "")}   ·   {Oracle.Used(Voice)}";
-        public string Hint => Page == Workshop ? $"THREE SLOTS  ·  SIX POWER  ·  {Player.energy:0} ENERGY  ·  BEAMS, THRUSTERS AND SHIELDS SHARE ONE RESERVE"
-            : Page == ColonyPage ? $"ORE {Settlement?.ore:0}  ·  ICE {Settlement?.ice:0}  ·  SALVAGE {Settlement?.salvage:0}  ·  ROBOTS {Settlement?.robots}\n" + (Selected < 7 ? $"COST {Colony.Cost((Building)Selected).x:0} ORE  {Colony.Cost((Building)Selected).y:0} ICE  {Colony.Cost((Building)Selected).z:0} SALVAGE" : Selected == 8 ? $"120 ORE  ·  80 ICE  ·  60 SALVAGE  ·  WORKSHOP AND FOUR ROBOTS  ·  DESTROYS {System.Descriptor.bodies[Fall.world].name.ToUpperInvariant()} AND ITS COLONIES" : Selected == 9 ? "100 ORE  ·  120 ICE  ·  100 SALVAGE  ·  EIGHT ROBOTS  ·  FINAL MIND DESTROYED" : "FIT EQUIPMENT YOU HAVE RECOVERED")
+        public string Hint => Page == "Voice" ? "FREE MACOS VOICES AT NATURAL PITCH · DOWNLOAD MORE IN ACCESSIBILITY > READ & SPEAK · OTHER DEVICES USE TEXT"
+            : Page == Workshop ? $"{Hermit.Name}: Fit the tools you need here. Recovered modules compete for slots and power.\nTHREE SLOTS  ·  SIX POWER  ·  {Player.energy:0} ENERGY  ·  BEAMS, THRUSTERS AND SHIELDS SHARE ONE RESERVE"
+            : Page == ColonyPage ? $"ORE {Settlement?.ore:0}  ·  ICE {Settlement?.ice:0}  ·  SALVAGE {Settlement?.salvage:0}  ·  ROBOTS {Settlement?.robots}\n" + (Selected < 7 ? $"{Hermit.Name}: " + Narrative.Explanations[Selected] + $"\nCOST {Colony.Cost((Building)Selected).x:0} ORE  {Colony.Cost((Building)Selected).y:0} ICE  {Colony.Cost((Building)Selected).z:0} SALVAGE" : Selected == 8 ? $"120 ORE  ·  80 ICE  ·  60 SALVAGE  ·  WORKSHOP AND FOUR ROBOTS  ·  DESTROYS {System.Descriptor.bodies[Fall.world].name.ToUpperInvariant()} AND ITS COLONIES" : Selected == 9 ? "100 ORE  ·  120 ICE  ·  100 SALVAGE  ·  EIGHT ROBOTS  ·  FINAL MIND DESTROYED" : "FIT EQUIPMENT YOU HAVE RECOVERED")
             : Page == Cheats ? Selected == 2 ? "RECOVER ALL SUIT MODULES, SHIP SYSTEMS AND TORPEDOES"
                 : "FOR NOW, WHILE THE GAME IS BEING MADE: JUMP FROM MISSION TO MISSION WITH ALL THAT THE EARLIER ONES WIN"
             : Page == Settings ? Selected switch
@@ -150,17 +153,16 @@ namespace Infinigame
                 _ when Selected < Dials + Oracle.Voices.Length => "SIGN IN, GIVE IT A KEY, PICK ITS MODEL AND HOW HARD IT THINKS   ·   THE ONE IN USE WRITES THE SCANNER'S JOURNAL AND THE HERMIT'S TALK",
                 _ => "",
             }
-            : Voice >= 0 ? Selected switch
+            : Voice >= 0 ? (Voice == 0 && Selected >= 4 ? Selected + 1 : Selected) switch
             {
-                0 => $"THE SCANNER'S JOURNAL AND THE HERMIT'S TALK WILL BE {Page.ToUpperInvariant()}'S",
+                0 => $"{Oracle.Model(Voice).name.ToUpperInvariant()} WRITES REPLIES WHEN YOU ASK YOUR COMPANION AND DESCRIPTIONS WHEN YOU SCAN. MISSIONS AND SIMULATION ARE AUTHORED.",
                 1 => "A QUICKER MODEL ANSWERS SOONER AND COSTS LESS",
                 2 => "THE LESS IT THINKS BEFORE IT ANSWERS, THE SOONER IT DOES",
                 3 when Voice == 0 => "CLAUDE CODE'S OWN SIGN-IN, IN YOUR BROWSER   ·   WHAT THE GAME ASKS COUNTS AGAINST YOUR CLAUDE PLAN",
-                4 when Voice == 0 => "ANTHROPIC'S ANT, IN YOUR BROWSER   ·   PAID FROM THE API CREDITS A MAX, ULTRA OR TEAM PLAN INCLUDES EACH MONTH",
                 3 => "CODEX'S OWN SIGN-IN, IN YOUR BROWSER   ·   WHAT THE GAME ASKS COUNTS AGAINST YOUR CHATGPT PLAN'S CODEX USE",
                 4 => "OPENAI'S OWN PAGE, FOR A DEVICE WITH NO CODEX   ·   CHATGPT PLUS OR PRO   ·   WHAT IS LEFT IS AT CHATGPT.COM/SETTINGS/USAGE",
                 5 => $"COPY A KEY AT {(Voice == 0 ? "PLATFORM.CLAUDE.COM/SETTINGS/KEYS" : "PLATFORM.OPENAI.COM/API-KEYS")}, THEN CHOOSE THIS   ·   IT STAYS ON THIS DEVICE   ·   YOUR BALANCE IS UNDER BILLING THERE",
-                6 => $"DROPS WHAT THIS GAME HOLDS   ·   {(Voice == 0 ? "CLAUDE CODE'S AND ANT'S OWN SIGN-INS" : "CODEX'S OWN SIGN-IN")}, IF ANY, ARE LEFT ALONE",
+                6 => $"DROPS WHAT THIS GAME HOLDS   ·   {(Voice == 0 ? "CLAUDE CODE'S OWN SIGN-IN" : "CODEX'S OWN SIGN-IN")}, IF ANY, ARE LEFT ALONE",
                 _ => "",
             }
             // on the pause menu itself: what there is to do, and what it wins
@@ -204,6 +206,8 @@ namespace Infinigame
 
         void Awake()
         {
+            Narrative.Load(Resources.Load<TextAsset>("STORY").text, Resources.Load<TextAsset>("MISSIONS").text,
+                Resources.Load<TextAsset>("FACTIONS").text, Resources.Load<TextAsset>("COLONIES").text);
             // in step with the screen, at 60 frames a second: every other refresh of a fast display
             QualitySettings.vSyncCount = Screen.currentResolution.refreshRateRatio.value > 90 ? 2 : 1;
             Application.targetFrameRate = 60;
@@ -217,6 +221,7 @@ namespace Infinigame
             Oracle.Load();
             QualitySettings.SetQualityLevel(PlayerPrefs.GetInt($"{Prefs}.detail", QualitySettings.GetQualityLevel()));
             Music.Muted = PlayerPrefs.GetInt($"{Prefs}.muted") == 1;
+            Speech.Choice = PlayerPrefs.GetString($"{Prefs}.voice", "Daniel (English (UK))");
             Speech.Muted = PlayerPrefs.GetInt($"{Prefs}.silent") == 1;
             System = gameObject.AddComponent<SolarSystem>();
             gameObject.AddComponent<Rainfall>();
@@ -264,6 +269,7 @@ namespace Infinigame
                 save.fall.world = system.bodies[save.fall.moon].orbit.parent;
             }
             system.moonfall = save.fall;
+            Campaign.Site(system, 0);
             System.RestoreClock(save.clock);
             // once the ship can leave the air a mission begins over the world it is on; the citadel's, well away from its guns
             System.Build(system, save.stage > Campaign.Tower && save.stage < Campaign.Citadel ? Campaign.World(system, save.stage) : SolarSystemDescriptor.Home);
@@ -360,6 +366,7 @@ namespace Infinigame
                     var colony = Settlement;
                     colony.ore += Cargo.ore; colony.ice += Cargo.ice; colony.salvage += Cargo.salvage;
                     Cargo.ore = Cargo.ice = Cargo.salvage = 0;
+                    Hermit.Remark("This is our foothold. A depot stores supplies, mines and drills feed the workshop, and the workshop builds more of us. Turrets protect the workers. Choose a building and I will explain its job.");
                     Pause(); Page = ColonyPage; c = default;
                 }
                 else if (c.interact && Outpost.Near)
@@ -557,9 +564,9 @@ namespace Infinigame
         {
             string from = Confirming ? "Quit to desktop" : Page;
             int voice = Voice;
-            if (!Confirming) Page = voice >= 0 ? Settings : from == Workshop ? ColonyPage : null;
+            if (!Confirming) Page = voice >= 0 ? Settings : from == Workshop ? ColonyPage : from == "Voice" ? Settings : null;
             Confirming = false;
-            Selected = voice >= 0 ? Dials + voice : math.max(0, Array.IndexOf(Items, from));
+            Selected = voice >= 0 ? Dials + voice : from == "Voice" ? 4 : math.max(0, Array.IndexOf(Items, from));
         }
 
         void Detail(int tier)
@@ -618,11 +625,20 @@ namespace Infinigame
                 else Notify("THAT FIT NEEDS OWNED EQUIPMENT, A FREE SLOT AND ENOUGH POWER");
                 return;
             }
+            if (Page == "Voice" && Selected < 4)
+            {
+                Speech.Muted = Selected == 3;
+                Speech.Choice = Selected == 1 ? "Daniel (English (UK))" : Selected == 2 ? "Eddy (English (UK))" : "";
+                PlayerPrefs.SetString($"{Prefs}.voice", Speech.Choice);
+                PlayerPrefs.SetInt($"{Prefs}.silent", Speech.Muted ? 1 : 0);
+                Speech.Say("I am here. We will build a way through this together.");
+                return;
+            }
             if (Page == ColonyPage && Selected < 10)
             {
                 var colony = Settlement;
                 if (colony == null) { Resume(); return; }
-                if (Selected < 7) { if (!colony.Build((Building)Selected)) Notify("CHECK THE DEPOT, RESOURCES AND EXISTING BUILDINGS"); }
+                if (Selected < 7) { if (!colony.Build((Building)Selected)) Notify("CHECK THE DEPOT, RESOURCES AND EXISTING BUILDINGS"); else Hermit.Remark(Narrative.Explanations[Selected]); }
                 else if (!colony.Has(Building.Workshop)) Notify("BUILD A WORKSHOP FIRST");
                 else if (Selected == 7) { Page = Workshop; Selected = 0; }
                 else if (Selected == 8)
@@ -656,7 +672,7 @@ namespace Infinigame
                 // quicker each time, then back round to the slowest
                 else if (Selected == 2) Look(DesktopControls.Sensitivity > 0.7f ? 0.08f : DesktopControls.Sensitivity * 1.25f);
                 else if (Selected == 3) Screen.fullScreen = !Screen.fullScreen;
-                else PlayerPrefs.SetInt($"{Prefs}.silent", (Speech.Muted = !Speech.Muted) ? 1 : 0);
+                else { Page = "Voice"; Selected = 0; }
                 return;
             }
             if (Page == Settings && Selected < Dials + Oracle.Voices.Length)
@@ -665,14 +681,14 @@ namespace Infinigame
                 Selected = 0;
                 return;
             }
-            if (Voice >= 0 && Selected < 7)
+            if (Voice >= 0 && Selected < Items.Length - 1)
             {
                 int voice = Voice;
                 if (Selected == 0) Oracle.Voice = voice;
                 else if (Selected == 1) Oracle.NextModel(voice);
                 else if (Selected == 2) Oracle.NextEffort(voice);
-                else if (Selected < 5) SignIn(voice, Selected - 3);
-                else if (Selected == 6)
+                else if (Selected < 3 + Oracle.Roads(voice).Length) SignIn(voice, Selected - 3);
+                else if (Selected == 4 + Oracle.Roads(voice).Length)
                 {
                     Oracle.Forget(voice);
                     Check();
@@ -752,6 +768,7 @@ namespace Infinigame
             save.presence = new Presence();
             save.fall = new Moonfall();
             save.colonies.Clear();
+            save.ruins.Clear();
             save.talk.Clear();
             Enter();
             Resume();
@@ -784,6 +801,7 @@ namespace Infinigame
             save.presence = new Presence();
             save.colonies.Clear();
             save.cargo = new Colony { world = -1, robots = 0 };
+            save.ruins.Clear();
             save.talk.Clear();
             Write();
         }

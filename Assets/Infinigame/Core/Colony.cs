@@ -10,15 +10,10 @@ namespace Infinigame.Core
     public class Colony
     {
         public int world, buildings, robots = 1;
-        public float ore, ice, salvage, raid;
+        public float ore, ice, salvage, raid, fabrication;
         public float3 site;
         public bool Has(Building building) => (buildings & 1 << (int)building) != 0;
-        public static float3 Cost(Building building) => building switch
-        {
-            Building.Depot => new float3(10, 0, 5), Building.Mine => new float3(15, 0, 5), Building.Drill => new float3(15, 5, 5),
-            Building.Turret => new float3(20, 5, 15), Building.Radar => new float3(10, 5, 10), Building.Workshop => new float3(25, 10, 15),
-            _ => new float3(10, 5, 5),
-        };
+        public static float3 Cost(Building building) => Narrative.Costs[(int)building];
         public bool Spend(float3 cost)
         {
             if (math.any(cost < 0) || ore < cost.x || ice < cost.y || salvage < cost.z) return false;
@@ -39,8 +34,14 @@ namespace Infinigame.Core
             if (dt <= 0f) return;
             if (Has(Building.Mine)) ore += robots * dt / 12f;
             if (Has(Building.Drill)) ice += robots * dt / 18f;
+            if (Has(Building.Workshop) && robots > 0 && robots < 32)
+            {
+                fabrication += dt;
+                if (fabrication >= 120 && Build(Building.Robot)) fabrication = 0;
+                fabrication = math.min(fabrication, 120);
+            }
             if (pressure <= 0f) return;
-            raid += dt * pressure;
+            raid += dt * pressure * (Has(Building.Radar) ? 0.65f : 1);
             while (raid >= 180f)
             {
                 raid -= 180f;

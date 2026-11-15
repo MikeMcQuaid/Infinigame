@@ -231,7 +231,7 @@ namespace Infinigame.Tests
         }
 
         [Test]
-        public void FloatsAndSwimsInDeepWater()
+        public void TheSuitSinksAndWalksInDeepWater()
         {
             float3 direction = World.Sea(World.Planet);
             var s = Walker.Spawn(World.Planet, direction, World.Tangent(direction));
@@ -239,10 +239,11 @@ namespace Infinigame.Tests
             s.grounded = false;
             Run(ref s, default, World.Planet, 6f);
             Assert.IsTrue(s.swimming);
-            Assert.AreEqual(World.Planet.SeaRadius - Walker.FloatDepth, math.length(s.position), 0.2f);
+            Assert.AreEqual(World.Planet.GroundRadius(math.normalize(s.position)), math.length(s.position), 0.2f);
             float3 start = s.position;
             Run(ref s, new WalkerInput { move = new float2(0, 1) }, World.Planet, 10f);
-            Assert.That(math.distance(start, s.position), Is.InRange(24f, 31f));
+            Assert.Greater(math.distance(start, s.position), 24f);
+            Assert.AreEqual(World.Planet.GroundRadius(math.normalize(s.position)), math.length(s.position), 0.5f);
         }
 
         [Test]

@@ -24,13 +24,7 @@ namespace Infinigame
     // game asks counts against their ChatGPT plan. Anthropic allows no sign-in to Claude inside
     // other people's apps, so Claude has no such road.
     //
-    // On a desk, each maker's own command-line clients with the sign-ins they keep for themselves:
-    // Anthropic's ant, paid from the API credits that Claude Max, Ultra and Team plans include
-    // each month, or failing that Claude Code, counted against the player's Claude plan; and
-    // OpenAI's codex, counted against the Codex use of any ChatGPT plan. The game can start
-    // each one's own sign-in, which happens in the player's browser and never in the game.
-    //
-    // No key is ever built into the game. What the player gives it stays in one file on their device.
+    // Desktop requests can also use Claude Code or Codex with the player's own sign-in.
     public static class Oracle
     {
         // Given who the model should be and what to answer, returns its reply. Tests swap this for
@@ -49,13 +43,13 @@ namespace Infinigame
         // How hard a model is asked to think before it answers: the less, the sooner.
         public static readonly string[] Efforts = { "low", "medium", "high" };
 
-        // Tests point these at stand-ins: the commands to run (ant, codex and Claude Code), the
+        // Tests point these at stand-ins: Claude Code, Codex, the
         // servers to ask (Anthropic's API, OpenAI's API and OpenAI's sign-in), how a page is opened
         // and the file things are kept in.
-        public static readonly string[] Tools = { "ant", "codex", "claude" };
-        static readonly string[] ToolNames = { "ANT", "CODEX", "CLAUDE CODE" };
+        public static readonly string[] Tools = { "claude", "codex" };
+        static readonly string[] ToolNames = { "CLAUDE CODE", "CODEX" };
         // Which tools reach each voice, in the order they are tried.
-        static readonly int[][] Reach = { new[] { 0, 2 }, new[] { 1 } };
+        static readonly int[][] Reach = { new[] { 0 }, new[] { 1 } };
         public static readonly string[] Hosts = { "https://api.anthropic.com", "https://api.openai.com", "https://auth.openai.com" };
         public static string Store = "accounts.json";
 #if UNITY_IOS && !UNITY_EDITOR
@@ -115,7 +109,7 @@ namespace Infinigame
             public string type = "", text = "";
         }
 
-        // Anthropic's Messages API, and ant's one-line digest of it.
+        // Anthropic's Messages API reply.
         [Serializable]
         class Message
         {
@@ -255,7 +249,7 @@ namespace Infinigame
             Answer answer;
             if (key.Length > 0) answer = voice == 0 ? await Claude(key, model.id, effort, persona, prompt) : await ChatGpt(key, model.id, effort, persona, prompt);
             else if (voice == 1 && held.refresh.Length > 0) answer = await ChatGpt(await Pass(), model.id, effort, persona, prompt);
-            else answer = await Task.Run(() => voice == 0 ? Tooled(model.id, effort, persona, prompt) : Codex(model.id, effort, persona, prompt));
+            else answer = await Task.Run(() => voice == 0 ? ClaudeCode(model.id, effort, persona, prompt) : Codex(model.id, effort, persona, prompt));
 
             if (answer.refused)
                 throw new InvalidOperationException($"Not signed in to {who}. Open Claude or ChatGPT on the menu to sign in or give a key, or to have the other write.");
@@ -277,41 +271,30 @@ namespace Infinigame
             return await Task.Run(() => Reach[voice].Where(SignedIn).Select(tool => $"SIGNED IN WITH {ToolNames[tool]}").FirstOrDefault() ?? "NOT SIGNED IN");
         }
 
-        // Whether one of the makers' tools is here and holds a sign-in: ant lists those it has,
-        // codex and Claude Code say whether they have one.
         static bool SignedIn(int tool)
         {
             try
             {
-                var (code, output, _) = tool == 0 ? Start(0, Patience, "profile", "list") : tool == 1 ? Start(1, Patience, "login", "status") : Start(2, Patience, "auth", "status");
-                return code == 0 && (tool == 1 || (tool == 0 ? output.Length > 0 : output.Replace(" ", "").Contains("\"loggedIn\":true")));
+                var (code, output, _) = tool == 1 ? Start(1, Patience, "login", "status") : Start(0, Patience, "auth", "status");
+                return code == 0 && (tool == 1 || output.Replace(" ", "").Contains("\"loggedIn\":true"));
             }
-            catch (Exception)
-            {
-                return false;
-            }
+            catch (Exception) { return false; }
         }
 
-        // What the two ways of signing in to a voice are called, for the menu.
-        public static string[] Roads(int voice) => voice == 0 ? new[] { "Sign in with Claude Code", "Sign in with ant" } : new[] { "Sign in with Codex", "Continue with ChatGPT" };
+        public static string[] Roads(int voice) => voice == 0 ? new[] { "Sign in with Claude Code" } : new[] { "Sign in with Codex", "Continue with ChatGPT" };
 
-        // Signs the player in to their own account in their browser, by the first or the second
-        // of a voice's roads. Nothing is typed into the game: Claude Code, ant and codex each run
-        // their maker's own sign-in, and ChatGPT's second road is OpenAI's own page. Returns where
-        // that leaves the player, as Status does.
         public static async Task<string> SignIn(int voice, int road)
         {
             try
             {
                 if (voice == 1 && road == 1) await Continue();
-                else await Task.Run(() => voice == 1 ? Start(1, SignInPatience, "login") : Start(road == 0 ? 2 : 0, SignInPatience, "auth", "login"));
+                else await Task.Run(() => voice == 1 ? Start(1, SignInPatience, "login") : Start(0, SignInPatience, "auth", "login"));
             }
-            catch (Exception)
-            {
-                // never approved, or no way to ask: either way Status says so
-            }
+            catch (Exception) { }
             return await Status(voice);
         }
+
+        public static string Writer => $"{Voices[Voice]} · {Model(Voice).name}";
 
         // ------------------------------------------------------------------ asking the makers' APIs
 
@@ -517,48 +500,12 @@ namespace Infinigame
 
         // ------------------------------------------------------------------ the makers' own tools
 
-        // ant: every value is given as JSON, and the reply asked for as one line of it: the text of
-        // the answer, why it stopped and what it took.
-        static Answer Ant(string model, string effort, string persona, string prompt)
-        {
-            // ant reads a value that starts with @ as the name of a file to send, unless a backslash comes first
-            string Value(string words) => Json(words.StartsWith("@") ? "\\" + words : words);
-            var (code, output, errors) = Start(0, Patience, "messages", "create", "--model", model, "--max-tokens", "2000", "--system", Value(persona),
-                "--output-config", $"{{\"effort\":{Json(effort)}}}", "--message", $"{{\"role\":\"user\",\"content\":{Value(prompt)}}}",
-                "--transform", "{text:content.#(type==\"text\").text,stop_reason,input:usage.input_tokens,output:usage.output_tokens}", "--format", "jsonl",
-                "--transform-error", "error.message", "--format-error", "yaml", "--raw-output");
-            var reply = code == 0 ? Read<Message>(output) : new Message();
-            // it sends a request with no sign-in anyway, and puts the API's words on one pipe and the status they came with on the other
-            return new Answer
-            {
-                refused = code != 0 && errors.Contains("401"), error = code == 0 ? null : (output.Length > 0 ? output : errors).Split('\n')[0],
-                text = reply.text, input = reply.input, output = reply.output,
-            };
-        }
-
-        // Claude with no key: ant where it holds a sign-in, since it asks the API and nothing
-        // more, and otherwise Claude Code with the sign-in that keeps. Where there is no Claude
-        // Code either, ant has the last word on what is wrong.
-        static Answer Tooled(string model, string effort, string persona, string prompt)
-        {
-            if (!SignedIn(0))
-                try
-                {
-                    return ClaudeCode(model, effort, persona, prompt);
-                }
-                catch (InvalidOperationException)
-                {
-                    // no Claude Code on this computer
-                }
-            return Ant(model, effort, persona, prompt);
-        }
-
         // Claude Code is a coding agent, so it is told to be nothing of the kind: the persona in
         // place of its own instructions, no tools, none of the player's settings or servers,
         // nothing kept afterwards, and its answer as one object of JSON.
         static Answer ClaudeCode(string model, string effort, string persona, string prompt)
         {
-            var (code, output, errors) = Start(2, Patience, "-p", prompt, "--model", model, "--effort", effort, "--system-prompt", persona, "--tools", "",
+            var (code, output, errors) = Start(0, Patience, "-p", prompt, "--model", model, "--effort", effort, "--system-prompt", persona, "--tools", "",
                 "--restricted", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence", "--output-format", "json");
             var reply = Read<Verdict>(output);
             bool failed = code != 0 || reply.is_error;
@@ -626,7 +573,7 @@ namespace Infinigame
             string entry = null;
             if (Environment.OSVersion.Platform == PlatformID.Win32NT && (found == null || Path.GetExtension(found) != ".exe"))
             {
-                string package = tool == 1 ? "@openai/codex/bin/codex.js" : tool == 2 ? "@anthropic-ai/claude-code/cli.js" : null;
+                string package = tool == 1 ? "@openai/codex/bin/codex.js" : "@anthropic-ai/claude-code/cli.js";
                 if (package != null)
                 {
                     entry = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm/node_modules", package);

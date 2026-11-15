@@ -46,6 +46,10 @@ namespace Infinigame
                     robot.SetParent(root, false);
                     robot.localPosition = new Vector3(-10 + (i % 8) * 3, 0, -15 - i / 8 * 3);
                     robot.localScale = Vector3.one * 0.7f;
+                    var movement = robot.gameObject.AddComponent<MachineMotion>();
+                    movement.quadruped = movement.working = true;
+                    movement.planet = game.System.Bodies[colony.world].transform;
+                    movement.ground = game.System.Descriptor.bodies[colony.world];
                 }
             }
             game.System.Surveyed = game.Colonies.Any(colony => colony.Has(Building.Radar));
@@ -102,17 +106,26 @@ namespace Infinigame
             game.Presence.Step(dt);
             foreach (var colony in game.Colonies)
             {
+                if (colony.world == game.System.Reference && colony.Has(Building.Turret))
+                    for (int i = 0; i < game.Battle.Foes.Count; i++)
+                    {
+                        var foe = game.Battle.Foes[i];
+                        if (foe.friendly || math.distance(foe.position, colony.site) > 100 || !game.Outpost.Visible(colony.site + math.normalizesafe(colony.site) * 3, foe.position)) continue;
+                        foe.health -= dt * math.min(colony.robots * 4, 40);
+                        game.Battle.Foes[i] = foe;
+                    }
                 int robots = colony.robots;
                 colony.Step(dt, game.Fall.destroyed ? 0 : game.Presence.Reach(colony.world));
-                if (colony.robots < robots)
+                if (colony.robots != robots)
                 {
-                    game.Notify($"COLONY RAID ON {game.System.Descriptor.bodies[colony.world].name.ToUpperInvariant()}  ·  ROBOT LOST");
+                    if (colony.robots < robots) game.Notify($"COLONY RAID ON {game.System.Descriptor.bodies[colony.world].name.ToUpperInvariant()}  ·  ROBOT LOST");
+                    else game.Hermit.Remark("The workshop has assembled another worker. It will gather resources and help us reclaim this world.");
                     Settle();
                 }
             }
-            for (int i = 1; i < game.System.Descriptor.bodies.Length; i++) game.System.Descriptor.bodies[i].blight = game.Fall.destroyed ? 0 : game.Presence.Reach(i);
+            for (int i = 1; i < game.System.Descriptor.bodies.Length; i++) game.System.Descriptor.bodies[i].blight = game.Fall.destroyed ? 0 : math.max(0, game.Presence.Reach(i) - game.Colonies.Where(colony => colony.world == i && colony.Has(Building.Turret)).Sum(colony => colony.robots) * 0.025f);
             int reference = game.System.Reference;
-            int count = game.Fall.destroyed || game.System.ReferenceBody.kind != BodyKind.Rock ? 0 : (int)(game.Presence.Reach(reference) * 4);
+            int count = game.Fall.destroyed || game.System.ReferenceBody.kind != BodyKind.Rock ? 0 : (int)(game.System.ReferenceBody.blight * 4);
             if (reference != spreading || count != growth)
             {
                 foreach (var item in incursions) if (item != null) Destroy(item.gameObject);
@@ -123,7 +136,7 @@ namespace Infinigame
                 for (int i = 0; i < count; i++)
                 {
                     float3 up = body.FindLanding(math.hash(new uint2(game.Seed + (uint)reference, (uint)i + 901)) | 1u);
-                    var tower = Models.Building(Building.Turret);
+                    var tower = Models.Nest();
                     tower.name = "Presence outpost";
                     tower.SetParent(game.System.Bodies[reference].transform, false);
                     tower.localPosition = up * body.GroundRadius(up);

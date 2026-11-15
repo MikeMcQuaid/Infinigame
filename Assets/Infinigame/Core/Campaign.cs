@@ -26,84 +26,7 @@ namespace Infinigame.Core
     {
         public const int Buried = 0, Stranger = 1, Tower = 5, Citadel = 14, Won = 15;
 
-        public static readonly Mission[] Missions =
-        {
-            new Mission
-            {
-                name = "Buried", world = "Earth", task = "CLICK TO DIG YOURSELF OUT", wins = new Gear[0],
-                brief = "Weight above you. No memory, only the sound of a machine calling through the soil.",
-            },
-            new Mission
-            {
-                name = "The recovery machine", world = "Earth", task = "A ROBOT IS CALLING  ·  FIND ITS WORKSHOP", wins = new[] { Gear.Suit },
-                brief = "I am a recovery robot. I found you after the crash. Let me wake your armour. There are things in your recovery record I cannot yet explain.",
-            },
-            new Mission
-            {
-                name = "The outpost", world = "Earth", task = "SILENCE THE OUTPOST MIND", guards = FoeKind.Drone, count = 4, wins = new[] { Gear.Thrusters },
-                brief = "A controlling mind lives inside that outpost. Its shield will stop anything fired from outside. Go through the door, break it or find the terminal. Its thruster assembly belongs on your suit.",
-            },
-            new Mission
-            {
-                name = "The depot", world = "Earth", task = "SILENCE THE DEPOT MIND", guards = FoeKind.Drone, count = 6, wins = new[] { Gear.Beams, Gear.Stealth },
-                brief = "The depot holds gauntlet emitters and a cloak. Your suit has three slots and six units of power. Take a style to the workshop, not every piece at once.",
-            },
-            new Mission
-            {
-                name = "The hangar", world = "Earth", task = "TAKE THE HANGAR  ·  YOUR SHIP IS INSIDE", guards = FoeKind.Drone, count = 8, wins = new[] { Gear.Capacitor, Gear.BackMissiles, Gear.Ship },
-                brief = "That ship was yours. I knew its call sign before I found the wreck. The mind in the hangar has its power cell and your shoulder missiles.",
-            },
-            new Mission
-            {
-                name = "The gun tower", world = "Earth", task = "ENTER THE TOWER AND SILENCE ITS MIND", guards = FoeKind.Raider, count = 3, wins = new[] { Gear.Orbiter },
-                brief = "The orbital drive is inside the tower. The ship can carry you there, but its guns cannot cross the shield. Your suit can.",
-            },
-            new Mission
-            {
-                name = "Luna", world = "Luna", task = "SILENCE THE MIND ON LUNA", guards = FoeKind.Raider, count = 4, wins = new[] { Gear.Shield },
-                brief = "The moon holds a shield for the ship. Your suit already survives vacuum and radiation, but its thrusters cannot carry you between worlds.",
-            },
-            new Mission
-            {
-                name = "Mars", world = "Mars", task = "SILENCE THE MIND ON MARS", guards = FoeKind.Raider, count = 4, wins = new[] { Gear.Missiles },
-                brief = "They are not separate raiders. Every hull is a body of the same presence. They copy the weapons they capture. Take the seekers and expect them to learn.",
-            },
-            new Mission
-            {
-                name = "Venus", world = "Venus", task = "SILENCE THE MIND ON VENUS", guards = FoeKind.Raider, count = 5, wins = new[] { Gear.Plating },
-                brief = "You can walk safely in this heat. The ship needs the plating kept inside this base. I recognise the design of your armour. I helped build it.",
-            },
-            new Mission
-            {
-                name = "Mercury", world = "Mercury", task = "SILENCE THE MIND ON MERCURY", guards = FoeKind.Raider, count = 5, wins = new[] { Gear.Lance },
-                brief = "The lance burns continuously while you hold the trigger. Do not mistake a quiet doorway for a safe one. Their bodies listen as well as watch.",
-            },
-            new Mission
-            {
-                name = "Jupiter", world = "Ganymede", task = "SILENCE THE MIND ON GANYMEDE", guards = FoeKind.Raider, count = 6, wins = new[] { Gear.Mender },
-                brief = "This mind keeps a repair system for the ship. The robots can copy it at a workshop. Feed them ore, ice and salvage and they will build more of themselves.",
-            },
-            new Mission
-            {
-                name = "Saturn", world = "Titan", task = "SILENCE THE MIND ON TITAN", guards = FoeKind.Raider, count = 6, wins = new[] { Gear.Rail, Gear.Armour },
-                brief = "The rail gauntlet pierces one body and the next behind it. Its long recharge leaves you open. Heavy plate draws from the same reserve as your beams and thrusters.",
-            },
-            new Mission
-            {
-                name = "Uranus", world = "Titania", task = "SILENCE THE MIND ON TITANIA", guards = FoeKind.Raider, count = 7, wins = new[] { Gear.Bulkheads },
-                brief = "Bulkheads for the ship. The presence keeps spreading while we work. Defend the colonies: their robots will have to build something much larger than either of us.",
-            },
-            new Mission
-            {
-                name = "Neptune", world = "Triton", task = "SILENCE THE MIND ON TRITON", guards = FoeKind.Raider, count = 8, wins = new[] { Gear.Nukes },
-                brief = "These torpedoes break ships and ground. They still cannot cross a base shield. The final mind lies too deep for even these. We will need a moon.",
-            },
-            new Mission
-            {
-                name = "The citadel", world = "", task = "ENTER THE CITADEL BY SHIP  ·  DESTROY THE SHIELD CORE  ·  ESCAPE", guards = FoeKind.Base, count = 1, wins = new[] { Gear.GateParts },
-                brief = "Fly into the citadel through its open tunnel, follow the turns and destroy the shield core. Then get out. I helped create you to end this presence. The radiation is its prison, and the gate we are repairing could release it.",
-            },
-        };
+        public static Mission[] Missions { get; internal set; } = Array.Empty<Mission>();
 
         // Everything won by the missions before this one, as a set of bits.
         public static int Kit(int stage) => Missions.Take(stage).SelectMany(mission => mission.wins).Aggregate(0, (kit, gear) => kit | 1 << (int)gear);
@@ -146,13 +69,40 @@ namespace Infinigame.Core
         // from where the player wakes, each further than the last and the last round the far side.
         public static float3 Site(SolarSystemDescriptor system, int stage)
         {
+            // Fix every site before a landing pad or weapon can alter the terrain.
+            if (system.missionSites.Count == 0)
+                for (int i = 0; i <= Citadel; i++) system.missionSites[i] = FindSite(system, i);
+            return system.missionSites[stage];
+        }
+
+        static float3 FindSite(SolarSystemDescriptor system, int stage)
+        {
             int world = World(system, stage);
             var body = system.bodies[world];
             if (stage == Citadel) return new float3(0, 1, 0);
             if (world != SolarSystemDescriptor.Home) return body.FindLanding(system.seed + (uint)stage);
             float3 landing = body.FindLanding(system.seed + 1u);
             if (stage <= Stranger) return stage == Buried ? landing : body.FindCamp(landing);
-            float metres = stage == 2 ? 280f : stage == 3 ? 800f : stage == 4 ? 1700f : 0.85f * math.PI * body.radius;
+            if (stage < Tower)
+            {
+                float3 previous = system.missionSites[stage - 1], origin = previous * body.GroundRadius(previous);
+                float budget = stage == 2 ? 300 : 800;
+                float3 onward = math.normalizesafe(Walker.Project(previous - landing, previous), math.normalizesafe(math.cross(previous, new float3(0.2f, 0.9f, 0.4f))));
+                float before = math.distance(previous, landing) * body.radius;
+                for (int i = 0; i < 1800; i++)
+                {
+                    float bearing = i == 0 ? 0 : i < 600 ? math.sin(i * 2.399963f) * 1.3f : i * 2.399963f;
+                    float distance = budget * (i == 0 ? 0.8f : 0.35f + 0.6f * ((i * 0.618034f) % 1));
+                    float3 at = math.normalize(previous + math.rotate(quaternion.AxisAngle(previous, bearing), onward) * (distance / body.radius));
+                    float height = body.GroundRadius(at);
+                    if (height <= body.SeaRadius + 3 || math.dot(body.GroundNormal(at), at) < 0.95f
+                        || math.distance(at * height, origin) > budget - 50 || i < 600 && math.distance(at, landing) * body.radius < before + 30) continue;
+                    return at;
+                }
+                // A valid dry fallback stays within the travel budget even on an unusually steep coast.
+                return previous;
+            }
+            float metres = 0.85f * math.PI * body.radius;
             float3 heading = math.rotate(quaternion.AxisAngle(landing, 2.1f * stage), math.normalize(math.cross(landing, new float3(0.2f, 0.9f, 0.4f))));
             return body.FindSite(math.rotate(quaternion.AxisAngle(math.cross(landing, heading), metres / body.radius), landing));
         }

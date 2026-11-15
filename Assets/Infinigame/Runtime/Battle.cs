@@ -61,7 +61,7 @@ namespace Infinigame
             ray.enabled = false;
             // iron dark enough to menace and pale enough to pick out against the dark of space, lit from
             // within, and holed and burning where it has been shot, in holes sized to the craft
-            var iron = new Color(0.36f, 0.3f, 0.28f);
+            var iron = new Color(0.43f, 0.29f, 0.22f);
             var menace = new Color(9f, 0.9f, 0.15f);
             (raiderHull, raiderGlow) = (Shapes.Hull(iron, 10f), Shapes.Hull(Color.black, 10f, menace));
             (droneHull, droneGlow) = (Shapes.Hull(iron, 1.2f), Shapes.Hull(Color.black, 1.2f, menace));
@@ -140,6 +140,22 @@ namespace Infinigame
                 float3 forward = view.forward, eye = (float3)view.position + system.Anchor;
                 float3 muzzle = flying ? player.ship.position + math.rotate(player.ship.rotation, new float3(1.7f, -0.3f, 2.5f))
                     : eye + (float3)(view.right * 0.25f + view.up * (weapon.homing > 0 ? 0.2f : -0.22f));
+                if (player.ThirdPerson)
+                {
+                    float3 sight = Combat.Ray(Foes, body, eye, forward, 2000, 0, false, default, null);
+                    if (!game.Outpost.Visible(eye, sight))
+                    {
+                        float near = 0, far = math.distance(eye, sight);
+                        for (int i = 0; i < 14; i++)
+                        {
+                            float mid = (near + far) * 0.5f;
+                            if (game.Outpost.Visible(eye, eye + forward * mid)) near = mid; else far = mid;
+                        }
+                        sight = eye + forward * near;
+                    }
+                    muzzle = player.Position + up * 1.45f + (float3)view.right * 0.3f;
+                    forward = math.normalizesafe(sight - muzzle, forward);
+                }
                 if (flying) forward = math.rotate(player.ship.rotation, new float3(0, 0, 1));
                 else if (player.Hand(UnityEngine.XR.XRNode.RightHand, out var hand, out var aim))
                 {
@@ -159,7 +175,8 @@ namespace Infinigame
                             if (game.Outpost.Visible(muzzle, muzzle + forward * mid)) near = mid; else far = mid;
                         }
                         reach = near;
-                        if (weapon.melee && game.Outpost.World == system.Reference) game.Outpost.Breach(muzzle + forward * (reach + 0.01f), weapon.damage);
+                        if (!game.Outpost.Shield.Blocks(muzzle, forward * (reach + 0.02f), out _))
+                            game.Outpost.Breach(muzzle + forward * (reach + 0.01f), weapon.damage * (weapon.beam ? frame : 1));
                     }
                     end = Combat.Ray(Foes, body, muzzle, forward, reach, weapon.damage * (weapon.beam ? frame : 1), weapon.rail, game.Outpost.Shield, struck);
                     if (weapon.melee)
@@ -243,7 +260,24 @@ namespace Infinigame
                     Foes[i] = foe;
                 }
                 for (int i = Bolts.Count - 1; i >= 0; i--)
-                    if (!game.Outpost.Visible(Bolts[i].position, Bolts[i].position + Bolts[i].velocity * dt)) Bolts.RemoveAt(i);
+                {
+                    var bolt = Bolts[i];
+                    if (game.Outpost.Visible(bolt.position, bolt.position + bolt.velocity * dt)) continue;
+                    float near = 0, far = dt;
+                    for (int j = 0; j < 12; j++)
+                    {
+                        float mid = (near + far) * 0.5f;
+                        if (game.Outpost.Visible(bolt.position, bolt.position + bolt.velocity * mid)) near = mid; else far = mid;
+                    }
+                    if (game.Outpost.Shield.Blocks(bolt.position, bolt.velocity * far, out _)) game.Outpost.Flash();
+                    else
+                    {
+                        float3 at = bolt.position + bolt.velocity * far;
+                        game.Outpost.Breach(at, bolt.damage);
+                        game.Effects.Hit(at, -math.normalizesafe(bolt.velocity), math.max(1, bolt.blast), float3.zero);
+                    }
+                    Bolts.RemoveAt(i);
+                }
                 hurt += Combat.Step(Bolts, Foes, body, self, player.Velocity, flying ? Combat.ShipRadius : Combat.PersonRadius, dt, struck, game.Outpost.Shield);
             }
             if (hurt > 0f) player.Hurt(hurt, !flying ? $"Gunned down by drones on {body.name}" : there ? "Shot to pieces by the raiders' citadel" : $"Shot down over {body.name}");
@@ -369,7 +403,7 @@ namespace Infinigame
             foreach (var list in new[] { raiders, drones, flashes, missiles, sentries, legs, minds, bolts[0], bolts[1] }) list.Clear();
             foreach (var foe in Foes)
             {
-                float3 up = math.normalizesafe(foe.position, new float3(0, 1, 0));
+                float3 up = game.System.ReferenceBody.kind == BodyKind.Station ? new float3(0, 1, 0) : math.normalizesafe(foe.position, new float3(0, 1, 0));
                 // the more it has been hit, the more of it is holes
                 float battered = 1f - foe.health / Combat.Health(foe.kind, game.Threat);
                 if (foe.kind == FoeKind.Raider) raiders.Add(Matrix4x4.TRS(foe.position - anchor, Quaternion.LookRotation(foe.forward, up), Vector3.one), battered, foe.seed);
@@ -382,9 +416,14 @@ namespace Infinigame
                 {
                     Quaternion facing = Quaternion.LookRotation(math.normalizesafe(Walker.Project(foe.forward, up), new float3(0, 0, 1)), up);
                     sentries.Add(Matrix4x4.TRS(foe.position - anchor, facing, Vector3.one), battered, foe.seed);
-                    foreach (float side in new[] { -1f, 1f })
-                        legs.Add(Matrix4x4.TRS(foe.position - anchor + (float3)(facing * new Vector3(side * 0.24f, -0.05f, 0)),
-                            facing * Quaternion.Euler(side * Mathf.Sin(beat * 9) * math.min(math.length(foe.velocity) * 6, 35), 0, 0), Vector3.one), battered, foe.seed);
+                    for (int i = 0; i < 6; i++)
+                    {
+                        float side = i < 3 ? -1 : 1, stride = math.min(math.length(foe.velocity) * 0.012f, 0.08f);
+                        Vector3 attachment = new Vector3(side * 0.4f, 0, (i % 3 - 1) * 0.45f);
+                        float lift = math.max(0, math.sin(beat * 7 + (i % 2) * math.PI)) * stride;
+                        legs.Add(Matrix4x4.TRS(foe.position - anchor + (float3)(facing * (attachment + Vector3.up * lift)),
+                            facing * Quaternion.Euler(0, side < 0 ? 180 : 0, 0), Vector3.one), battered, foe.seed);
+                    }
                 }
             }
             foreach (var bolt in Bolts)

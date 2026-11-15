@@ -151,7 +151,7 @@ namespace Infinigame.Core
             float3 east = math.normalize(math.cross(direction, math.abs(direction.y) < 0.9f ? new float3(0, 1, 0) : new float3(1, 0, 0))), north = math.cross(direction, east);
             float centre = GroundRadius(direction) - radius;
             // the lie of the land in rings round the middle, each this far out as a share of the crater's radius
-            for (float ring = blast.scar == Scar.Melt ? 0.5f : blast.scar == Scar.Lava ? 1f : 2f; ring <= 1f; ring += 0.25f)
+            for (float ring = blast.scar == Scar.Melt ? 0.5f : blast.scar == Scar.Lava ? 0.35f : 2f; ring <= (blast.scar == Scar.Lava ? 0.65f : 1f); ring += blast.scar == Scar.Lava ? 0.1f : 0.25f)
             {
                 float lowest = float.MaxValue;
                 for (int i = 0; i < 8; i++)
@@ -168,6 +168,7 @@ namespace Infinigame.Core
                 // Meltwater stands in as much of the bowl as can hold it: out to whichever ring is
                 // highest at its lowest point, and no higher than that or it would spill.
                 if (blast.scar == Scar.Melt && lowest - 0.02f * size > blast.level) (blast.level, blast.pool) = (math.min(lowest - 0.02f * size, centre - 0.18f * size), ring);
+                if (blast.scar == Scar.Lava && lowest - 0.04f * size > blast.level) (blast.level, blast.pool) = (math.min(lowest - 0.04f * size, centre - 0.25f * size), ring);
             }
             Leave(blast);
         }
@@ -266,6 +267,7 @@ namespace Infinigame.Core
     public class SolarSystemDescriptor
     {
         public int schemaVersion = 1;
+        internal readonly Dictionary<int, float3> missionSites = new Dictionary<int, float3>();
         public uint seed;
         public BodyDescriptor[] bodies;
         public Moonfall moonfall;

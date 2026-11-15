@@ -44,7 +44,7 @@ namespace Infinigame
         // is: the star, the planets and the base always, a moon from within its own planet's space
         // or from wherever it is near enough to show as more than a speck.
         public bool Surveyed;
-        public bool Charted(int body) => !Descriptor.bodies[body].destroyed && (Surveyed || Descriptor.bodies[body].orbit.parent <= 0 || Descriptor.Planet(body) == Descriptor.Planet(Reference)
+        public bool Charted(int body) => !Descriptor.bodies[body].destroyed && (Descriptor.bodies[body].orbit.parent <= 0 || body == Reference
             || Descriptor.bodies[body].radius > 0.004f * math.distance(Focus, ToReference(body)));
 
         // Raised with (from, to) when the reference body changes so movers can rebase themselves.

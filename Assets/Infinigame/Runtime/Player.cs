@@ -37,12 +37,14 @@ namespace Infinigame
 
         SolarSystem system;
         Camera view;
-        Transform model;
+        Transform model, traveller, pack;
+        MachineMotion motion;
+        GameObject[] armour;
         GameObject[] outside;
         Cockpit cockpit;
         // how far the last shots have thrown the aim up, in degrees
         float pitch, punch;
-        bool chase;
+        bool chase, submerged;
         // which of its weapons the ship has live, and which the player has in hand
         int gun, arm;
         readonly List<float4> worlds = new List<float4>();
@@ -108,6 +110,7 @@ namespace Infinigame
         public bool Dead => health <= 0f || hull <= 0f;
         // In the pilot's seat, looking out through the canopy.
         public bool Seated => flying && !chase && !SystemView;
+        public bool ThirdPerson => !flying && chase && !DeviceControls.VR;
 
         // What the interact key would do right now, for the HUD. Landing is offered once there is ground
         // near enough to land on, which a star or a giant's cloud tops never are.
@@ -131,6 +134,10 @@ namespace Infinigame
             view.nearClipPlane = 0.1f;
             view.farClipPlane = 2500000f;
             model = Models.Ship();
+            traveller = Models.Traveller();
+            motion = traveller.gameObject.AddComponent<MachineMotion>();
+            armour = traveller.GetComponentsInChildren<Transform>().Where(part => part.name == "Armour").Select(part => part.gameObject).ToArray();
+            pack = traveller.Find("Torso/Thruster pack");
             // from the pilot's seat the cockpit stands in for the hull round it
             outside = new[] { model.Find("Exterior").gameObject };
             cockpit = model.Find("Cockpit").GetComponent<Cockpit>();
@@ -139,7 +146,7 @@ namespace Infinigame
         // Stand on a gentle patch of the reference body with the ship parked a few steps ahead.
         public void Spawn()
         {
-            float3 direction = Body.FindLanding(system.Descriptor.seed + 1u);
+            float3 direction = system.Reference == SolarSystemDescriptor.Home ? Campaign.Site(system.Descriptor, game.Stage >= 2 && game.Stage <= 4 ? game.Stage - 1 : 0) : Body.FindLanding(system.Descriptor.seed + 1u);
             float3 facing = math.normalize(math.cross(direction, new float3(0.2f, 0.9f, 0.4f)));
             walker = Walker.Spawn(Body, direction, facing);
             ship = Ship.Spawn(Body, walker.position + facing * 14f, math.cross(direction, facing));
@@ -337,6 +344,12 @@ namespace Infinigame
                 }
                 // the bike's wheels take half of a landing
                 Hurt(Combat.Fall(walker.impact * (riding ? 0.5f : 1f)), $"Fell to the ground on {Body.name}");
+                if (walker.swimming && !Has(Gear.Suit))
+                {
+                    if (!submerged) game.Notify("I DON'T KNOW HOW TO SWIM  ·  GET BACK TO SHORE");
+                    Hurt(18 * frame, "You don't know how to swim");
+                }
+                submerged = walker.swimming;
                 // a suit mends itself once left alone a while
                 if (Time.time - HurtAt > 6f) health = math.min(MaxHealth, health + 4f * frame);
             }
@@ -376,6 +389,14 @@ namespace Infinigame
 
             // everything is drawn relative to the scene's origin, which out in space rides with the player
             model.SetPositionAndRotation(ship.position - system.Anchor, ship.rotation);
+            traveller.gameObject.SetActive(ThirdPerson && !SystemView && !game.Title && !Dead);
+            if (traveller.gameObject.activeSelf)
+            {
+                traveller.SetPositionAndRotation(walker.position - system.Anchor, quaternion.LookRotationSafe(walker.forward, math.normalizesafe(walker.position)));
+                foreach (var plate in armour) plate.SetActive(Has(Gear.Suit));
+                pack.gameObject.SetActive(Has(Gear.Thrusters));
+                motion.speed = walker.grounded ? math.length(Velocity) : 0;
+            }
             // until it is won back the ship is not there to be seen
             foreach (var part in outside) part.SetActive(!Seated && (captive || Has(Gear.Ship)));
             cockpit.gameObject.SetActive(Seated);
@@ -424,9 +445,20 @@ namespace Infinigame
             else
             {
                 float3 up = math.normalize(walker.position);
-                // on the bike the rider sits lower
-                view.transform.SetPositionAndRotation(walker.position - system.Anchor + up * (Walker.EyeHeight - (riding ? 0.45f : 0f)),
-                    Quaternion.LookRotation(walker.forward, up) * Quaternion.Euler(-pitch - punch, 0f, 0f));
+                Quaternion looking = Quaternion.LookRotation(walker.forward, up) * Quaternion.Euler(-pitch - punch, 0f, 0f);
+                float3 eye = walker.position + up * Walker.EyeHeight, camera = eye;
+                if (ThirdPerson)
+                {
+                    float3 desired = eye + (float3)(looking * new Vector3(0.55f, 0.55f, -4.8f));
+                    for (int i = 1; i <= 32; i++)
+                    {
+                        float3 sample = math.lerp(eye, desired, i / 32f);
+                        if (math.length(sample) < Body.GroundRadius(math.normalizesafe(sample)) + 0.2f) break;
+                        camera = sample;
+                    }
+                    camera = game.Outpost.Resolve(eye, camera, 0.15f, out _);
+                }
+                view.transform.SetPositionAndRotation(camera - system.Anchor, looking);
             }
             TrackingPosition = view.transform.position;
             TrackingRotation = view.transform.rotation;

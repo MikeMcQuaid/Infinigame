@@ -59,6 +59,7 @@ namespace Infinigame.Core
             {
                 float3 dir = CubeSphere.Direction(face, uvMin + (new float2(i, j) - 1f) * (uvSize / quads));
                 float height = TerrainNoise.Height(dir, terrain), pool = float.MinValue;
+                bool molten = false;
                 float2 cone = 0f, flat = 0f, heat = new float2(TerrainNoise.Cold, 0f);
                 float4 paint = 0f;
                 for (int v = 0; v < volcanoes.Length; v++)
@@ -75,12 +76,14 @@ namespace Infinigame.Core
                 for (int b = 0; b < blasts.Length; b++)
                 {
                     if (math.distancesq(dir, blasts[b].crater.xyz) > reach[b]) continue;
+                    float previousPool = pool;
                     TerrainNoise.Shape(dir, blasts[b], radius, ref height, ref pool, ref flat);
+                    if (pool > previousPool) molten = blasts[b].scar == Scar.Lava;
                     TerrainNoise.Paint(dir, blasts[b], radius, spread, ref paint, ref heat.x);
                 }
                 // a pad is scorched, and dry whatever stood there
                 paint.x = math.max(paint.x, 0.85f * flat.y);
-                paint.z = math.lerp(math.max(paint.z, math.saturate(0.5f + (pool - height) / 8f)), 0f, flat.y);
+                paint.z = math.lerp(math.max(paint.z, molten ? 0 : math.saturate(0.5f + (pool - height) / 8f)), 0f, flat.y);
                 height = math.lerp(math.max(height, pool), flat.x, flat.y);
                 points[j * g + i] = dir * (radius + height);
                 colour[j * g + i] = math.saturate((height + terrain.polarCap * math.smoothstep(0.75f, 0.95f, math.abs(dir.y)) - minHeight) / heightSpan);

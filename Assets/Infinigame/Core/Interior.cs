@@ -4,6 +4,14 @@ using Unity.Mathematics;
 
 namespace Infinigame.Core
 {
+    [Serializable]
+    public class Ruin
+    {
+        public int stage;
+        public bool open;
+        public List<int> broken = new List<int>();
+    }
+
     public struct Wall
     {
         public float3 centre, half;
@@ -95,10 +103,9 @@ namespace Infinigame.Core
             for (int i = 0; i < walls.Length; i++)
             {
                 var wall = walls[i];
-                // The reinforced shell stays intact. Doors and foundations can be punched through.
-                if (wall.broken || !wall.door && wall.centre.y >= 0 || !math.all(math.abs(point - wall.centre) < wall.half + 0.15f)) continue;
+                if (wall.broken || !math.all(math.abs(point - wall.centre) < wall.half + 0.15f)) continue;
                 wall.damage += damage;
-                wall.broken = wall.damage >= 100;
+                wall.broken = wall.damage >= (wall.door || wall.centre.y < 0 ? 100 : 240);
                 walls[i] = wall;
                 return wall.broken;
             }

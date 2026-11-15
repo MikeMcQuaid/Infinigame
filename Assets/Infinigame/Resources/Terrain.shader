@@ -212,16 +212,15 @@ Shader "Infinigame/Terrain"
                     albedo = lerp(albedo, (0.006 + 0.03 * fine * fine) * (0.5 + relief), 0.96 * soot);
                     gloss = lerp(gloss, 0.08, soot);
 
-                    // Rock that has run molten is a layer of its own. The mesh says in what order it
-                    // ran over the ground, so it is seen to creep on for most of a minute after it
-                    // was struck, cooling as it goes: its plates crust over first, the cracks last.
-                    float age = _Clock - input.heat.x;
-                    half ran = 0.9 - 0.7 * pow(saturate(age / 45.0), 0.6);
-                    half lava = saturate(input.paint.a * (1.0 + 0.75 * mottle)) * smoothstep(ran - 0.05, ran + 0.05, input.paint.g + 0.1 * (fine - 0.5));
+                    // The height field holds a level pool inside the crater. Flow is confined to its surface.
+                    float age = max(0, _Clock - input.heat.x);
+                    half lava = saturate(input.paint.a * input.paint.g);
                     if (lava > 0.004)
                     {
                         float3 slope4;
-                        half4 crust = Layer(_Albedo4, _Normal4, lava, float2(0.4, 0.083), far, input.positionOS, dpdx, dpdy, axes, slope4);
+                        float3 flow = float3(sin(_Clock * 0.13), cos(_Clock * 0.11), sin(_Clock * 0.09 + 2)) * 0.5;
+                        flow -= normalize(input.positionOS) * dot(flow, normalize(input.positionOS));
+                        half4 crust = Layer(_Albedo4, _Normal4, lava, float2(0.4, 0.083), far, input.positionOS + flow, dpdx, dpdy, axes, slope4);
                         // from far off the cracks are too fine to see, and what shows is the two together
                         half cool = saturate(age / 75.0), plate = lerp(smoothstep(0.1, 0.4, crust.a), 0.75, remote);
                         half hot = lerp(1.0 - cool * cool, saturate(0.85 - 2.0 * cool), plate);
@@ -231,7 +230,7 @@ Shader "Infinigame/Terrain"
                         albedo = lerp(albedo, crust.rgb, lava);
                         slope = lerp(slope, slope4, lava);
                         relief = lerp(relief, crust.a, lava);
-                        gloss = lerp(gloss, 0.3, lava);
+                        gloss = lerp(gloss, 0.55 + 0.2 * hot, lava);
                     }
 
                     // Meltwater: the ice it ran over is left wet and dark, and where it stands it is

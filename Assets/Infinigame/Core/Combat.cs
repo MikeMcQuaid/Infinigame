@@ -21,7 +21,7 @@ namespace Infinigame.Core
         public bool away, scattered, friendly;
         public Alert alert;
         public float suspicion;
-        public uint seed;
+        public uint seed, random;
     }
 
     // A shot in flight, the player's or a foe's.
@@ -145,18 +145,19 @@ namespace Infinigame.Core
         public static bool Hunt(ref Foe foe, BodyDescriptor body, float3 target, float3 targetVelocity, int depth, float dt, out Bolt shot)
         {
             shot = default;
-            var rnd = new Random(foe.seed = (foe.seed * 747796405u + 2891336453u) | 1u);
-            float3 to = target - foe.position, up = math.normalizesafe(foe.position, new float3(0, 1, 0));
+            var rnd = new Random(foe.random = ((foe.random == 0 ? foe.seed : foe.random) * 747796405u + 2891336453u) | 1u);
+            float3 to = target - foe.position, up = body.kind == BodyKind.Station ? new float3(0, 1, 0) : math.normalizesafe(foe.position, new float3(0, 1, 0));
             float distance = math.max(math.length(to), 1e-3f);
             foe.cooldown -= dt;
 
             if (foe.kind == FoeKind.Mind) return false;
             if (foe.scattered)
             {
-                foe.velocity = math.normalizesafe(foe.position - target, foe.forward) * 12f;
+                foe.velocity = math.normalizesafe(foe.kind == FoeKind.Sentry ? Walker.Project(foe.position - target, up) : foe.position - target, foe.forward) * 12f;
                 foe.position += foe.velocity * dt;
                 float3 over = math.normalizesafe(foe.position, up);
-                foe.position = over * math.max(math.length(foe.position), Ship.Surface(body, over) + foe.size);
+                if (foe.kind == FoeKind.Sentry && body.kind == BodyKind.Rock) foe.position = over * (body.GroundRadius(over) + 0.9f);
+                else foe.position = over * math.max(math.length(foe.position), Ship.Surface(body, over) + foe.size);
                 return false;
             }
             if (foe.kind == FoeKind.Base)
@@ -174,16 +175,20 @@ namespace Infinigame.Core
             if (foe.kind == FoeKind.Drone || foe.kind == FoeKind.Sentry)
             {
                 // close to a dozen paces, then circle, never quite still
+                if (body.kind == BodyKind.Station) up = new float3(0, 1, 0);
                 float3 level = Walker.Project(to, up), toward = math.normalizesafe(level, foe.forward);
                 float3 round = math.cross(up, toward) * (foe.seed % 2u == 0u ? 1f : -1f);
                 float gap = math.length(level);
-                foe.velocity = Walker.MoveTowards(foe.velocity, gap > 16f ? toward * 10f : gap < 9f ? round * 2f - toward * 3f : round * 3.5f, 14f * dt);
+                float3 desired = toward * math.clamp((gap - 12) * 1.2f, -3, 10) + round * (3.5f * (1 - math.smoothstep(14, 25, gap)));
+                foe.velocity = Walker.MoveTowards(Walker.Project(foe.velocity, up), desired, 14f * dt);
                 foe.position += foe.velocity * dt;
                 up = math.normalize(foe.position);
-                // it rides at head height over ground or water
-                float floor = Ship.Surface(body, up);
-                foe.position = up * math.max(floor + 0.8f, math.lerp(math.length(foe.position), floor + (foe.kind == FoeKind.Sentry ? 0.9f : Hover), math.saturate(6f * dt)));
-                foe.forward = to / distance;
+                if (body.kind == BodyKind.Rock)
+                {
+                    float floor = foe.kind == FoeKind.Sentry ? body.GroundRadius(up) : Ship.Surface(body, up);
+                    foe.position = up * (foe.kind == FoeKind.Sentry ? floor + 0.9f : math.max(floor + 0.8f, math.lerp(math.length(foe.position), floor + Hover, 1 - math.exp(-4 * dt))));
+                }
+                foe.forward = Turn(foe.forward, to / distance, 2.5f * dt);
                 if (distance > DroneReach || foe.cooldown > 0f) return false;
                 foe.cooldown = 1.4f + rnd.NextFloat(0.8f);
                 shot = Fire(foe.position, math.normalize(to + targetVelocity * (distance / DroneBolt)), float3.zero, DroneBolt, Damage(foe.kind, depth), true, 1.2f);

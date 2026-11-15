@@ -551,6 +551,7 @@ namespace Infinigame
             mesh.SetNormals(normals);
             mesh.SetUVs(0, uvs);
             mesh.SetTriangles(indices, 0);
+            if (vertices.Count > 0) mesh.RecalculateTangents();
             return mesh;
         }
 

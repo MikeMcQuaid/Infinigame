@@ -25,6 +25,7 @@ namespace Infinigame
         public Vector3 Mark { get; private set; }
         // Its journal entry, once written. While Busy the oracle is still writing.
         public Entry Result { get; private set; }
+        public string Source { get; private set; } = "";
         public bool Busy { get; private set; }
         // When Result last changed, for the HUD to reveal and later put away.
         public float Since { get; private set; } = float.MinValue;
@@ -65,22 +66,26 @@ namespace Infinigame
             // one entry per kind of thing per world, and one per world seen from afar
             string key = $"{game.Seed}/{(world < 0 ? system.Reference : world)}/{(world < 0 ? Subject : "world")}";
             Result = game.Journal.Find(entry => entry.key == key);
-            if (Result != null) return;
+            if (Result != null) { Source = "SAVED JOURNAL · NO NEW REQUEST"; return; }
             facts = world < 0
                 ? $"Subject: a {Subject}, found {Core.Scan.Place(system.Descriptor, system.Reference, at, system.Clock)}.\nThat world is {Core.Scan.Describe(body.Descriptor)}"
                 : $"Subject: a whole world, seen from {math.distance(eye, at) / 1000f:0} km away. It is {Core.Scan.Describe(system.Descriptor.bodies[world])}";
 
+            string writer = Oracle.Writer.ToUpperInvariant();
+            Source = $"ASKING {writer} · OBSERVED FACTS";
             Busy = true;
             try
             {
                 string reply = (await Oracle.Ask(Persona, facts)).Trim();
                 int line = reply.IndexOf('\n');
                 Result = new Entry { key = key, title = (line < 0 ? Subject : reply.Substring(0, line)).Trim(), text = line < 0 ? reply : reply.Substring(line).Trim() };
+                Source = $"WRITTEN BY {writer}";
                 game.Remember(Result);
             }
-            catch (Exception problem)
+            catch (Exception)
             {
-                Result = new Entry { title = "Scanner offline", text = problem.Message };
+                Source = "OBSERVED FACTS · MODEL UNAVAILABLE";
+                Result = new Entry { title = Subject, text = facts };
             }
             Busy = false;
             Since = Time.unscaledTime;

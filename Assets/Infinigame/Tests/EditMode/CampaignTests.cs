@@ -50,7 +50,7 @@ namespace Infinigame.Tests
         }
 
         [Test]
-        public void MissionsOnTheHomeWorldLeadAwayFromWhereYouWake()
+        public void MissionsUseDryBuildableSitesWithTheTowerBeyondWalkingRange()
         {
             for (uint seed = 1; seed <= 25; seed++)
             {
@@ -64,12 +64,12 @@ namespace Infinigame.Tests
                     Assert.AreEqual(SolarSystemDescriptor.Home, Campaign.World(system, stage));
                     float3 site = Campaign.Site(system, stage);
                     float walk = math.acos(math.clamp(math.dot(site, woke), -1f, 1f)) * home.radius;
-                    Assert.Greater(walk, last, $"seed {seed} stage {stage}: each is further than the last");
+                    Assert.Greater(math.distance(site, Campaign.Site(system, stage - 1)) * home.radius, 15, $"seed {seed} stage {stage}: a distinct site");
                     Assert.Greater(home.GroundRadius(site) - home.radius, 2.5f, "on dry land");
                     Assert.Greater(math.dot(home.GroundNormal(site), site), 0.9f, "and level enough to build on");
                     last = walk;
                 }
-                Assert.That(math.acos(math.dot(Campaign.Site(system, 2), woke)) * home.radius, Is.InRange(150f, 600f), "the first outpost is a short walk");
+                Assert.LessOrEqual(math.distance(Campaign.Site(system, 2), Campaign.Site(system, 1)) * home.radius, 300, "the first outpost is a short walk from the workshop");
                 Assert.Greater(last, 0.5f * math.PI * home.radius, "and the tower is round the far side");
             }
         }

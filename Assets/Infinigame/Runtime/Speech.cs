@@ -7,17 +7,12 @@ using UnityEngine;
 namespace Infinigame
 {
     // The hermit's voice. On a Mac the system's own speech reads his lines: it writes the sound
-    // to a file, and the game plays that with its other sounds so that it is mixed, muted and
-    // paused along with them. Where there is no such speech he is only read.
+    // to a file, and the game plays that with its other sounds. Speech can continue during menus. Where there is no such speech he is only read.
     public class Speech : MonoBehaviour
     {
         public static bool Muted;
-        // The command that speaks, and the voices asked for in turn until it knows one: an older
-        // man's, then whichever the system would use. Tests point the command at a stand-in.
         public static string Tool = "/usr/bin/say";
-        static readonly string[] Voices = { "Daniel (Enhanced)", "Daniel", null };
-        // which of those this computer turned out to have
-        static int known;
+        public static string Choice = "Daniel (English (UK))";
 
         AudioSource source;
         int asked;
@@ -25,8 +20,9 @@ namespace Infinigame
         void Awake()
         {
             source = gameObject.AddComponent<AudioSource>();
-            // Lower and lightly modulated to suit the machine voice.
-            source.pitch = 0.82f;
+            source.pitch = 1f;
+            // Voice previews and colony explanations are heard while their menus are open.
+            source.ignoreListenerPause = true;
         }
 
         // Says these words, in place of whatever was being said.
@@ -36,6 +32,7 @@ namespace Infinigame
             source.Stop();
             if (Muted || !File.Exists(Tool) || string.IsNullOrWhiteSpace(words)) return;
             string folder = Path.Combine(Application.temporaryCachePath, "speech");
+            string voice = Choice;
             float[] sound = null;
             int rate = 22050;
             try
@@ -46,14 +43,14 @@ namespace Infinigame
                     string script = Path.Combine(folder, $"{mine}.txt"), spoken = Path.Combine(folder, $"{mine}.wav");
                     // read from a file, so that nothing in his words can be taken for an instruction to the command
                     File.WriteAllText(script, words);
-                    for (; known < Voices.Length; known++)
+                    foreach (string chosen in string.IsNullOrEmpty(voice) ? new[] { "" } : new[] { voice, "" })
                     {
                         var start = new ProcessStartInfo { FileName = Tool, UseShellExecute = false, CreateNoWindow = true };
                         foreach (string argument in new[] { "-r", "185", "-o", spoken, $"--data-format=LEI16@{rate}", "-f", script }) start.ArgumentList.Add(argument);
-                        if (Voices[known] != null)
+                        if (chosen.Length > 0)
                         {
                             start.ArgumentList.Add("-v");
-                            start.ArgumentList.Add(Voices[known]);
+                            start.ArgumentList.Add(chosen);
                         }
                         using var process = Process.Start(start);
                         if (!process.WaitForExit(20000))
@@ -76,7 +73,6 @@ namespace Infinigame
             if (mine != asked || sound == null || sound.Length == 0) return;
             Destroy(source.clip);
             source.clip = AudioClip.Create("Speech", sound.Length, 1, rate, false);
-            for (int i = 0; i < sound.Length; i++) sound[i] *= 0.75f + 0.25f * Mathf.Sin(2 * Mathf.PI * 45 * i / rate);
             source.clip.SetData(sound, 0);
             source.Play();
         }

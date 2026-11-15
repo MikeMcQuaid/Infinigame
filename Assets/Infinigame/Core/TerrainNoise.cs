@@ -138,14 +138,14 @@ namespace Infinigame.Core
 
         // How far from its centre a blast shows, in metres: molten rock and meltwater run furthest.
         public static float Reach(in Blast blast) =>
-            blast.scar == Scar.Pad ? blast.crater.w + Apron(blast.crater.w) : (blast.scar == Scar.Char || blast.scar == Scar.Steam ? 1.8f : 3.6f) * blast.crater.w;
+            blast.scar == Scar.Pad ? blast.crater.w + Apron(blast.crater.w) : (blast.scar == Scar.Melt ? 3.6f : 1.8f) * blast.crater.w;
 
         // What one blast has made of the height of the ground at a direction on a body of this
         // radius, after those before it. Its crater is added to height: a bowl nearly half as deep
         // as it is wide, with a low rim thrown up round it. pool rises to the surface of any
         // meltwater standing in it. flat gathers the level a pad was flattened to (x) and how far
         // the ground has been brought to it (y, 0 to 1). The ground is then
-        // lerp(max(height, pool), flat.x, flat.y): water fills the holes, and pads lie over everything.
+        // lerp(max(height, pool), flat.x, flat.y): liquid fills holes; later blasts can cut through earlier pads.
         public static void Shape(float3 dir, in Blast blast, float radius, ref float height, ref float pool, ref float2 flat)
         {
             float metres = math.distance(dir, blast.crater.xyz) * radius, size = blast.crater.w, across = metres / size;
@@ -160,8 +160,14 @@ namespace Infinigame.Core
             }
             if (across >= 1.4f) return;
             float bowl = math.square(1f - math.square(math.min(across, 1f)));
-            height += size * (0.08f * math.smoothstep(0.7f, 1f, across) * (1f - math.smoothstep(1f, 1.4f, across)) - 0.45f * bowl);
-            if (blast.scar == Scar.Melt && across < blast.pool) pool = math.max(pool, blast.level);
+            float cut = size * (0.08f * math.smoothstep(0.7f, 1f, across) * (1f - math.smoothstep(1f, 1.4f, across)) - 0.45f * bowl);
+            height += cut;
+            flat.x += cut;
+            if ((blast.scar == Scar.Melt || blast.scar == Scar.Lava) && across < blast.pool)
+            {
+                pool = math.max(pool, blast.level);
+                if (flat.y > 0) flat.x = math.max(flat.x, blast.level);
+            }
         }
 
         // Rock struck at this time is stone cold. Rock that ran this far down the order has always
@@ -184,24 +190,23 @@ namespace Infinigame.Core
                 paint.x = math.max(paint.x, faint * (1f - math.smoothstep(1f, 1.8f, across)));
                 return;
             }
-            // Molten rock fills the bowl at once and spills a little over its rim. From there it
-            // creeps downhill in a tongue that narrows to its tip, the further the steeper the
-            // ground. Meltwater runs the same way.
+            if (blast.scar == Scar.Lava)
+            {
+                float liquid = 1 - math.smoothstep(blast.pool * 0.75f, blast.pool, across);
+                if (liquid <= 0) return;
+                paint.y = math.max(paint.y, liquid);
+                paint.w = math.max(paint.w, faint * liquid);
+                born = math.max(born, blast.born);
+                return;
+            }
+            // Meltwater wets a narrow downhill run beyond its pool.
             float slope = math.length(blast.downhill), run = math.clamp(8f * slope, 1.3f, 3.5f);
             if (across > run + 2f * spread / wide) return;
             float order = 1f - math.smoothstep(1f, 1.3f, across), along = math.dot(offset, blast.downhill) / (math.max(slope, 1e-4f) * wide * run);
             if (along > 0f && along < 1f)
                 order = math.max(order, (1f - 0.8f * along) * (1f - math.smoothstep(0.4f, 1f,
                     math.length(offset - blast.downhill * (along * wide * run / math.max(slope, 1e-4f))) / (wide * (0.9f - 0.45f * along)))));
-            if (blast.scar == Scar.Melt)
-            {
-                paint.z = math.max(paint.z, 0.49f * faint * math.smoothstep(0.15f, 0.4f, order));
-                return;
-            }
-            // the newest rock to have run here is the hot one, unless it only brushed past older
-            if (order >= 0.5f || (paint.y < 0.5f && order >= paint.y)) born = math.max(born, blast.born);
-            paint.y = math.max(paint.y, order);
-            paint.w = math.max(paint.w, faint * math.smoothstep(0f, 0.15f, order));
+            paint.z = math.max(paint.z, 0.49f * faint * math.smoothstep(0.15f, 0.4f, order));
         }
 
         static float Fbm(float3 q, int octaves)

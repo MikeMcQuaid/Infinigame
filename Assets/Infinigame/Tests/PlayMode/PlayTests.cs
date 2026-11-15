@@ -18,7 +18,7 @@ using UnityEngine.TestTools;
 namespace Infinigame.Tests
 {
     // Drives the real scene with scripted controls and a scripted oracle. Any error logged while a test runs fails it.
-    public class PlayTests
+    public partial class PlayTests
     {
         const int Home = SolarSystemDescriptor.Home, Moon = SolarSystemDescriptor.Moon;
 
@@ -43,11 +43,11 @@ namespace Infinigame.Tests
             Game.Prefs = "infinigame-test";
             // most tests want the whole game open to them: every mission but the last done, and all that those win
             Game.Start = Campaign.Citadel;
-            foreach (string kept in new[] { "detail", "muted", "silent" }) PlayerPrefs.DeleteKey($"{Game.Prefs}.{kept}");
+            foreach (string kept in new[] { "detail", "muted", "silent", "voice" }) PlayerPrefs.DeleteKey($"{Game.Prefs}.{kept}");
             foreach (string kept in new[] { "test-save.json", "test-save2.json", "test-save3.json", Oracle.Store }) File.Delete(Path.Combine(Application.persistentDataPath, kept));
             // no test may spend a real player's plan: the oracle answers from a script, and until a
             // test supplies stand-ins there are no tools for it to run
-            Oracle.Tools[0] = Oracle.Tools[1] = Oracle.Tools[2] = "not-installed";
+            Oracle.Tools[0] = Oracle.Tools[1] = "not-installed";
             // nor is anything said aloud unless a test listens for it
             Speech.Tool = "not-installed";
             asked = 0;
@@ -56,7 +56,7 @@ namespace Infinigame.Tests
                 asked++;
                 lastPersona = persona;
                 lastPrompt = prompt;
-                return Task.FromResult(persona.Contains("autonomous robot")
+                return Task.FromResult(persona.Contains("recovery robot")
                     ? "Well now, a visitor. Sit by the fire and tell me which of the lights up there you came down from."
                     : "Lantern Fir\nA resinous conifer that folds its lower boughs at dusk. Herds shelter beneath it when the storms come in off the sea.");
             };
@@ -84,9 +84,8 @@ namespace Infinigame.Tests
             QualitySettings.SetQualityLevel(quality);
             Game.SaveFile = "save.json";
             Oracle.Ask = Oracle.Run;
-            Oracle.Tools[0] = "ant";
             Oracle.Tools[1] = "codex";
-            Oracle.Tools[2] = "claude";
+            Oracle.Tools[0] = "claude";
             Speech.Tool = "/usr/bin/say";
             Speech.Muted = false;
             (Oracle.Hosts[0], Oracle.Hosts[1], Oracle.Hosts[2]) = ("https://api.anthropic.com", "https://api.openai.com", "https://auth.openai.com");
@@ -517,7 +516,7 @@ namespace Infinigame.Tests
             UnityEngine.UI.Text Shown(string words) => hud.GetComponentsInChildren<UnityEngine.UI.Text>().FirstOrDefault(text => text.enabled && text.text == words);
             float3 up = math.normalize(Player.walker.position), towards = math.normalize(Walker.Project(outpost.Position - Player.walker.position, up));
             // the outpost is over the horizon of so small a world from where the player wakes
-            Assert.Greater(math.distance(Player.walker.position, outpost.Position), 150f);
+            Assert.Greater(math.distance(Player.walker.position, outpost.Position), 100f);
             Assert.Less(math.dot(math.normalize(outpost.Position), up) * Body.GroundRadius(math.normalize(outpost.Position)), math.length(Player.walker.position) - 5f);
 
             // facing it, its mark stands in the sky over the way there, with how far it is
@@ -754,6 +753,8 @@ namespace Infinigame.Tests
             var hermit = game.Hermit;
             Assert.Less(math.distance(hermit.Position, Player.walker.position), 80f, "the camp is a short walk from the landing site");
             Assert.Greater(math.distance(hermit.Position, Player.ship.position), 8f, "and clear of the ship");
+            Stand(math.normalize(hermit.Position + World(math.normalize(hermit.Position)) * 12f), World(math.normalize(hermit.Position)));
+            yield return null;
             Assert.IsFalse(hermit.Near);
             Stand(math.normalize(hermit.Position + World(math.normalize(hermit.Position)) * 2.5f), World(math.normalize(hermit.Position)));
             yield return null;
@@ -848,9 +849,10 @@ namespace Infinigame.Tests
                 for (float t = 0; t < 25f && !Player.ship.landed; t += Time.deltaTime) yield return null;
                 Assert.IsTrue(Player.ship.landed, "down");
             }
+            int existing = Pads();
             // on level ground there is no need
             yield return Land(Body.FindLanding(game.Seed + 1u));
-            Assert.AreEqual(0, Pads());
+            Assert.AreEqual(existing, Pads());
 
             // the steepest dry ground of a few thousand places, well away from the hermit's camp
             var rnd = new Unity.Mathematics.Random(5);
@@ -864,8 +866,8 @@ namespace Infinigame.Tests
             }
             Assert.IsTrue(Ship.Rough(Body, steep));
             yield return Land(steep);
-            Assert.AreEqual(1, Pads(), "a charge went down first");
-            var pad = Body.blasts.Single(blast => blast.scar == Scar.Pad);
+            Assert.AreEqual(existing + 1, Pads(), "a charge went down first");
+            var pad = Body.blasts.Last(blast => blast.scar == Scar.Pad);
             Assert.Less(math.distance(pad.crater.xyz, math.normalize(Player.ship.position)) * Body.radius, 3f, "and the ship is on the pad it made");
             Assert.Greater(math.dot(math.rotate(Player.ship.rotation, new float3(0, 1, 0)), math.normalize(Player.ship.position)), 0.98f, "sitting level");
             Assert.AreEqual(Player.MaxHull, Player.hull, 0.5f, "without a scratch");
@@ -910,7 +912,7 @@ namespace Infinigame.Tests
             // and the hermit is in the seat beside the pilot's, without his staff
             var copilot = cockpit.transform.Find("Copilot/Hermit");
             Assert.IsNotNull(copilot);
-            Assert.IsNotNull(copilot.Find("Visor"));
+            Assert.IsNotNull(copilot.Find("Torso/Neck/Head/Three optics"));
         }
 
         [UnityTest]
@@ -947,6 +949,9 @@ namespace Infinigame.Tests
             yield return Until(() => Voice() != null);
             Assert.AreEqual(game.Mission.brief, File.ReadAllText(Speech.Tool + ".words"), "what he says of the mission is read out");
             Assert.AreEqual(2205, Voice().clip.samples);
+            Assert.AreEqual("Daniel (English (UK))", Speech.Choice);
+            Assert.AreEqual(1f, Voice().pitch);
+            Assert.IsTrue(Voice().ignoreListenerPause);
             // and so is whatever the model answers for him
             yield return Press(new Controls { typed = "1" });
             yield return Until(() => File.ReadAllText(Speech.Tool + ".words").StartsWith("Well now"));
@@ -959,7 +964,7 @@ namespace Infinigame.Tests
             Assert.IsFalse(File.Exists(Speech.Tool + ".words"));
         }
 
-        // A stand-in for ant or codex: it records how it was called and answers as told.
+        // A stand-in for Claude Code or Codex: it records how it was called and answers as told.
         static string StandIn(string name, string script)
         {
             string folder = Path.Combine(Application.temporaryCachePath, "stand-in"), tool = Path.Combine(folder, name);
@@ -1078,46 +1083,9 @@ namespace Infinigame.Tests
         }
 
         [UnityTest]
-        public IEnumerator TheOracleAsksClaudeThroughAntAndThePlayersOwnSignIn()
+        public IEnumerator TheOracleAsksClaudeThroughClaudeCode()
         {
-            Oracle.Tools[0] = StandIn("ant-signed-in", "printf '{\"text\":\"A fir, it\u2019s said.\",\"stop_reason\":\"end_turn\",\"input\":10,\"output\":5}\\n'");
-            var reply = Oracle.Run("@Be a \"field\" guide.", "Describe a fir.\nBriefly, on C:\\temp.");
-            yield return Finish(reply);
-            Assert.AreEqual("A fir, it\u2019s said.", reply.Result, "no key is needed: ant finds the sign-in itself, and its words arrive as it wrote them");
-            string[] asked = File.ReadAllLines(Oracle.Tools[0] + ".args");
-            CollectionAssert.AreEqual(new[] { "messages", "create", "--model", "claude-haiku-5-5" }, asked.Take(4));
-            // every value goes as JSON, and a leading @ is escaped so ant does not take it for a file to send
-            CollectionAssert.Contains(asked, "\"\\u005c@Be a \\\"field\\\" guide.\"");
-            CollectionAssert.Contains(asked, "{\"role\":\"user\",\"content\":\"Describe a fir.\\nBriefly, on C:\\u005ctemp.\"}");
-            Assert.AreEqual("ASKED 1 TIME   ·   10 TOKENS IN   ·   5 OUT", Oracle.Used(0), "what it took is counted");
-
-            // the model is the player's to choose
-            Oracle.NextModel(0);
-            reply = Oracle.Run("Be a field guide.", "Describe a fir.");
-            yield return Finish(reply);
-            Assert.AreEqual("claude-sonnet-5-5", File.ReadAllLines(Oracle.Tools[0] + ".args")[3]);
-
-            Oracle.Tools[0] = StandIn("ant-signed-out", "echo 'invalid x-api-key'\necho 'POST \"https://api.anthropic.com/v1/messages\": 401 Unauthorized' >&2\nexit 1");
-            var refused = Oracle.Run("", "");
-            yield return Finish(refused);
-            StringAssert.Contains("Not signed in to Claude. Open Claude or ChatGPT on the menu", refused.Exception.InnerException.Message);
-
-            Oracle.Tools[0] = StandIn("ant-out-of-credit", "echo 'Your credit balance is too low to access the Anthropic API.'\necho 'POST \"https://api.anthropic.com/v1/messages\": 400 Bad Request' >&2\nexit 1");
-            var broke = Oracle.Run("", "");
-            yield return Finish(broke);
-            StringAssert.Contains("credit balance is too low", broke.Exception.InnerException.Message);
-
-            Oracle.Tools[0] = "ant-that-is-not-installed";
-            var none = Oracle.Run("", "");
-            yield return Finish(none);
-            StringAssert.Contains("install Anthropic's ant", none.Exception.InnerException.Message);
-            StringAssert.Contains("2 TIMES", Oracle.Used(0), "only answers are counted");
-        }
-
-        [UnityTest]
-        public IEnumerator TheOracleAsksClaudeThroughClaudeCodeWhereAntHoldsNoSignIn()
-        {
-            Oracle.Tools[2] = StandIn("claude-signed-in", "if [ \"$1\" = auth ]; then echo '{ \"loggedIn\": true, \"authMethod\": \"claude.ai\" }'; else " +
+            Oracle.Tools[0] = StandIn("claude-signed-in", "if [ \"$1\" = auth ]; then echo '{ \"loggedIn\": true, \"authMethod\": \"claude.ai\" }'; else " +
                 "printf '%s\\n' '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"A fir, by plan.\",\"usage\":{\"input_tokens\":2,\"cache_creation_input_tokens\":650,\"output_tokens\":7}}'; fi");
             var status = Oracle.Status(0);
             yield return Finish(status);
@@ -1126,23 +1094,16 @@ namespace Infinigame.Tests
             yield return Finish(reply);
             Assert.AreEqual("A fir, by plan.", reply.Result);
             // it is a coding agent told to be nothing of the kind: the persona for its instructions, no tools, nothing of the player's and nothing kept
-            string[] asked = File.ReadAllLines(Oracle.Tools[2] + ".args");
+            string[] asked = File.ReadAllLines(Oracle.Tools[0] + ".args");
             CollectionAssert.AreEqual(new[] { "-p", "Describe a fir.", "--model", "claude-haiku-5-5", "--effort", "low", "--system-prompt", "Be a field guide.", "--tools", "" }, asked.Take(10));
             foreach (string flag in new[] { "--restricted", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence" }) CollectionAssert.Contains(asked, flag);
             Assert.AreEqual("ASKED 1 TIME   ·   652 TOKENS IN   ·   7 OUT", Oracle.Used(0), "counted, and not priced: a plan pays for it");
 
-            // an ant that holds a sign-in comes first
-            Oracle.Tools[0] = StandIn("ant-signed-in", "printf '{\"text\":\"A fir, by credit.\",\"stop_reason\":\"end_turn\",\"input\":10,\"output\":5}\\n'");
-            reply = Oracle.Run("Be a field guide.", "Describe a fir.");
-            yield return Finish(reply);
-            Assert.AreEqual("A fir, by credit.", reply.Result);
-            Oracle.Tools[0] = "not-installed";
-
-            Oracle.Tools[2] = StandIn("claude-signed-out", "echo '{\"type\":\"result\",\"is_error\":true,\"result\":\"Not logged in · Please run /login\"}'\nexit 1");
+            Oracle.Tools[0] = StandIn("claude-signed-out", "echo '{\"type\":\"result\",\"is_error\":true,\"result\":\"Not logged in · Please run /login\"}'\nexit 1");
             var refused = Oracle.Run("", "Anything.");
             yield return Finish(refused);
             StringAssert.Contains("Not signed in to Claude. Open Claude or ChatGPT on the menu", refused.Exception.InnerException.Message);
-            Oracle.Tools[2] = StandIn("claude-spent", "echo '{\"type\":\"result\",\"is_error\":true,\"result\":\"You have reached your usage limit.\"}'\nexit 1");
+            Oracle.Tools[0] = StandIn("claude-spent", "echo '{\"type\":\"result\",\"is_error\":true,\"result\":\"You have reached your usage limit.\"}'\nexit 1");
             var spent = Oracle.Run("", "Anything.");
             yield return Finish(spent);
             StringAssert.Contains("usage limit", spent.Exception.InnerException.Message);
@@ -1324,9 +1285,8 @@ namespace Infinigame.Tests
             var opened = new List<Dictionary<string, string>>();
             using var server = StandInServers(opened);
             // none of the makers' tools holds a sign-in until it has been told to sign in
-            Oracle.Tools[0] = StandIn("ant-login", "if [ \"$1\" = profile ]; then [ -f \"$0.in\" ] && echo default; else touch \"$0.in\"; fi; exit 0");
             Oracle.Tools[1] = StandIn("codex-login", "if [ \"$2\" = status ]; then [ -f \"$0.in\" ] || exit 1; echo 'Logged in using ChatGPT'; else touch \"$0.in\"; fi; exit 0");
-            Oracle.Tools[2] = StandIn("claude-login", "if [ \"$2\" = status ]; then [ -f \"$0.in\" ] && echo '{ \"loggedIn\": true }' || echo '{ \"loggedIn\": false }'; else touch \"$0.in\"; fi; exit 0");
+            Oracle.Tools[0] = StandIn("claude-login", "if [ \"$2\" = status ]; then [ -f \"$0.in\" ] && echo '{ \"loggedIn\": true }' || echo '{ \"loggedIn\": false }'; else touch \"$0.in\"; fi; exit 0");
             foreach (string tool in Oracle.Tools) File.Delete(tool + ".in");
 
             // the settings page says how the player stands with each, and which model it would use
@@ -1383,27 +1343,25 @@ namespace Infinigame.Tests
             Assert.IsTrue(File.Exists(Oracle.Tools[1] + ".in"), "codex was told to sign in");
             CollectionAssert.AreEqual(new[] { "login" }, File.ReadAllLines(Oracle.Tools[1] + ".args").Take(1));
 
-            // back to the settings, and on to Claude's page, where Claude Code or ant does the signing in
+            // back to the settings, and on to Claude's page, where Claude Code does the signing in
             yield return Press(new Controls { menu = true });
             Assert.AreEqual(Game.Settings, game.Page);
             Assert.AreEqual(6, game.Selected);
             yield return Press(new Controls { up = true });
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual("Claude", game.Page);
-            CollectionAssert.AreEqual(new[] { "Sign in with Claude Code", "Sign in with ant" }, game.Items.Skip(3).Take(2));
+            CollectionAssert.AreEqual(new[] { "Sign in with Claude Code" }, game.Items.Skip(3).Take(1));
             for (int i = 0; i < 3; i++) yield return Press(new Controls { down = true });
             StringAssert.Contains("CLAUDE PLAN", game.Hint);
             yield return Press(new Controls { confirm = true });
             yield return Until(() => game.Standing.StartsWith("SIGNED IN"));
             StringAssert.StartsWith("SIGNED IN WITH CLAUDE CODE   ·   IN USE", game.Standing);
-            CollectionAssert.AreEqual(new[] { "auth", "status" }, File.ReadAllLines(Oracle.Tools[2] + ".args"), "it was told to sign in, then asked how that went");
-            Assert.IsTrue(File.Exists(Oracle.Tools[2] + ".in"));
+            CollectionAssert.AreEqual(new[] { "auth", "status" }, File.ReadAllLines(Oracle.Tools[0] + ".args"), "it was told to sign in, then asked how that went");
+            Assert.IsTrue(File.Exists(Oracle.Tools[0] + ".in"));
             Assert.AreEqual(0, Oracle.Voice);
             yield return Press(new Controls { down = true });
-            StringAssert.Contains("API CREDITS", game.Hint);
-            yield return Press(new Controls { confirm = true });
-            yield return Until(() => game.Standing.StartsWith("SIGNED IN WITH ANT"));
-            Assert.IsTrue(File.Exists(Oracle.Tools[0] + ".in"), "ant was told to sign in");
+            Assert.AreEqual("Use the key on the clipboard", game.Items[game.Selected]);
+            Assert.IsFalse(game.Items.Any(item => item.Contains("with ant")));
 
             // either can be had to write, signed in or not, and the choice outlasts the game
             yield return Press(new Controls { menu = true });
@@ -1447,7 +1405,11 @@ namespace Infinigame.Tests
             yield return Press(new Controls { down = true });
             Assert.AreEqual("SPOKEN VOICES   ·   ON", game.Items[4]);
             yield return Press(new Controls { confirm = true });
-            Assert.AreEqual("SPOKEN VOICES   ·   OFF", game.Items[4]);
+            Assert.AreEqual("Voice", game.Page);
+            for (int i = 0; i < 3; i++) yield return Press(new Controls { down = true });
+            yield return Press(new Controls { confirm = true });
+            Assert.IsTrue(Speech.Muted);
+            yield return Press(new Controls { menu = true });
 
             // the device remembers detail, music and speech for whoever plays next
             (Music.Muted, Speech.Muted) = (false, false);
@@ -1464,7 +1426,7 @@ namespace Infinigame.Tests
             var hands = Camera.main.transform.Find("Gauntlets");
             Assert.IsNotNull(hands);
             Assert.IsTrue(hands.gameObject.activeSelf);
-            Assert.IsNotNull(hands.Find("Right gauntlet/Fluted plate"));
+            Assert.IsNotNull(hands.Find("Right gauntlet/Armour"));
             yield return Press(new Controls { fire = true });
             Assert.Greater(hands.localPosition.z, 0);
             Player.flying = true;
@@ -1852,7 +1814,7 @@ namespace Infinigame.Tests
             yield return Seconds(0.5f);
             Assert.Greater(Body.craters.Length, 0);
             Assert.Less(Body.GroundRadius(up), before - 1f, "the ground under the ship has been dug out");
-            Assert.AreEqual(2.5f * Combat.Guns[0].blast, Body.craters[0].w, 1e-3f, "a ship's guns tear far bigger holes than their blast alone");
+            Assert.AreEqual(2.5f * Combat.Guns[0].blast, Body.blasts.Last(blast => blast.scar != Scar.Pad).crater.w, 1e-3f, "a ship's guns tear far bigger holes than their blast alone");
 
             // someone standing in the crater stands on its floor
             Stand(up, World(up));
@@ -2317,7 +2279,7 @@ namespace Infinigame.Tests
             yield return Press(new Controls { down = true });
             yield return Shot("53-pause-menu", 0f, 1f);
             yield return Press(new Controls { down = true });
-            Oracle.Tools[0] = StandIn("ant-somebody", "echo default");
+            Oracle.Tools[0] = StandIn("claude-somebody", "echo '{\"loggedIn\":true}'");
             Oracle.Tools[1] = StandIn("codex-somebody", "echo 'Logged in using ChatGPT'");
             yield return Press(new Controls { confirm = true });
             yield return Shot("54-settings", 0f, 1.5f);

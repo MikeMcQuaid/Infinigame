@@ -41,7 +41,7 @@ namespace Infinigame.Core
             direction = math.normalize(direction);
             return new WalkerState
             {
-                position = direction * math.max(body.GroundRadius(direction), body.SeaRadius - FloatDepth),
+                position = direction * body.GroundRadius(direction),
                 forward = math.normalize(Project(facing, direction)), fuel = JetpackFuel, grounded = true,
             };
         }
@@ -55,21 +55,15 @@ namespace Infinigame.Core
             if (input.riding) move = new float2(0f, math.max(move.y, -0.25f));
             float3 heading = s.forward * move.y + math.cross(up, s.forward) * move.x;
             float3 level = Project(s.velocity, up);
-            float climb = math.dot(s.velocity, up), r = math.length(s.position), floating = body.SeaRadius - FloatDepth;
+            float r = math.length(s.position);
             bool jumped = false;
 
-            s.swimming = body.GroundRadius(up) < floating - 0.2f && r < floating + 0.5f;
-            if (s.swimming)
-            {
-                // buoyancy is a damped spring that holds the head above the waves
-                climb += ((floating - r) * 6f - climb * 4f) * dt;
-                s.velocity = MoveTowards(level, heading * SwimSpeed, Acceleration * 0.3f * dt) + up * climb;
-                s.grounded = false;
-            }
-            else if (s.grounded)
+            s.swimming = body.SeaRadius > 0 && r + EyeHeight < body.SeaRadius;
+            if (s.grounded)
             {
                 // climbing costs up to two fifths of your pace, going down costs nothing
                 float pace = (input.riding ? Tuning.BikeSpeed : input.sprint ? Tuning.SprintSpeed : Tuning.WalkSpeed) * (1f - 0.4f * math.saturate(math.dot(heading, -s.ground) / 0.9f));
+                if (s.swimming) pace *= 0.65f;
                 // a jump taken the moment the ground is touched keeps all the speed the leap before it had
                 if (!input.jump) s.velocity = MoveTowards(level, heading * pace, (input.riding ? BikeAcceleration : Acceleration) * dt);
                 else
@@ -112,12 +106,14 @@ namespace Infinigame.Core
                 s.fuel -= dt;
             }
 
+            // Water slows motion but supplies no flotation. Thrusters still work under pressure.
+            if (s.swimming && !s.grounded) s.velocity *= math.exp(-0.6f * dt);
             s.position += s.velocity * dt;
             up = math.normalize(s.position);
             float gap = math.length(s.position) - body.GroundRadius(up);
             bool touching = gap <= 0f || (s.grounded && !jumped && gap < StepDown);
             s.height = touching ? 0f : gap;
-            if (touching || s.swimming) s.fuel = math.min(JetpackFuel, s.fuel + JetpackRecharge * dt);
+            if (touching) s.fuel = math.min(JetpackFuel, s.fuel + JetpackRecharge * dt);
             if (touching)
             {
                 s.position = up * body.GroundRadius(up);
@@ -126,7 +122,7 @@ namespace Infinigame.Core
                 // where you can always clamber out of the water
                 s.grounded = math.dot(s.ground, up) >= WalkableSlope || math.length(s.position) < body.SeaRadius + 0.5f;
                 float into = math.dot(s.velocity, s.ground);
-                s.impact = math.max(s.impact, -into);
+                s.impact = math.max(s.impact, s.swimming ? math.min(-into, SoftLanding) : -into);
                 if (s.grounded) s.velocity = Project(s.velocity, up);
                 else if (into < 0f) s.velocity -= s.ground * into;
             }

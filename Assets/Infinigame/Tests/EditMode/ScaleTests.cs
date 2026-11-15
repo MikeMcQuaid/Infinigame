@@ -378,38 +378,27 @@ namespace Infinigame.Tests
         }
 
         [Test]
-        public void MoltenRockFillsTheBowlAndCreepsDownhill()
+        public void MoltenRockCollectsInALimitedPoolAndOnlyFreshBlastsReheatIt()
         {
             var planet = Fresh;
-            // a rock slope, steep enough to run down
             float3 centre = Check.Directions(40000).First(direction => Scan.Terrain(planet, direction) == "mountain rock"
                 && math.dot(planet.GroundNormal(direction), direction) < 0.92f);
             planet.Dig(centre, 8f, 100f);
             var blast = planet.blasts[0];
             Assert.AreEqual(Scar.Lava, blast.scar);
-            float3 downhill = math.normalize(blast.downhill), below = Step(centre, downhill, 16f, planet), above = Step(centre, -downhill, 16f, planet);
-            Assert.AreEqual(0f, math.dot(downhill, centre), 1e-3f, "downhill lies along the ground");
-            Assert.Less(planet.GroundRadius(below, true), planet.GroundRadius(above, true) - 4f);
-
+            Assert.That(blast.pool, Is.InRange(0.3f, 0.7f));
+            Assert.Less(blast.level + planet.radius, planet.GroundRadius(centre, true));
             float4 bowl = Painted(planet, centre, 0.5f, out float born);
-            Assert.AreEqual(new float2(1f, 1f), bowl.yw, "the bowl is molten from the first");
+            Assert.AreEqual(new float2(1f, 1f), bowl.yw);
             Assert.AreEqual(100f, born);
-            Assert.AreEqual(0f, bowl.x, "not soot");
-            float4 tongue = Painted(planet, below, 0.5f, out born), tip = Painted(planet, Step(centre, downhill, 22f, planet), 0.5f, out _);
-            Assert.That(tongue.y, Is.InRange(0.25f, 0.9f), "it reaches downhill later");
-            Assert.AreEqual(1f, tongue.w);
-            Assert.AreEqual(100f, born);
-            Assert.Less(tip.y, tongue.y, "and further down later still");
-            Assert.AreEqual(0f, Painted(planet, above, 0.5f, out _).w, "but never uphill");
-            Assert.AreEqual(0f, Painted(planet, Step(centre, downhill, 8f * 3.7f, planet), 0.5f, out _).w, "nor for ever");
-            Assert.Greater(TerrainNoise.Reach(blast), 22f);
-
-            // newer rock is the hot rock, but an older flow is not reheated by one that only brushes it
-            planet.Dig(Step(centre, downhill, 16f + 8f * 1.25f, planet), 8f, 200f);
-            Painted(planet, below, 0.5f, out born);
-            Assert.AreEqual(100f, born);
-            planet.Dig(below, 8f, 300f);
-            Painted(planet, below, 0.5f, out born);
+            Assert.AreEqual(0f, bowl.x);
+            float3 along = World.Tangent(centre);
+            Assert.AreEqual(0f, Painted(planet, Step(centre, along, 9f, planet), 0.5f, out _).w, "the pool is smaller than the hole");
+            planet.Dig(Step(centre, along, 25f, planet), 8f, 200f);
+            Painted(planet, centre, 0.5f, out born);
+            Assert.AreEqual(100f, born, "a distant blast does not reheat it");
+            planet.Dig(centre, 8f, 300f);
+            Painted(planet, centre, 0.5f, out born);
             Assert.AreEqual(300f, born);
         }
 
@@ -499,12 +488,12 @@ namespace Infinigame.Tests
             foreach (float metres in new[] { 8f, 10f, 12f })
                 Assert.AreEqual(dug.GroundRadius(Step(centre, along, metres, planet)), planet.GroundRadius(Step(centre, along, metres, planet)), "the walls and the rim are untouched");
 
-            // a blast on the pad leaves it level, though it digs what lies beyond
+            // a later blast cuts through both the pad and the ground beyond
             float3 outside = Step(centre, along, 12f, planet);
             float before = planet.GroundRadius(outside);
             planet.Dig(Step(centre, along, 6f, planet), 10f);
-            Assert.AreEqual(floor, planet.GroundRadius(centre), 2e-3f);
-            Assert.AreEqual(floor, planet.GroundRadius(Step(centre, along, 3f, planet)), 2e-3f);
+            Assert.Less(planet.GroundRadius(centre), floor - 1f);
+            Assert.Less(planet.GroundRadius(Step(centre, along, 3f, planet)), floor - 1f);
             Assert.Less(planet.GroundRadius(outside), before - 1.5f);
 
             // craters are forgotten in the end, pads are not

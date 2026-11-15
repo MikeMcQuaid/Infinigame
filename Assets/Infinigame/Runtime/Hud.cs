@@ -26,7 +26,7 @@ namespace Infinigame
             ("ON FOOT", new[]
             {
                 "W A S D|Run", "Mouse|Look", "Space|Jump, hold for thrusters", "W  aloft|Fly where you look", "Shift|Sprint", "F|Talk, take, board the ship", "Click|Fire", "R|Toggle fitted cloak",
-                "1 2 3 4|Fists, beam, missiles, rail", "B|Colony and workshop", "Right click|Scan what you face",
+                "1 2 3 4|Fists, beam, missiles, rail", "B|Colony and workshop", "Right click|Scan what you face", "V|First or third person",
             }),
             ("IN THE SHIP", new[]
             {
@@ -135,7 +135,7 @@ namespace Infinigame
 
             // how deep the run has gone and how nearly the warp drive is charged
             run = Group(root, Vector2.one, new Vector2(-56f, -48f), new Vector2(420f, 30f));
-            runText = Label(run.transform, Vector2.one, Vector2.zero, new Vector2(1000f, 18f), 13, TextAnchor.UpperRight, Dim);
+            runText = Label(run.transform, Vector2.one, Vector2.zero, new Vector2(1000f, 36f), 13, TextAnchor.UpperRight, Dim);
             Fill(run.transform, Vector2.one, new Vector2(0f, -26f), new Vector2(220f, 3f), Faint);
             charge = Fill(run.transform, Vector2.one, new Vector2(0f, -26f), new Vector2(220f, 3f), Accent);
 
@@ -200,16 +200,16 @@ namespace Infinigame
             Stretch(Fill(card.transform, centre, Vector2.zero, Vector2.zero, Glass, panel));
             var bar = Fill(card.transform, Vector2.zero, Vector2.zero, new Vector2(3f, 0f), Accent).rectTransform;
             bar.anchorMax = topLeft;
-            cardHead = Label(card.transform, topLeft, new Vector2(30f, -24f), new Vector2(440f, 18f), 13, TextAnchor.UpperLeft, Accent);
-            cardTitle = Label(card.transform, topLeft, new Vector2(30f, -48f), new Vector2(440f, 40f), 30, TextAnchor.UpperLeft, Ink);
-            cardBody = Label(card.transform, topLeft, new Vector2(30f, -100f), new Vector2(440f, 200f), 19, TextAnchor.UpperLeft, Ink);
+            cardHead = Label(card.transform, topLeft, new Vector2(30f, -24f), new Vector2(440f, 36f), 13, TextAnchor.UpperLeft, Accent);
+            cardTitle = Label(card.transform, topLeft, new Vector2(30f, -68f), new Vector2(440f, 40f), 30, TextAnchor.UpperLeft, Ink);
+            cardBody = Label(card.transform, topLeft, new Vector2(30f, -120f), new Vector2(440f, 200f), 19, TextAnchor.UpperLeft, Ink);
             cardBody.lineSpacing = 1.15f;
             cardFoot = Label(card.transform, Vector2.zero, new Vector2(30f, 20f), new Vector2(440f, 16f), 12, TextAnchor.LowerLeft, Dim);
 
-            talk = Group(root, bottom, new Vector2(0f, 64f), new Vector2(1080f, 250f));
+            talk = Group(root, bottom, new Vector2(0f, 64f), new Vector2(1080f, 274f));
             Stretch(Fill(talk.transform, centre, Vector2.zero, Vector2.zero, Glass, panel));
-            speaker = Label(talk.transform, topLeft, new Vector2(38f, -26f), new Vector2(1000f, 18f), 13, TextAnchor.UpperLeft, Accent);
-            line = Label(talk.transform, topLeft, new Vector2(38f, -54f), new Vector2(1004f, 124f), 23, TextAnchor.UpperLeft, Ink);
+            speaker = Label(talk.transform, topLeft, new Vector2(38f, -26f), new Vector2(1000f, 36f), 13, TextAnchor.UpperLeft, Accent);
+            line = Label(talk.transform, topLeft, new Vector2(38f, -78f), new Vector2(1004f, 124f), 23, TextAnchor.UpperLeft, Ink);
             line.lineSpacing = 1.12f;
             Fill(talk.transform, Vector2.zero, new Vector2(38f, 62f), new Vector2(1004f, 1f), Faint);
             draft = Label(talk.transform, Vector2.zero, new Vector2(38f, 20f), new Vector2(760f, 30f), 20, TextAnchor.MiddleLeft, Ink);
@@ -233,7 +233,7 @@ namespace Infinigame
             Stretch(Fill(menu.transform, centre, Vector2.zero, Vector2.zero, Shade));
             menuTitle = Label(menu.transform, centre, new Vector2(0f, 250f), new Vector2(1600f, 90f), 62, TextAnchor.MiddleCenter, Ink);
             menuSub = Label(menu.transform, centre, new Vector2(0f, 178f), new Vector2(1600f, 26f), 16, TextAnchor.MiddleCenter, Dim);
-            menuNote = Label(menu.transform, centre, new Vector2(0f, 150f), new Vector2(1600f, 52f), 13, TextAnchor.MiddleCenter, Dim);
+            menuNote = Label(menu.transform, centre, new Vector2(0f, 124f), new Vector2(1600f, 68f), 16, TextAnchor.MiddleCenter, Dim);
             menuBar = Fill(menu.transform, centre, Vector2.zero, new Vector2(3f, 30f), Accent);
             menuItems = new Text[12];
             for (int i = 0; i < menuItems.Length; i++)
@@ -369,7 +369,7 @@ namespace Infinigame
                 canvas.transform.SetPositionAndRotation((Vector3)(player.Position - system.Anchor) + facing * new Vector3(0, player.flying ? 0.8f : 1.6f, 2), facing);
             }
             // where you are and how you are travelling; the cockpit has its own dials, so the big figures step aside there
-            string craft = planetView ? "MAP" : player.SystemView ? "SYSTEM MAP" : !player.flying ? player.walker.swimming ? "SWIMMING" : player.cloaked ? "CLOAKED" : "IN THE SUIT"
+            string craft = planetView ? "MAP" : player.SystemView ? "SYSTEM MAP" : !player.flying ? player.walker.swimming ? player.Has(Gear.Suit) ? "SUBMERGED" : "DROWNING" : player.cloaked ? "CLOAKED" : player.Has(Gear.Suit) ? "IN THE SUIT" : "ON FOOT"
                 : player.ship.landed ? "SHIP  ·  LANDED" : player.landing ? "SHIP  ·  LANDING"
                 : player.Autopilot ? $"AUTOPILOT TO {worlds[player.Destination].name.ToUpperInvariant()}" : $"SHIP  ·  ASSIST {(player.assist ? "ON" : "OFF")}";
             // how hot it is outside, in red once it is nearly more than hull or suit can take
@@ -493,13 +493,13 @@ namespace Infinigame
             if (carding)
             {
                 string subject = scanner.Subject.Split(',')[0].ToUpperInvariant();
-                cardHead.text = $"SCANNER  ·  {subject}";
+                cardHead.text = $"SCANNER  ·  {subject}\n{scanner.Source}";
                 if (scanner.Busy)
                 {
                     cardTitle.text = "Analysing" + new string('.', 1 + (int)(now * 3f) % 3);
                     cardBody.text = "";
                     cardFoot.text = "";
-                    cardHeight = 110f;
+                    cardHeight = 130f;
                     carded = null;
                 }
                 else
@@ -509,7 +509,7 @@ namespace Infinigame
                         carded = entry;
                         cardTitle.text = entry.title;
                         cardBody.text = entry.text;
-                        cardHeight = 154f + cardBody.preferredHeight;
+                        cardHeight = 174f + cardBody.preferredHeight;
                     }
                     cardBody.text = entry.text.Substring(0, math.min(entry.text.Length, (int)((now - scanner.Since) * Typing)));
                     int page = game.Journal.IndexOf(entry) + 1;
@@ -523,7 +523,7 @@ namespace Infinigame
             // talking with the hermit
             if (hermit.Talking)
             {
-                speaker.text = $"{hermit.Name.ToUpperInvariant()}  ·  {(hermit.Aboard ? "YOUR COPILOT" : $"ROBOT OF {system.Descriptor.bodies[SolarSystemDescriptor.Home].name.ToUpperInvariant()}")}";
+                speaker.text = $"{hermit.Name.ToUpperInvariant()}  ·  {(hermit.Aboard ? "YOUR COPILOT" : $"ROBOT OF {system.Descriptor.bodies[SolarSystemDescriptor.Home].name.ToUpperInvariant()}")}\n{hermit.Source}";
                 line.text = hermit.Thinking ? new string('.', 1 + (int)(now * 3f) % 3) : hermit.Line.Substring(0, math.min(hermit.Line.Length, (int)((now - hermit.Spoke) * Typing)));
                 draft.text = hermit.Thinking ? "" : $"<color=#6bdcfa>›</color>  {hermit.Draft}{((int)(now * 2f) % 2 == 0 ? "▏" : "")}";
                 // until something is typed, the questions that a number key asks

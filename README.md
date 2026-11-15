@@ -20,6 +20,8 @@ The texture and model generators, shaders, material settings and Unity metadata 
 |---|---|
 | ![Buried: digging out](docs/buried.jpg) | ![Inside a shielded outpost](docs/outpost.jpg) |
 | ![The powered suit](docs/suit.jpg) | ![The title page](docs/title.jpg) |
+| ![The traveller in third person](docs/third-person.jpg) | ![A six-legged sentry](docs/sentry.jpg) |
+| ![A rooted enemy mind](docs/mind.jpg) | ![An organic enemy vessel](docs/presence-vessel.jpg) |
 | ![Building a robot colony](docs/colony.jpg) | ![Choosing suit modules at the workshop](docs/workshop.jpg) |
 | ![The ship over the home world](docs/ship.jpg) | ![From the pilot's seat](docs/cockpit.jpg) |
 | ![Inside the citadel's tunnels](docs/citadel.jpg) | ![The gate to another system](docs/gate.jpg) |
@@ -36,7 +38,7 @@ These follow [scripts to rule them all](https://github.com/github/scripts-to-rul
 
 | Script | What it does |
 |---|---|
-| `script/bootstrap` | Installs Unity Hub, the Unity CLI, Anthropic's `ant` and OpenAI's `codex` from the `Brewfile`, then the pinned editor version. Only Unity is required: with no model to ask, the scanner says how to set one up and the robot keeps to his set words. |
+| `script/bootstrap` | Installs Unity Hub, the Unity CLI, Claude Code and OpenAI's `codex` from the `Brewfile`, then the pinned editor version. Only Unity is required: with no model to ask, the scanner reports observed facts and the robot uses authored replies. |
 | `script/setup` | Bootstraps, makes sure the current user has a Unity licence and, if they can reach neither Claude nor ChatGPT, signs them in to Claude for the scanner and the robot. See Setup below. |
 | `script/editor` | Opens the game in the Unity editor, on the game scene. Press Play. |
 | `script/play` | Plays the game as a standalone app, building it first if the project has changed or the last build has no Burst-compiled code. The game's log goes to `Logs/Player.log` and its frame rate to `Logs/frames.log`. |
@@ -52,6 +54,8 @@ These follow [scripts to rule them all](https://github.com/github/scripts-to-rul
 `Infinigame.app` in the repository root is a link to the latest build, to open from the Finder. Opened that way it does not rebuild itself or write the logs that `script/play` asks for.
 
 `ARCHITECTURE.md` says how the code fits together, `AGENTS.md` what to know before changing it and `IDEAS.md` preserves the expansion brief.
+
+Edit the game's authored content in [STORY.md](STORY.md), [MISSIONS.md](MISSIONS.md), [FACTIONS.md](FACTIONS.md) and [COLONIES.md](COLONIES.md). The editor packages these files when opening the project, entering Play mode or building. [ART.md](ART.md) describes the procedural design process. [LLMS.md](LLMS.md) explains model use and voice options; [PLATFORMS.md](PLATFORMS.md) gives the iPad and SteamVR build steps.
 
 ## Setup
 
@@ -71,13 +75,12 @@ Their words are written by Claude or by ChatGPT. Which of them, with which model
 1. **A key of your own.** Copy an API key from [platform.claude.com](https://platform.claude.com/settings/keys) or [platform.openai.com](https://platform.openai.com/api-keys) and choose Use the key on the clipboard on that voice's page, or set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`. The game then asks the maker's API itself, which works on any device, a phone included. Claude Max, Ultra and Team plans [include API credits every month](https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers), once claimed on claude.ai under Settings, Billing, and so do [ChatGPT Pro and Business plans](https://developers.openai.com/api/docs/guides/chatgpt-api-credits). The key stays on your device, in Keychain on iOS and a local file on desktop, and is never shown.
 2. **Continue with ChatGPT.** OpenAI's own [Sign in with ChatGPT](https://developers.openai.com/siwc/token-sharing-open-source): approve in your browser, and what the game asks counts against your ChatGPT Plus or Pro plan. It needs no other tool. Anthropic allows no sign-in to Claude inside other people's apps, so Claude has no such road.
 3. **The makers' command-line tools**, on a computer, each with the sign-in it keeps for itself. Every one of them can be told to sign in from its voice's page of the menu:
-   - Anthropic's [`ant`](https://github.com/anthropics/anthropic-cli) (Sign in with ant, or `ant auth login`) is paid from your account's API credits.
-   - [Claude Code](https://code.claude.com) (Sign in with Claude Code, or `claude auth login`) counts against your Claude plan. The game runs it unmodified, with no tools, for one answer at a time. `ant` is used first where both hold a sign-in.
+   - [Claude Code](https://code.claude.com) (Sign in with Claude Code, or `claude auth login`) counts against your Claude plan. The game runs it unmodified, with no tools, for one answer at a time.
    - OpenAI's [`codex`](https://github.com/openai/codex) (Sign in with Codex, or `codex login`) counts against the Codex use that [every ChatGPT plan includes](https://developers.openai.com/codex/pricing).
 
-Each voice's page shows how you stand with it and what the game has asked of it so far: how many times, the tokens in and out and, for Claude by key or `ant`, about what that cost. While a model is writing, its name and the model's show at the top right of the screen. Put a picture of your own at `Assets/Infinigame/Resources/Icons/Claude.png` or `ChatGPT.png` and it is shown beside the name: the makers' logos are theirs to license, so none ships with the game. Neither maker tells an app what is left of a plan or a balance, so the pages say where to look that up.
+Each voice's page shows how you stand with it and what the game has asked of it so far: how many times, the tokens in and out and, for Claude by key, about what that cost. While a model is writing, its name and the model's show at the top right of the screen. Put a picture of your own at `Assets/Infinigame/Resources/Icons/Claude.png` or `ChatGPT.png` and it is shown beside the name: the makers' logos are theirs to license, so none ships with the game. Neither maker tells an app what is left of a plan or a balance, so the pages say where to look that up.
 
-Without any of these the game plays as normal and says how to fix it when you scan or talk. Each kind of thing is asked about once per world and then kept in the journal in the save file.
+Without any of these the game uses authored companion replies and observed scanner facts. Each kind of thing is asked about once per world and then kept in the journal in the save file.
 
 ## Play
 
@@ -97,7 +100,7 @@ Without any of these the game plays as normal and says how to fix it when you sc
 | Right click | scan what you are looking at | scan the world ahead |
 | T | | autopilot to the world you are facing, or a moon near enough to see |
 | Z | | flight assist on or off |
-| V | | cockpit or chase view |
+| V | first or third person | cockpit or chase view |
 | Tab (hold) | the map and the mission: of the world you are on until your ship can cross the system, then of the whole system | |
 | Return | talk to the robot, anywhere after the first meeting | |
 | G | | cross to the next system while inside the powered gate |
@@ -108,7 +111,7 @@ Without any of these the game plays as normal and says how to fix it when you sc
 | Option-Return | switch between full screen and a window in the standalone app | |
 | Escape | pause menu: resume, controls, settings, cheats, a new game, quit to the title page or quit | |
 
-The game opens on its title page, over the world you last played in: choose one of three save slots to play. Settings, there and on the pause menu, hold how much detail is drawn, music, look speed, full screen, whether the robot is heard as well as read, and who writes for the scanner and the robot. On foot the weapon in hand is held up in view. Little else is on screen until there is something to say: where you are and how hot it is there, what is left of your suit or hull, your shared energy reserve and the mission in hand. Other worlds are named in the sky wherever nothing stands in front of them, and from space each shows how far off it is. A rendered radar globe at the bottom right shows foes in every direction, with hollow contacts on its far hemisphere. Foes in view are boxed, with a mark to aim at. Talking to the robot is typing: Return says it and Escape leaves.
+The game opens on its title page, over the world you last played in: choose one of three save slots to play. Settings, there and on the pause menu, hold how much detail is drawn, music, look speed, full screen, whether the robot is heard as well as read, and who writes for the scanner and the robot. V switches between first person gauntlets and the full articulated suit. Unarmoured, you sink and take drowning damage; armour lets you walk along the seabed and fitted thrusters work underwater. Little else is on screen until there is something to say: where you are and how hot it is there, what is left of your suit or hull, your shared energy reserve and the mission in hand. Other worlds are named in the sky wherever nothing stands in front of them, and from space each shows how far off it is. A rendered radar globe at the bottom right shows foes in every direction, with hollow contacts on its far hemisphere. Foes in view are boxed, with a mark to aim at. Talking to the robot is typing: Return says it and Escape leaves.
 
 `script/play` starts full screen at 60 frames a second, in step with the display. In the editor, set the Game view to Play Maximized.
 
@@ -126,15 +129,15 @@ Committing WAVs directly to normal Git is a simple option for a small, mostly fi
 
 Git LFS is preferable for frequently revised large audio and is required to track files above GitHub's normal per-file limit. For the same 807 MiB soundtrack, it uses 7.9% of GitHub Free's 10 GiB storage and permits twelve full soundtrack downloads within its separate 10 GiB monthly bandwidth allowance. Each changed binary adds its full size to LFS storage. With those assumptions, thirteen complete soundtrack versions exceed 10 GiB: replacing every song weekly reaches that point twelve weeks after the first upload. Replacing one song weekly takes about 234 weeks. Fresh clones and CI downloads consume LFS bandwidth, while uploads, local play and local rebuilds do not. See [GitHub's LFS billing rules](https://docs.github.com/en/billing/concepts/product-billing/git-lfs). Actual totals depend on the exported files and any other LFS repositories on the account.
 
-The repository has no music files or LFS tracking yet. If choosing LFS, configure it for the music before its first commit; keep the accompanying Unity `.meta` files in normal Git.
+The six supplied MP3 songs total **45.46 MiB** and are committed in normal Git, with their Unity metadata. They use **none of the Git LFS allowance**. At the same average size, twenty songs would occupy about 152 MiB per complete version. No LFS tracking is configured. If future larger files need LFS, configure tracking before adding those files; keep Unity `.meta` files in normal Git.
 
 ### The missions and colony
 
 The early missions recover the suit, thrusters, beams, cloak, capacitor, shoulder missiles and ship. The tower holds the orbital drive and Luna the ship's radiation shield. The outer missions recover ship weapons, plating, a hull mender, the rail gauntlet and heavier armour. The citadel holds the gate parts and the shield core protecting the final mind.
 
-A red marker leads to the current outpost. Enter its rooms and silence the mind, then take the prize with F. A terminal can open the door and turn sentries against their own mind. Quiet movement and a fitted cloak reduce detection. Return opens the robot's radio after the first meeting, including on foot.
+A red marker leads to the current outpost. Enter its rooms and silence the mind, then take the prize with F. Powered weapons can breach walls from inside the shield; cleared buildings and breaches remain after mission completion and reload. A terminal can open the door and turn sentries against their own mind. Quiet movement and a fitted cloak reduce detection. Return opens the robot's radio after the first meeting, including on foot.
 
-A liberated world's first depot starts with one robot and a small stock of materials. Return to it and press B to deposit what you have collected, build or open its workshop. Mines produce ore and drills produce ice. Radar masts reveal remote moons on the map. Turrets consume ore to repel raids and recover salvage; an undefended raid costs robots. A workshop and four robots can build moon engines after the citadel falls. Powering the gate requires the final mind destroyed, eight robots across the colonies and the listed resources. Costs and stocks are shown before building.
+A liberated world's first depot starts with one robot and a small stock of materials. Return to it and press B to deposit what you have collected, build or open its workshop. Mines produce ore and drills produce ice. Moons are labelled only when close enough to resolve. Radar reduces raid pressure by 35%; it does not expose remote moons. Turrets consume ore to repel raids and recover salvage; an undefended raid costs robots. Workshops automatically spend available supplies on another worker every two minutes, up to 32. Defended colonies suppress enemy spread and protect local life. A workshop and four robots can build moon engines after the citadel falls. Powering the gate requires the final mind destroyed, eight robots across the colonies and the listed resources. Costs and stocks are shown before building.
 
 The pause menu's cheats can skip missions, grant recovered equipment or cross to a new generated system. Each save slot keeps its own equipment, fitted modules, colony stocks, spreading presence, moonfall and gate state. Dying restarts the mission in hand.
 
