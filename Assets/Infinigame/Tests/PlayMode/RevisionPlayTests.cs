@@ -48,6 +48,26 @@ namespace Infinigame.Tests
         }
 
         [UnityTest]
+        public IEnumerator FidelityCastesSpawnAndBeamPersistsWhileHeld()
+        {
+            game.Jump(2);
+            Player.walker.position = game.Outpost.Place(new float3(0, 1, -8));
+            yield return Seconds(0.2f);
+            Assert.AreEqual(3, game.Battle.Foes.Where(foe => foe.kind == FoeKind.Sentry).Select(foe => foe.caste).Distinct().Count());
+            foreach (var foe in game.Battle.Foes)
+                Assert.AreEqual(Combat.Health(foe.kind, game.Threat, foe.caste), foe.health);
+            game.Jump(4);
+            Player.fitted = 1 << (int)Gear.Beams;
+            yield return Press(new Controls { select = 2 });
+            input = new Controls { fire = true };
+            yield return Seconds(0.5f);
+            Assert.IsTrue(game.Battle.Beaming, "A held beam remains active beyond its initial shot");
+            input = default;
+            yield return Seconds(0.2f);
+            Assert.IsFalse(game.Battle.Beaming);
+        }
+
+        [UnityTest]
         public IEnumerator RevisionAuthoredPatrolKindsAreUsed()
         {
             game.Jump(3);
@@ -214,31 +234,64 @@ namespace Infinigame.Tests
             var display = new GameObject("Presence review").transform;
             display.SetParent(robot.parent, false);
             display.localPosition = new Vector3(-6, 1, -3);
-            var hull = Shapes.Hull(new Color(0.43f, 0.29f, 0.22f), 1.2f);
-            var glow = Shapes.Hull(Color.black, 1.2f, new Color(9, 0.9f, 0.15f));
-            var (body, eyes, leg) = Models.Sentry();
-            Shapes.Part(display, "Body", body, hull, Vector3.zero, Vector3.one);
-            Shapes.Part(display, "Eyes", eyes, glow, Vector3.zero, Vector3.one);
-            for (int i = 0; i < 6; i++)
+            var hull = Shapes.Hull(new Color(0.5f, 0.43f, 0.35f), 1.2f);
+            var glow = Shapes.Hull(Color.black, 1.2f, new Color(2.5f, 0.12f, 0.015f));
+            var metrics = new System.Text.StringBuilder();
+            foreach (var caste in new[] { MotileCaste.Stalker, MotileCaste.Breacher, MotileCaste.Spitter })
             {
-                float side = i < 3 ? -1 : 1;
-                var part = Shapes.Part(display, "Leg", leg, hull, new Vector3(side * 0.4f, 0, (i % 3 - 1) * 0.45f), Vector3.one);
-                part.transform.localRotation = Quaternion.Euler(0, side < 0 ? 180 : 0, 0);
+                var (shell, senses, limb) = Models.Sentry(caste);
+                int triangles = (shell.triangles.Length + senses.triangles.Length + Models.LimbCount(caste) * limb.triangles.Length) / 3;
+                metrics.AppendLine($"{caste}: {triangles:N0} triangles");
+                Assert.Greater(triangles, 30000, "Close bodies must retain curved anatomy and shell detail");
+                Shapes.Part(display, "Body", shell, hull, Vector3.zero, Vector3.one);
+                Shapes.Part(display, "Eyes", senses, glow, Vector3.zero, Vector3.one);
+                for (int i = 0; i < Models.LimbCount(caste); i++)
+                {
+                    var part = Shapes.Part(display, "Leg", limb, hull, Models.LimbRoot(caste, i), Vector3.one);
+                    part.transform.localRotation = Quaternion.Euler(0, i < Models.LimbCount(caste) / 2 ? 180 : 0, 0);
+                }
+                string name = caste == MotileCaste.Stalker ? "94-presence-sentry" : "99-" + caste.ToString().ToLowerInvariant();
+                yield return Shot(name, display, new Vector3(3, 1.7f, 4), Vector3.zero);
+                foreach (Transform part in display) Object.Destroy(part.gameObject);
+                yield return null;
             }
-            yield return Shot("94-presence-sentry", display, new Vector3(3, 1.7f, 4), Vector3.zero);
-            foreach (Transform part in display) Object.Destroy(part.gameObject);
-            yield return null;
-            (body, eyes) = Models.Drone();
+            int Triangles(Transform subject) => subject.GetComponentsInChildren<MeshFilter>(true).Sum(part => part.sharedMesh.triangles.Length / 3);
+            metrics.AppendLine($"Foundry robot: {Triangles(robot):N0} triangles");
+            metrics.AppendLine($"Powered suit: {Triangles(suit):N0} triangles");
+            foreach (var surface in new[] { Surface.Metal, Surface.Ceramic, Surface.Seal, Surface.Chitin, Surface.Rock })
+            {
+                var map = Textures.Albedo(surface);
+                Assert.AreEqual(LodSettings.Tier == 0 ? 1024 : 2048, map.width);
+                Assert.Greater(map.mipmapCount, 1);
+                Assert.IsFalse(map.isReadable, "Generated CPU copies are released");
+                metrics.AppendLine($"{surface}: {map.width} × {map.height}, {map.mipmapCount} mip levels");
+            }
+            var (body, eyes) = Models.Drone();
+            metrics.AppendLine($"Scout: {(body.triangles.Length + eyes.triangles.Length) / 3:N0} triangles");
             Shapes.Part(display, "Body", body, hull, Vector3.zero, Vector3.one);
             Shapes.Part(display, "Eyes", eyes, glow, Vector3.zero, Vector3.one);
             yield return Shot("95-presence-drone", display, new Vector3(2.8f, 1.6f, 3.4f), Vector3.zero);
             foreach (Transform part in display) Object.Destroy(part.gameObject);
             yield return null;
             (body, eyes) = Models.Raider();
+            metrics.AppendLine($"Presence vessel: {(body.triangles.Length + eyes.triangles.Length) / 3:N0} triangles");
+            System.IO.File.WriteAllText("Logs/Screenshots/model-detail.txt", metrics.ToString());
             Shapes.Part(display, "Body", body, hull, Vector3.zero, Vector3.one);
             Shapes.Part(display, "Eyes", eyes, glow, Vector3.zero, Vector3.one);
             display.localPosition += Vector3.up * 8;
             yield return Shot("96-presence-vessel", display, new Vector3(11, 7, 14), Vector3.zero);
+            foreach (Transform part in display) Object.Destroy(part.gameObject);
+            yield return null;
+            display.localPosition -= Vector3.up * 8;
+            var skin = Shapes.Solid(Surface.Chitin, new Color(0.6f, 0.52f, 0.38f), true);
+            Shapes.Part(display, "Grazer", Shapes.Grazer(), skin, Vector3.zero, Vector3.one);
+            var (birdBody, wing) = Shapes.Bird();
+            Shapes.Part(display, "Bird", birdBody, skin, new Vector3(-1.8f, 1.3f, 0), Vector3.one);
+            Shapes.Part(display, "Right wing", wing, skin, new Vector3(-1.8f, 1.3f, 0), Vector3.one);
+            var otherWing = Shapes.Part(display, "Left wing", wing, skin, new Vector3(-1.8f, 1.3f, 0), Vector3.one);
+            otherWing.transform.localRotation = Quaternion.Euler(0, 180, 0);
+            Shapes.Part(display, "Fish", Shapes.Fish(), skin, new Vector3(1.1f, 1, 0), Vector3.one * 2);
+            yield return Shot("100-wildlife-detail", display, new Vector3(3, 2.4f, 5), new Vector3(-0.5f, 0.8f, 0));
             Object.Destroy(display.gameObject);
             game.Jump(3);
             yield return Press(new Controls { toggleView = true });

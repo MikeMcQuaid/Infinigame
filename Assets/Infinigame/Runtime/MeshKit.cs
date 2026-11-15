@@ -18,6 +18,7 @@ namespace Infinigame
         public float crease = 40f;
         // Texture repeats per metre of the box-mapped UVs.
         public float tiling = 1f;
+        public Color colour = Color.white;
         // Turns what is added inside out, for the insides of hollow things.
         public bool flip;
 
@@ -34,6 +35,7 @@ namespace Infinigame
         // per triangle: the shape it belongs to and the cosine of its crease angle
         readonly List<int> shapes = new List<int>();
         readonly List<float> creases = new List<float>();
+        readonly List<Color32> colours = new List<Color32>();
         int shape;
 
         public MeshKit(MeshKit sharing = null) => space = sharing == null ? new Space() : sharing.space;
@@ -82,6 +84,7 @@ namespace Infinigame
             given.Add(Given(nb));
             given.Add(Given(nc));
             shapes.Add(shape);
+            colours.Add(colour);
             creases.Add(Mathf.Cos(crease * Mathf.Deg2Rad) - 1e-4f);
         }
 
@@ -194,13 +197,13 @@ namespace Infinigame
         }
 
         // A round tube along a path, its radius running from one value to another.
-        public void Tube(Vector3[] path, float radius, int sides = 8, float endRadius = -1f, bool caps = true, bool loop = false)
+        public void Tube(Vector3[] path, float radius, int sides = 16, float endRadius = -1f, bool caps = true, bool loop = false)
         {
             if (endRadius < 0f) endRadius = radius;
             Sweep(path, i => Oval(sides, Mathf.Lerp(radius, endRadius, i / (path.Length - 1f))), Vector3.up, caps, caps, loop);
         }
 
-        public void Rod(Vector3 from, Vector3 to, float radius, int sides = 8, float endRadius = -1f) => Tube(new[] { from, to }, radius, sides, endRadius);
+        public void Rod(Vector3 from, Vector3 to, float radius, int sides = 16, float endRadius = -1f) => Tube(new[] { from, to }, radius, sides, endRadius);
 
         // A spike with flat forged sides.
         public void Spike(Vector3 from, Vector3 tip, float radius, int sides = 4) => Tube(new[] { from, tip }, radius, sides, 0f, false);
@@ -236,7 +239,7 @@ namespace Infinigame
             Lathe(profile, segments);
         }
 
-        public void Ball(Vector3 centre, Vector3 radii, int sides = 16)
+        public void Ball(Vector3 centre, Vector3 radii, int sides = 32)
         {
             var rings = new Vector3[sides / 2 + 1][];
             for (int i = 0; i < rings.Length; i++)
@@ -517,6 +520,7 @@ namespace Infinigame
             var vertices = new List<Vector3>(count / 3);
             var normals = new List<Vector3>(count / 3);
             var uvs = new List<Vector2>(count / 3);
+            var vertexColours = new List<Color32>(count / 3);
             var indices = new int[count];
             for (int c = 0; c < count; c++)
             {
@@ -544,12 +548,14 @@ namespace Infinigame
                 vertices.Add(p);
                 normals.Add(normal);
                 uvs.Add(uv);
+                vertexColours.Add(colours[t]);
             }
 
             var mesh = new Mesh { name = name, indexFormat = vertices.Count > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16 };
             mesh.SetVertices(vertices);
             mesh.SetNormals(normals);
             mesh.SetUVs(0, uvs);
+            mesh.SetColors(vertexColours);
             mesh.SetTriangles(indices, 0);
             if (vertices.Count > 0) mesh.RecalculateTangents();
             return mesh;

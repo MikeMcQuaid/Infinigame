@@ -637,7 +637,7 @@ namespace Infinigame
                     if (!playing) break;
                     if (!outpost.Visible((float3)eye + system.Anchor, foe.position)) continue;
                     Vector3 at = foe.position - system.Anchor, lead = at + (Vector3)((foe.velocity - player.Velocity) * (away / math.max(1, player.Weapon.speed)));
-                    if (foe.kind != FoeKind.Base) Mark(at, foe.kind == FoeKind.Raider ? "RAIDER" : foe.kind == FoeKind.Mind ? "MIND" : foe.kind == FoeKind.Sentry ? "SENTRY" : "DRONE", Distance(away), Harm, true);
+                    if (foe.kind != FoeKind.Base) Mark(at, foe.kind == FoeKind.Raider ? "RAIDER" : foe.kind == FoeKind.Mind ? "MIND" : foe.kind == FoeKind.Sentry ? foe.caste.ToString().ToUpperInvariant() : "DRONE", Distance(away), Harm, true);
                     if (player.flying && foe.kind == FoeKind.Raider && away < 2500f && Vector3.Distance(view.WorldToScreenPoint(at), view.WorldToScreenPoint(lead)) > 14f)
                         Mark(lead, "", "", Accent);
                 }

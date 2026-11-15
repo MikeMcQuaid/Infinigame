@@ -8,6 +8,7 @@ Shader "Infinigame/Hull"
     Properties
     {
         [MainColor] _BaseColor ("Colour", Color) = (0.36, 0.3, 0.28, 1)
+        _BaseMap ("Shell colour and relief", 2D) = "white" {}
         _Metallic ("Metallic", Range(0, 1)) = 0.3
         _Smoothness ("Smoothness", Range(0, 1)) = 0.5
         [HDR] _Glow ("Glow of its own", Color) = (0, 0, 0, 1)
@@ -30,6 +31,8 @@ Shader "Infinigame/Hull"
             half _Smoothness;
             float _Size;
         CBUFFER_END
+        TEXTURE2D(_BaseMap);
+        SAMPLER(sampler_BaseMap);
 
         UNITY_INSTANCING_BUFFER_START(Hulls)
             // how battered it is from 0 to 1, with the number of its pattern of holes added as a whole number
@@ -40,6 +43,8 @@ Shader "Infinigame/Hull"
         {
             float4 positionOS : POSITION;
             float3 normalOS : NORMAL;
+            float2 uv : TEXCOORD0;
+            half4 colour : COLOR;
             UNITY_VERTEX_INPUT_INSTANCE_ID
         };
 
@@ -99,6 +104,9 @@ Shader "Infinigame/Hull"
                 float3 normalWS : TEXCOORD1;
                 float4 place : TEXCOORD2;
                 half fogFactor : TEXCOORD3;
+                float2 uv : TEXCOORD4;
+                half4 colour : COLOR;
+                float3 normalOS : TEXCOORD5;
             };
 
             Varyings Vertex(Attributes input)
@@ -106,6 +114,9 @@ Shader "Infinigame/Hull"
                 Varyings output;
                 UNITY_SETUP_INSTANCE_ID(input);
                 output.place = Place(input);
+                output.uv = input.uv;
+                output.colour = input.colour;
+                output.normalOS = input.normalOS;
                 output.positionWS = TransformObjectToWorld(input.positionOS.xyz);
                 output.positionCS = TransformWorldToHClip(output.positionWS);
                 output.normalWS = TransformObjectToWorldNormal(input.normalOS);
@@ -132,9 +143,13 @@ Shader "Infinigame/Hull"
                 inputData.shadowCoord = TransformWorldToShadowCoord(input.positionWS);
                 inputData.fogCoord = InitializeInputDataFog(float4(input.positionWS, 1.0), input.fogFactor);
                 // Screen derivatives keep the grown relief attached to the surface without a UV seam.
-                float grain = Noise(input.place.xyz * 22.0);
-                float veins = abs(Noise(input.place.xyz * 4.0) - 0.5);
-                float relief = (grain * 0.008 + smoothstep(0.02, 0.08, veins) * 0.012)
+                float3 weights = pow(abs(normalize(input.normalOS)), 4);
+                weights /= max(weights.x + weights.y + weights.z, 1e-5);
+                half4 shell = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.place.yz * 1.5) * weights.x
+                    + SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.place.xz * 1.5) * weights.y
+                    + SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.place.xy * 1.5) * weights.z;
+                float grain = shell.a;
+                float relief = grain * 0.012
                     * (1 - smoothstep(0.03, 0.15, max(length(ddx(input.place.xyz)), length(ddy(input.place.xyz)))));
                 float3 dx = ddx(input.positionWS), dy = ddy(input.positionWS);
                 float3 acrossX = cross(dy, inputData.normalWS), acrossY = cross(inputData.normalWS, dx);
@@ -148,10 +163,10 @@ Shader "Infinigame/Hull"
                 SurfaceData surface = (SurfaceData)0;
                 // the inside is all soot
                 float soot = outside ? 0.94 * scorch : 0.94;
-                surface.albedo = lerp(_BaseColor.rgb * (0.72 + grain * 0.32 + smoothstep(0.02, 0.08, veins) * 0.2), half3(0.02, 0.018, 0.016), soot);
+                surface.albedo = lerp(_BaseColor.rgb * shell.rgb * input.colour.rgb * 1.35, half3(0.02, 0.018, 0.016), soot);
                 surface.metallic = _Metallic * (1.0 - soot);
-                surface.smoothness = lerp(0.35, 0.65, grain) * (1.0 - 0.85 * soot);
-                surface.occlusion = 1.0;
+                surface.smoothness = _Smoothness * lerp(0.55, 1.25, grain) * (1.0 - 0.85 * soot);
+                surface.occlusion = lerp(0.65, 1.0, saturate(grain * 2));
                 surface.alpha = 1.0;
                 surface.emission = _Glow.rgb * (1.0 - scorch) + Fire(edge * (0.45 + 0.3 * ember)) * (0.05 / rim)
                     + (outside ? 0.0 : 1.0) * Fire(worn * (0.2 + 0.4 * ember));

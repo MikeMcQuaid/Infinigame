@@ -7,12 +7,14 @@ namespace Infinigame.Core
     // Raiders are ships that hunt the player's ship; drones hover over the ground and hunt the player
     // on foot; the base is the raiders' station, which shoots at whatever comes near.
     public enum FoeKind { Raider, Drone, Base, Mind, Sentry }
+    public enum MotileCaste { Stalker, Breacher, Spitter }
     public enum Alert { Calm, Searching, Alarmed }
 
     // Position is relative to the body's centre, like the player's.
     public struct Foe
     {
         public FoeKind kind;
+        public MotileCaste caste;
         public float3 position, velocity, forward;
         // how big a target it is, as the radius of a ball
         public float health, cooldown, size;
@@ -101,8 +103,12 @@ namespace Infinigame.Core
         }
 
         // How much a foe can take and how hard it hits, at a level of threat that starts at 1.
-        public static float Health(FoeKind kind, int depth) => (kind == FoeKind.Raider ? 60f : kind == FoeKind.Drone || kind == FoeKind.Sentry ? 35f : kind == FoeKind.Mind ? 120f : 1500f) * (1f + 0.25f * (depth - 1));
+        public static float Health(FoeKind kind, int depth, MotileCaste caste = MotileCaste.Stalker) =>
+            (kind == FoeKind.Sentry ? caste == MotileCaste.Breacher ? 90f : caste == MotileCaste.Spitter ? 45f : 35f
+            : kind == FoeKind.Raider ? 60f : kind == FoeKind.Drone ? 35f : kind == FoeKind.Mind ? 120f : 1500f) * (1f + 0.25f * (depth - 1));
         public static float Damage(FoeKind kind, int depth) => (kind == FoeKind.Raider ? 6f : kind == FoeKind.Drone ? 9f : 8f) * (1f + 0.2f * (depth - 1));
+
+        public static MotileCaste Caste(int stage, int guard) => stage < 2 ? MotileCaste.Stalker : (MotileCaste)((guard + stage - 2) % 3);
 
         // Hull or health lost each second to the sun's radiation out in deep space, without a shield against it.
         public const float Radiation = 12f;
@@ -120,9 +126,9 @@ namespace Infinigame.Core
         public static float Scorch(float kelvin, float limit) => math.max(0f, kelvin - limit) * 0.04f;
 
         // size is how big a target the foe is: a raider or a drone has its own, the base takes its station's.
-        public static Foe Spawn(FoeKind kind, float3 position, float3 facing, int depth, uint seed, float size = 0f) => new Foe
+        public static Foe Spawn(FoeKind kind, float3 position, float3 facing, int depth, uint seed, float size = 0f, MotileCaste caste = MotileCaste.Stalker) => new Foe
         {
-            kind = kind, position = position, forward = math.normalizesafe(facing, new float3(0, 0, 1)), health = Health(kind, depth), cooldown = 1.5f, seed = seed | 1u,
+            kind = kind, caste = caste, position = position, forward = math.normalizesafe(facing, new float3(0, 0, 1)), health = Health(kind, depth, caste), cooldown = 1.5f, seed = seed | 1u,
             size = kind == FoeKind.Raider ? 10f : kind == FoeKind.Drone || kind == FoeKind.Sentry ? 1.2f : kind == FoeKind.Mind ? 2f : size,
         };
 
@@ -174,12 +180,16 @@ namespace Infinigame.Core
 
             if (foe.kind == FoeKind.Drone || foe.kind == FoeKind.Sentry)
             {
+                bool breacher = foe.kind == FoeKind.Sentry && foe.caste == MotileCaste.Breacher;
+                bool spitter = foe.kind == FoeKind.Sentry && foe.caste == MotileCaste.Spitter;
                 // close to a dozen paces, then circle, never quite still
                 if (body.kind == BodyKind.Station) up = new float3(0, 1, 0);
                 float3 level = Walker.Project(to, up), toward = math.normalizesafe(level, foe.forward);
                 float3 round = math.cross(up, toward) * (foe.seed % 2u == 0u ? 1f : -1f);
                 float gap = math.length(level);
-                float3 desired = toward * math.clamp((gap - 12) * 1.2f, -3, 10) + round * (3.5f * (1 - math.smoothstep(14, 25, gap)));
+                float stand = breacher ? 4 : spitter ? 28 : 12;
+                float3 desired = toward * math.clamp((gap - stand) * 1.2f, -3, breacher ? 5 : spitter ? 7 : 10)
+                    + round * ((breacher ? 0.5f : 3.5f) * (1 - math.smoothstep(stand + 2, stand + 13, gap)));
                 foe.velocity = Walker.MoveTowards(Walker.Project(foe.velocity, up), desired, 14f * dt);
                 foe.position += foe.velocity * dt;
                 up = math.normalize(foe.position);
@@ -189,9 +199,12 @@ namespace Infinigame.Core
                     foe.position = up * (foe.kind == FoeKind.Sentry ? floor + 0.9f : math.max(floor + 0.8f, math.lerp(math.length(foe.position), floor + Hover, 1 - math.exp(-4 * dt))));
                 }
                 foe.forward = Turn(foe.forward, to / distance, 2.5f * dt);
-                if (distance > DroneReach || foe.cooldown > 0f) return false;
-                foe.cooldown = 1.4f + rnd.NextFloat(0.8f);
-                shot = Fire(foe.position, math.normalize(to + targetVelocity * (distance / DroneBolt)), float3.zero, DroneBolt, Damage(foe.kind, depth), true, 1.2f);
+                if (distance > (spitter ? 70 : breacher ? 12 : DroneReach) || foe.cooldown > 0f) return false;
+                foe.cooldown = (spitter ? 3 : breacher ? 2 : 1.4f) + rnd.NextFloat(0.8f);
+                float speed = spitter ? 24 : DroneBolt;
+                shot = Fire(foe.position, math.normalize(to + targetVelocity * (distance / speed)), float3.zero, speed,
+                    Damage(foe.kind, depth) * (breacher ? 2 : spitter ? 1.75f : 1), true, spitter ? 3 : 1.2f);
+                shot.life = spitter ? 4 : 3;
                 return true;
             }
 

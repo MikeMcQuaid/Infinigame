@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Infinigame
 {
-    public enum Surface { Sand, Grass, Rock, Snow, Bark, Dust, Water, Lava }
+    public enum Surface { Sand, Grass, Rock, Snow, Bark, Dust, Water, Lava, Metal, Ceramic, Seal, Chitin }
 
     // Every surface in the game is painted here from layered noise the first time it is wanted: a
     // colour, and a height field whose slopes become the normal map. The height also rides in the
@@ -16,7 +16,7 @@ namespace Infinigame
     public static class Textures
     {
         // How deep each surface's relief is next to the width of one tile.
-        static readonly float[] Relief = { 0.022f, 0.06f, 0.09f, 0.035f, 0.16f, 0.04f, 0.05f, 0.07f };
+        static readonly float[] Relief = { 0.022f, 0.06f, 0.09f, 0.035f, 0.16f, 0.04f, 0.05f, 0.07f, 0.0012f, 0.002f, 0.008f, 0.012f };
         static readonly (Texture2D albedo, Texture2D normal)[] painted = new (Texture2D, Texture2D)[Relief.Length];
 
         public static Texture2D Albedo(Surface surface) => Get(surface).albedo;
@@ -26,9 +26,10 @@ namespace Infinigame
         {
             ref var slot = ref painted[(int)surface];
             if (slot.albedo != null) return slot;
-            // a phone has neither the memory nor the screen for the finer grain
-            int size = LodSettings.Tier == 0 ? 512 : 1024;
-            Texture2D Blank(bool linear) => new Texture2D(size, size, TextureFormat.RGBA32, true, linear) { filterMode = FilterMode.Trilinear, anisoLevel = 8 };
+            // Shared mipmapped tiles keep close detail without allocating a map for every object.
+            int size = LodSettings.Tier == 0 ? 1024 : 2048;
+            Texture2D Blank(bool linear) => new Texture2D(size, size, TextureFormat.RGBA32, true, linear)
+                { name = surface + (linear ? " relief" : " colour and height"), filterMode = FilterMode.Trilinear, anisoLevel = 8 };
             slot = (Blank(false), Blank(true));
             var pixels = new NativeArray<float4>(size * size, Allocator.TempJob);
             new PaintJob { surface = surface, size = size, pixels = pixels }.Schedule(size, 8).Complete();
@@ -88,6 +89,37 @@ namespace Infinigame
         {
             switch (surface)
             {
+                case Surface.Metal:
+                {
+                    float brush = noise.pnoise(uv * new float2(24, 700), new float2(24, 700));
+                    float wear = Fbm(uv, 8, 3), pits = Fbm(uv, 240, 2);
+                    float scratch = math.pow(math.saturate(noise.pnoise(uv * new float2(9, 320), new float2(9, 320)) + 0.35f), 8);
+                    float value = 0.77f + brush * 0.045f + wear * 0.15f - scratch * 0.25f;
+                    return new float4(new float3(value), math.saturate(0.5f + brush * 0.15f + pits * 0.13f - scratch));
+                }
+                case Surface.Ceramic:
+                {
+                    float grain = Fbm(uv, 180, 2), wear = Fbm(uv, 5, 3);
+                    float3 cells = Cells(uv * 38, 38);
+                    float chip = (1 - math.smoothstep(0.02f, 0.055f, cells.y - cells.x)) * math.smoothstep(0.6f, 0.8f, wear);
+                    return new float4(new float3(0.86f + grain * 0.1f - chip * 0.35f), 0.5f + grain * 0.06f - chip * 0.2f);
+                }
+                case Surface.Seal:
+                {
+                    float weave = math.sin(uv.x * 256 * math.PI) * math.sin(uv.y * 256 * math.PI);
+                    float grain = Fbm(uv, 64, 2);
+                    return new float4(new float3(0.68f + grain * 0.2f + weave * 0.08f), 0.5f + weave * 0.16f);
+                }
+                case Surface.Chitin:
+                {
+                    float warp = Fbm(uv, 6, 3), pores = Fbm(uv, 160, 2);
+                    float3 scales = Cells(uv * new float2(17, 27) + 0.55f * (warp - 0.5f), new float2(17, 27));
+                    float seam = 1 - math.smoothstep(0.015f, 0.1f, scales.y - scales.x);
+                    float striae = 0.5f + 0.5f * noise.pnoise(uv * new float2(12, 180), new float2(12, 180));
+                    float3 colour = math.lerp(new float3(0.34f, 0.42f, 0.44f), new float3(0.96f, 0.83f, 0.61f), warp);
+                    colour *= (0.75f + striae * 0.16f + pores * 0.15f) * (1 - seam * 0.42f);
+                    return new float4(colour, 0.55f - seam * 0.28f + striae * 0.045f + pores * 0.04f);
+                }
                 case Surface.Sand:
                 {
                     // Wind ripples a hand apart that fork, wander and die away, over soft hollows. The

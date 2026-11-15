@@ -52,7 +52,7 @@ namespace Infinigame
             Kind Make(Creature creature, string name, float size, float stray, float furthest, float height, float girth, Mesh mesh, Color colour) => new Kind
             {
                 creature = creature, name = name, size = size, stray = stray, furthest = furthest, height = height, girth = girth, body = mesh,
-                depth = QuadtreeLod.DepthFor(descriptor.radius, Wildlife.CellSize(creature)), material = Shapes.Material("Props", colour),
+                depth = QuadtreeLod.DepthFor(descriptor.radius, Wildlife.CellSize(creature)), material = Shapes.Solid(Surface.Chitin, colour, true),
             };
             var (strider, striderLights) = Models.Strider();
             var all = new[]

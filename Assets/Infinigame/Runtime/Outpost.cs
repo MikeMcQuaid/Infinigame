@@ -246,7 +246,7 @@ namespace Infinigame
                     : kind == FoeKind.Raider ? new float3((i % 4 - 1.5f) * 35, 25, -90 - i / 4 * 30)
                     : kind == FoeKind.Drone ? new float3((i % 4 - 1.5f) * 12, 3, -18 - i / 4 * 8)
                     : new float3(-6 + i % 4 * 4, 0.9f, -7 + i / 4 * 5);
-                game.Battle.Add(kind, Place(position));
+                game.Battle.Add(kind, Place(position), Combat.Caste(game.Stage, i));
             }
         }
         public void Killed(FoeKind kind)

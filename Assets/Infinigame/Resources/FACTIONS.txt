@@ -12,6 +12,8 @@ The recovery companion is one of these machines, with its own memory and persona
 
 The enemy is an alien collective. Rooted minds grow multi-limbed ground bodies, hovering scouts and organic ships. They convert harvested resources into more of themselves. Their territory blights vegetation, drives off wildlife and attacks independent machines. Killing a controlling mind frees that location, but other minds can spread back towards it. The enemy has no diplomacy or conversation system. Many early compounds are captured Foundry depots, their industrial shells threaded with grown neural ribs. Clearing the mind leaves useful structures to reclaim; the presence also grows rooted nests of its own.
 
+The first armed outpost contains three mobile castes. Stalkers are light, six-legged flankers. Eight-legged breachers carry a thick dorsal crest, push towards short range and withstand more than twice a stalker's damage. Four-legged spitters carry paired pressure reservoirs and ranged firing throats; close on them before their slow projectiles arrive. These are specialised bodies of the same mind, not separate civilisations. All scatter when their local mind dies and all can be turned by its terminal.
+
 ## Silhouettes
 
 Foundry construction uses overlapping pale alloy shells, dark articulated mechanisms, rounded joint housings and restrained cyan or amber optics. Organic enemy construction uses layered carapaces, ribbed tissue, asymmetric sensory organs, root-like conduits and warm recessed light. These are original designs shared across each faction's bodies, ships and architecture.

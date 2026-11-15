@@ -465,7 +465,8 @@ namespace Infinigame.Core
                     // fires eleven times a second, so it is over quickly: a falling buzz on a short thump and the clack of the breech
                     (l, r) = Blank(0.5f);
                     Place(l, r, Thump(0.14f, 170f * bend, 70f * bend, 40f), 0.6f);
-                    Place(l, r, Ring(0.06f, 880f * bend, 8 + salt, 1f, 1.7f, 2.9f), 0.25f);
+                    Place(l, r, Fm(Samples(0.18f), t => bend * (280 + 1600 * math.exp(-34 * t)), 1.618f, t => 2.8f * math.exp(-22 * t))
+                        .Shape(t => Hit(t, 0.001f, 0.16f)), 0.65f);
                     Place(l, r, Tone(Samples(0.2f), t => bend * (140f + 800f * math.exp(-45f * t)), Wave.Saw).Sweep(t => 500f + 6000f * math.exp(-38f * t), 1.5f).Drive(2f)
                         .Shape(t => Hit(t, 0.001f, 0.16f)), 0.7f);
                     Wide(l, r, side => Burst(0.03f, (uint)(10 + side) + salt, HighPass(1500f), 0.0003f), 0.7f);
@@ -505,34 +506,26 @@ namespace Infinigame.Core
                     Place(l, r, Ring(0.12f, 5200f * bend, 44 + salt, 1f, 1.19f, 1.71f), 0.05f, 0.6f, 0.42f + 0.03f * take);
                     return Master(l, r, 1.5f, 0.4f, 0.12f);
                 case 4:
-                    // a pump shotgun: a broad, heavy boom with a torn edge, then the fore-end hauled back and shut on the next shell
-                    (l, r) = Blank(1.3f);
-                    Place(l, r, Crack(0.0006f).Add(Burst(0.006f, 41 + salt, HighPass(2000f), 0.0001f), 0.5f), 0.4f);
-                    Wide(l, r, side => Noise(Samples(0.18f), (uint)(43 + side) + salt).Sweep(t => 380f * bend + 3000f * math.exp(-30f * t)).Level().Drive(6f).Shape(t => Hit(t, 0.0004f, 0.18f)));
-                    Place(l, r, Thump(0.14f, 170f * bend, 62f * bend, 26f, 0.001f), 1.1f);
-                    Echo(l, r, 45 + salt, 0.14f, 0.55f, 0.14f);
-                    Wide(l, r, side => Noise(Samples(0.9f), (uint)(46 + side) + salt).Pink().Sweep(t => 200f + 2500f * math.exp(-6f * t)).Level().Shape(t => Hit(t, 0.004f, 0.9f)), 0.3f, 0.01f);
-                    for (uint stroke = 0; stroke < 2; stroke++)
-                    {
-                        Wide(l, r, side => Scrape(0.07f, 1700f + 500f * stroke, (uint)(49 + 2 * side) + 5 * stroke + salt), 0.1f, 0.32f + 0.18f * stroke);
-                        Place(l, r, Clack((950f + 250f * stroke) * bend, 60 + 2 * stroke + salt, 0.05f), 0.22f, 0.3f, 0.38f + 0.18f * stroke);
-                    }
-                    return Master(l, r, 1.6f, 0.7f, 0.2f);
+                    // A powered gauntlet: actuator snap, dense contact and a short coil discharge.
+                    (l, r) = Blank(0.7f);
+                    Place(l, r, Thump(0.2f, 190 * bend, 65 * bend, 32), 1.1f);
+                    Wide(l, r, side => Burst(0.08f, (uint)(43 + side) + salt, BandPass(1700, 0.7f)).Drive(3), 0.7f);
+                    Place(l, r, Fm(Samples(0.24f), t => bend * (170 + 850 * math.exp(-38 * t)), 2.73f,
+                        t => 3 * math.exp(-24 * t)).Shape(t => Hit(t, 0.002f, 0.22f)), 0.45f);
+                    Place(l, r, Ring(0.14f, 540 * bend, 45 + salt, 1, 1.63f, 2.71f), 0.25f, 0.25f);
+                    return Master(l, r, 1.5f, 0.35f, 0.12f);
                 case 5:
-                    // a bolt-action rifle of heavy calibre: the hardest crack of them all, a blast with real weight in it and a report
-                    // that rolls about the hills for seconds; under that the bolt is worked by hand: up, back, forward and down
-                    (l, r) = Blank(3.5f);
-                    Place(l, r, Crack(0.0003f).Add(Burst(0.004f, 62 + salt, HighPass(3500f), 0.0001f), 0.4f), 0.9f);
-                    Wide(l, r, side => Noise(Samples(0.22f), (uint)(64 + side) + salt).Sweep(t => 320f * bend + 4000f * math.exp(-35f * t)).Level().Drive(6f).Shape(t => Hit(t, 0.0003f, 0.22f)));
-                    Place(l, r, Thump(0.2f, 150f * bend, 52f * bend, 20f, 0.001f), 1.2f);
-                    Echo(l, r, 66 + salt, 0.25f, 1.5f, 0.22f);
-                    Wide(l, r, side => Noise(Samples(3.4f), (uint)(68 + side) + salt).Pink().Sweep(t => 300f + 3500f * math.exp(-1.5f * t)).Level()
-                        .Shape(Wander(Samples(3.4f), (uint)(70 + side) + salt, 3f), 0.4f).Shape(t => Hit(t, 0.005f, 4.5f)), 0.8f, 0.01f);
-                    for (uint stroke = 0; stroke < 4; stroke++)
-                        Place(l, r, Clack((1700f - 150f * stroke) * bend, 72 + 2 * stroke + salt, stroke % 2 == 1 ? 0.05f : 0.025f), stroke % 2 == 1 ? 0.2f : 0.12f, 0.3f, new[] { 0.6f, 0.76f, 0.98f, 1.1f }[stroke]);
-                    Wide(l, r, side => Scrape(0.13f, 2400f, (uint)(81 + 2 * side) + salt), 0.1f, 0.63f);
-                    Wide(l, r, side => Scrape(0.15f, 2000f, (uint)(86 + 2 * side) + salt), 0.1f, 0.83f);
-                    return Master(l, r, 1.7f, 1.2f, 0.25f, 1.3f);
+                    // A rail discharge: a rising induction chirp, crack and dispersing magnetic ring.
+                    (l, r) = Blank(1.8f);
+                    Place(l, r, Fm(Samples(0.045f), t => bend * (650 + 18000 * t), 1.414f, _ => 2)
+                        .Shape(t => Hit(t, 0.006f, 0.05f)), 0.35f);
+                    Wide(l, r, side => Burst(0.035f, (uint)(64 + side) + salt, HighPass(2200), 0.0003f), 0.9f, 0.025f);
+                    Place(l, r, Thump(0.4f, 160 * bend, 48 * bend, 18), 1.2f, 0, 0.025f);
+                    Wide(l, r, side => Fm(Samples(1.2f), t => bend * (540 + 2200 * math.exp(-8 * t)) * (1 + side * 0.006f), 2.17f,
+                        t => 2.5f * math.exp(-4 * t)).Filter(LowPass(6500)).Shape(t => Hit(t, 0.003f, 0.95f)), 0.32f, 0.025f);
+                    Wide(l, r, side => Burst(0.65f, (uint)(70 + side) + salt, BandPass(110, 0.8f), 0.008f), 0.55f, 0.025f);
+                    Echo(l, r, 66 + salt, 0.12f, 0.6f, 0.12f);
+                    return Master(l, r, 1.6f, 0.9f, 0.18f);
                 case 6:
                     // theirs growl: two saws a little apart sliding down, roughened by a low flutter and overdriven
                     (l, r) = Blank(0.8f);
@@ -547,6 +540,8 @@ namespace Infinigame.Core
                     Wide(l, r, side => Noise(Samples(1f), (uint)(55 + side) + salt).Pink().Filter(HighPass(200f)).Sweep(t => 500f + 2500f * Hit(t, 0.08f, 0.9f)).Level()
                         .Shape(Wander(Samples(1f), (uint)(60 + side) + salt, 25f), 0.5f).Shape(t => Hit(t, 0.05f, 0.9f)), 0.9f);
                     Place(l, r, Thump(0.5f, 150f * bend, 60f * bend, 9f, 0.02f), 0.3f);
+                    Wide(l, r, side => Fm(Samples(0.8f), t => bend * (120 + 180 * math.exp(-7 * t)) + side, 3.17f, t => 4 * math.exp(-5 * t))
+                        .Shape(t => Hit(t, 0.04f, 0.7f)), 0.32f);
                     Wide(l, r, side => Crackle(Samples(0.8f), (uint)(58 + side) + salt, 60f).Filter(BandPass(3000f, 1.5f)).Level().Shape(t => Hit(t, 0.05f, 0.8f)), 0.25f, 0.03f);
                     Echo(l, r, 59 + salt, 0.15f, 0.4f, 0.08f);
                     return Master(l, r, 1.4f, 0.8f, 0.2f);
@@ -800,6 +795,14 @@ namespace Infinigame.Core
         // anything turbulent is, over a rumble that both sides share; under that sits a turbine's low
         // drone, with its blades singing and its exhaust hissing. An eighth of a hertz between the
         // sides turns the drone slowly round the listener.
+        public static float[] Beam() => Loop(side =>
+        {
+            int n = Samples(4);
+            return Fm(n, _ => 330 + side * 0.25f, 2, _ => 1.8f).Lap(x => x.Filter(BandPass(1400, 0.8f)))
+                .Add(Hiss(n, 251 + side, x => x.Filter(BandPass(3200, 1.5f))), 0.18f)
+                .Add(Tone(n, _ => 82.5f + side * 0.25f), 0.2f).Shape(Wander(n, 255, 8), 0.12f);
+        });
+
         public static float[] Engine() => Loop(side =>
         {
             int n = Samples(8f);
@@ -808,6 +811,7 @@ namespace Infinigame.Core
                 .Lap(x => x.Filter(LowPass(450f, 0.9f))).Level().Drive(1.5f).Level(0.4f)
                 .Add(Hiss(n, 178 + side, x => x.Pink().Filter(BandPass(260f, 0.5f))).Shape(Wander(n, (uint)(166 + side), 5f), 0.45f))
                 .Add(Hiss(n, 170, x => x.Brown().Filter(LowPass(110f)).Filter(HighPass(40f))).Shape(Wander(n, 168, 2f), 0.4f), 0.5f)
+                .Add(Fm(n, _ => 156.25f + lean, 2, _ => 1.2f).Lap(x => x.Filter(LowPass(900))), 0.12f)
                 .Add(Hiss(n, 172 + side, x => x.Filter(BandPass(495f, 14f))), 0.2f)
                 .Add(Hiss(n, 176 + side, x => x.Filter(BandPass(1237f, 20f))), 0.1f)
                 .Add(Hiss(n, 174 + side, x => x.Pink().Filter(BandPass(1800f, 0.7f))).Shape(Wander(n, (uint)(164 + side), 12f), 0.3f), 0.25f);
@@ -859,6 +863,7 @@ namespace Infinigame.Core
             return Hiss(n, 210 + side, x => x.Pink().Filter(BandPass(700f, 0.6f))).Drive(3f).Lap(x => x.Filter(LowPass(3500f)))
                 .Add(Hiss(n, 212 + side, x => x.Brown().Filter(LowPass(140f)).Filter(HighPass(40f))), 0.8f)
                 .Add(Hiss(n, 214 + side, x => x.Filter(BandPass(310f, 10f))), 0.3f)
+                .Add(Fm(n, _ => 240 + side / 3f, 2, _ => 1.4f).Lap(x => x.Filter(LowPass(1800))), 0.16f)
                 .Add(Hiss(n, 216 + side, x => x.Filter(HighPass(4500f))), 0.15f)
                 .Shape(Wander(n, (uint)(218 + side), 30f), 0.4f).Shape(Wander(n, 220, 4f), 0.15f);
         });
@@ -896,7 +901,7 @@ namespace Infinigame.Core
     // these up means turning the rest down.
     public static class Mix
     {
-        public const float Music = 0.16f, Engine = 0.16f, Bike = 0.22f, Whine = 0.07f, Wind = 0.18f, Rain = 0.14f, Jetpack = 0.13f, Geiger = 0.12f;
+        public const float Music = 0.16f, Engine = 0.16f, Bike = 0.22f, Whine = 0.07f, Wind = 0.18f, Rain = 0.14f, Jetpack = 0.13f, Geiger = 0.12f, Beam = 0.14f;
         public const float Chime = 0.21f, Warp = 0.25f, Alarm = 0.21f, Engage = 0.21f, Thud = 0.23f, Hurt = 0.37f, Step = 0.17f, Boom = 0.33f;
         public const float Reload = 0.18f, DryFire = 0.16f, Dig = 0.24f, Nuke = 0.5f;
         public const int Booms = 3, Thuds = 3, Steps = 8, Digs = 5;

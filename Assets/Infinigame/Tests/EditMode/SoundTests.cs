@@ -134,7 +134,7 @@ namespace Infinigame.Tests
             ["chime"] = Chime, ["warp"] = Warp, ["alarm"] = Alarm, ["engage"] = Engage, ["thud"] = () => Thud(), ["hurt"] = Hurt,
             ["boom"] = () => Boom(false), ["big boom"] = () => Boom(true), ["nuke"] = Nuke,
             ["reload"] = Reload, ["dry fire"] = DryFire, ["dig"] = () => Dig(),
-            ["engine"] = Engine, ["whine"] = Whine, ["wind"] = Wind, ["rain"] = Rain, ["jetpack"] = Jetpack, ["bike"] = Bike,
+            ["engine"] = Engine, ["beam"] = Beam, ["whine"] = Whine, ["wind"] = Wind, ["rain"] = Rain, ["jetpack"] = Jetpack, ["bike"] = Bike,
             ["geiger 0"] = () => Geiger(0), ["geiger 1"] = () => Geiger(1), ["geiger 2"] = () => Geiger(2),
             ["calm music"] = () => Riffs.Render(Song, false), ["heavy music"] = () => Riffs.Render(Song, true),
             ["another heavy song"] = () => Riffs.Render(Riffs.Compose(2), true),
@@ -165,10 +165,10 @@ namespace Infinigame.Tests
             }
         }
 
-        public static readonly string[] Loops = { "engine", "whine", "wind", "rain", "jetpack", "bike", "geiger 0", "geiger 1", "geiger 2", "calm music", "heavy music", "another heavy song" };
+        public static readonly string[] Loops = { "engine", "beam", "whine", "wind", "rain", "jetpack", "bike", "geiger 0", "geiger 1", "geiger 2", "calm music", "heavy music", "another heavy song" };
         // Sounds that are mostly the silence between their clicks.
         public static readonly string[] Clicks = { "reload", "dry fire", "geiger 0", "geiger 1", "geiger 2" };
-        public static readonly int[] Firearms = { 3, 4, 5, 9 };
+        public static readonly int[] Firearms = { 3, 9 };
         public static IEnumerable<string> All => recipes.Keys;
         public static IEnumerable<string> OneShots => recipes.Keys.Except(Loops);
         public static IEnumerable<string> Shots => Enumerable.Range(0, Mix.Shots.Length).Select(i => $"shot {i}");
@@ -349,18 +349,20 @@ namespace Infinigame.Tests
             Assert.Greater(Measure.Centroid(Measure.Spectrum(Part(0f, 0.02f))), 1.3f * Measure.Centroid(Measure.Spectrum(Part(0.12f, 0.3f))), "the report");
         }
 
-        // The rifle, the pistol, the shotgun, the sniper rifle: each lasts longer than the one before, and the two big
-        // ones have a weight the two small ones have not.
         [Test]
-        public void TheBiggerTheGunTheLongerAndLowerItsReport()
+        public void PoweredImpactsLeaveRoomForTheNextPunch()
         {
-            float Lasts(int voice) => Measure.Lasts(Heard.Mono($"shot {voice}"));
-            double Low(int voice) => Measure.Band(Heard.Spectrum($"shot {voice}"), 0f, 150f);
-            Assert.Less(Lasts(9), Lasts(3));
-            Assert.Less(Lasts(3), Lasts(4));
-            Assert.Less(2f * Lasts(4), Lasts(5));
-            Assert.Greater(Low(4), 3 * math.max(Low(3), Low(9)));
-            Assert.Greater(Low(5), 3 * Low(4));
+            var impact = Heard.Mono("shot 4");
+            float repeat = Combat.Arms[0].period;
+            Assert.Less(Measure.Rms(impact.Skip(Samples(repeat)).Take(Samples(0.2f))), 0.025f * impact.Max(math.abs), "No pump action or shell reload after a powered punch");
+            Assert.Greater(Measure.Band(Heard.Spectrum("shot 4"), 60, 300), 0.1 * Heard.Spectrum("shot 4").Sum());
+        }
+
+        [Test]
+        public void RailDischargeDiesAwayBeforeTheGauntletRecharges()
+        {
+            Assert.Less(Heard.Mono("shot 5").Length / (float)Rate, Combat.Arms[3].period);
+            Assert.Greater(Measure.Lasts(Heard.Mono("shot 5")), Measure.Lasts(Heard.Mono("shot 4")));
         }
 
         // Ten rounds a second: a round is as good as gone when the next one goes, so a burst is no louder than its rounds.

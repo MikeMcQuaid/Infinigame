@@ -18,7 +18,7 @@ namespace Infinigame
         readonly AudioClip[][] shots = new AudioClip[Mix.Shots.Length][];
         readonly AudioSource[] voices = new AudioSource[8];
         readonly AudioSource[] geiger = new AudioSource[3];
-        AudioSource engine, bike, whine, wind, rain, jetpack, effects;
+        AudioSource engine, bike, whine, wind, rain, jetpack, beam, effects;
         AudioClip[] booms, bigBooms, thuds, steps, digs;
         AudioClip chime, warp, alarm, engage, hurt, reload, dryFire, nuke, last;
         float stride, riding, dose, lastFuel, lastHurt = float.MinValue;
@@ -35,6 +35,7 @@ namespace Infinigame
             wind = Loop(Synth.Wind);
             rain = Loop(Synth.Rain);
             jetpack = Loop(Synth.Jetpack);
+            beam = Loop(Synth.Beam);
             bike = Loop(Synth.Bike);
             for (int i = 0; i < geiger.Length; i++)
             {
@@ -85,6 +86,7 @@ namespace Infinigame
             wind.volume = Mathf.Lerp(wind.volume, live ? Mix.Wind * math.saturate(speed / 200f) : 0f, blend);
             wind.pitch = 0.85f + 0.3f * cruise;
             rain.volume = Mathf.Lerp(rain.volume, live ? Mix.Rain * game.System.Rain : 0f, blend);
+            beam.volume = Mathf.Lerp(beam.volume, live && game.Battle.Beaming ? Mix.Beam : 0f, 2 * blend);
             // falling fuel means the jetpack is firing
             jetpack.volume = Mathf.Lerp(jetpack.volume, live && !player.flying && player.walker.fuel < lastFuel ? Mix.Jetpack : 0f, 3f * blend);
             lastFuel = player.walker.fuel;
@@ -115,9 +117,9 @@ namespace Infinigame
 
         public void Engage() => Play(engage, Mix.Engage);
 
-        // 0 ship pulse cannon, 1 ship missile launch, 2 ship lance, 3 pistol, 4 pump shotgun, 5 sniper rifle,
+        // 0 ship pulse cannon, 1 ship missile launch, 2 ship lance, 3 pistol, 4 powered impact, 5 rail gauntlet,
         // 6 raider guns, 7 drone fireball, 8 station turret, 9 assault rifle, 10 ship torpedo launch. The
-        // missile, the lance, the shotgun, the sniper rifle and the torpedo are too long to share a voice.
+        // missile, the lance, the powered impact, the rail gauntlet and the torpedo are too long to share a voice.
         public void Shot(int voice, float volume = 1f) => Play(Take(shots[voice]), Mix.Shots[voice] * volume, voice is 1 or 2 or 4 or 5 or 10 ? 0f : 0.04f);
 
         // A magazine changed, start to finish: about a second and a half.

@@ -2,7 +2,7 @@
 
 A procedural solar system to explore in powered armour and by ship. The first system is a tiny copy of our own, with spherical worlds, seas, forests, weather and strange life. Beyond its gate are generated systems with their own worlds, living moons and sometimes two stars. Scan anything and Claude or ChatGPT writes its journal entry.
 
-You wake buried, with no memory. A recovery robot helps wake your suit and stays on the radio, later joining the ship as copilot. The enemy is one presence with many bodies. Each outpost shelters a controlling mind: destroy it and its bodies scatter. Shields stop fire from outside, including nuclear torpedoes, so you must enter the rooms, hack their terminals or break in with powered fists.
+You wake buried, with no memory. A recovery robot helps wake your suit and stays on the radio, later joining the ship as copilot. The enemy is one presence with many bodies. Ground bodies specialise as fast stalkers, armoured breachers and ranged spitters. Each outpost shelters a controlling mind: destroy it and its bodies scatter. Shields stop fire from outside, including nuclear torpedoes, so you must enter the rooms, hack their terminals or break in with powered fists.
 
 Recovered equipment gives you choices. Fit three suit modules within six units of power at a robot workshop. Beams, thrusters, missiles, a rail gauntlet, heavy plate, a cloak and a capacitor compete for those slots. Beams, flight and shielding share your energy reserve. The suit survives vacuum, radiation and furnace heat, but reaching space is still the ship's job.
 
@@ -22,6 +22,8 @@ The texture and model generators, shaders, material settings and Unity metadata 
 | ![The powered suit](docs/suit.jpg) | ![The title page](docs/title.jpg) |
 | ![The traveller in third person](docs/third-person.jpg) | ![A six-legged sentry](docs/sentry.jpg) |
 | ![A rooted enemy mind](docs/mind.jpg) | ![An organic enemy vessel](docs/presence-vessel.jpg) |
+| ![An armoured breacher](docs/breacher.jpg) | ![A ranged spitter](docs/spitter.jpg) |
+| ![A flying scout](docs/scout.jpg) | ![Curved wildlife models](docs/wildlife.jpg) |
 | ![Building a robot colony](docs/colony.jpg) | ![Choosing suit modules at the workshop](docs/workshop.jpg) |
 | ![The ship over the home world](docs/ship.jpg) | ![From the pilot's seat](docs/cockpit.jpg) |
 | ![Inside the citadel's tunnels](docs/citadel.jpg) | ![The gate to another system](docs/gate.jpg) |

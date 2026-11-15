@@ -36,20 +36,23 @@ namespace Infinigame
         readonly List<Strike> struck = new List<Strike>();
         readonly Instances raiders = new Instances(), drones = new Instances(), flashes = new Instances(), missiles = new Instances();
         readonly Instances[] bolts = { new Instances(), new Instances() };
-        Mesh raider, raiderLights, drone, droneEye, ball, missile, sentry, sentryEye, leg, mind, mindLights;
-        readonly Instances sentries = new Instances(), legs = new Instances(), minds = new Instances();
+        Mesh raider, raiderLights, drone, droneEye, ball, missile, mind, mindLights;
+        readonly Mesh[] sentry = new Mesh[3], sentryEye = new Mesh[3], leg = new Mesh[3];
+        readonly Instances[] sentries = { new Instances(), new Instances(), new Instances() }, legs = { new Instances(), new Instances(), new Instances() };
+        readonly Instances minds = new Instances();
         Material raiderHull, raiderGlow, droneHull, droneGlow, ours, theirs, fire, casing;
         Random rnd = new Random(1);
         float trigger, raid, pack, ashore, launch;
         // charged: a landing charge has gone down for the landing in hand
         bool left, charged;
         LineRenderer ray;
+        public bool Beaming => ray != null && ray.enabled && game.Player.Weapon.beam;
 
         void Awake()
         {
             (raider, raiderLights) = Models.Raider();
             (drone, droneEye) = Models.Drone();
-            (sentry, sentryEye, leg) = Models.Sentry();
+            for (int i = 0; i < 3; i++) (sentry[i], sentryEye[i], leg[i]) = Models.Sentry((MotileCaste)i);
             (mind, mindLights) = Models.Mind();
             missile = Models.Missile();
             ball = Shapes.Sphere(0.5f, 8);
@@ -61,8 +64,8 @@ namespace Infinigame
             ray.enabled = false;
             // iron dark enough to menace and pale enough to pick out against the dark of space, lit from
             // within, and holed and burning where it has been shot, in holes sized to the craft
-            var iron = new Color(0.43f, 0.29f, 0.22f);
-            var menace = new Color(9f, 0.9f, 0.15f);
+            var iron = new Color(0.5f, 0.43f, 0.35f);
+            var menace = new Color(2.5f, 0.12f, 0.015f);
             (raiderHull, raiderGlow) = (Shapes.Hull(iron, 10f), Shapes.Hull(Color.black, 10f, menace));
             (droneHull, droneGlow) = (Shapes.Hull(iron, 1.2f), Shapes.Hull(Color.black, 1.2f, menace));
             casing = Shapes.Material("Props", new Color(0.3f, 0.28f, 0.27f));
@@ -113,10 +116,10 @@ namespace Infinigame
             }
         }
 
-        public void Add(FoeKind kind, float3 position)
+        public void Add(FoeKind kind, float3 position, MotileCaste caste = MotileCaste.Stalker)
         {
             var body = game.System.ReferenceBody;
-            Foes.Add(Combat.Spawn(kind, position, game.Player.Position - position, game.Threat, rnd.NextUInt(), 0.6f * body.radius));
+            Foes.Add(Combat.Spawn(kind, position, game.Player.Position - position, game.Threat, rnd.NextUInt(), 0.6f * body.radius, caste));
         }
 
         // One frame of fighting, while the world is running.
@@ -198,7 +201,7 @@ namespace Infinigame
                 }
                 else Combat.Fire(weapon, muzzle, forward, player.Velocity, ref rnd, Bolts);
                 trigger = weapon.period;
-                if (!weapon.beam || Time.time - Fired > 0.15f) game.Sounds.Shot(weapon.voice);
+                if (!weapon.beam) game.Sounds.Shot(weapon.voice);
                 Fired = Time.time;
             }
 
@@ -255,6 +258,8 @@ namespace Infinigame
                                 shot.life = copied.life;
                             }
                             Bolts.Add(shot);
+                            game.Sounds.Shot(foe.kind == FoeKind.Raider ? 6 : foe.kind == FoeKind.Base ? 8 : 7,
+                                0.45f / (1 + math.lengthsq(foe.position - self) / 2500));
                         }
                     }
                     Foes[i] = foe;
@@ -400,12 +405,14 @@ namespace Infinigame
         {
             float3 anchor = game.System.Anchor;
             float beat = Time.time;
-            foreach (var list in new[] { raiders, drones, flashes, missiles, sentries, legs, minds, bolts[0], bolts[1] }) list.Clear();
+            foreach (var list in new[] { raiders, drones, flashes, missiles, minds, bolts[0], bolts[1] }) list.Clear();
+            foreach (var list in sentries) list.Clear();
+            foreach (var list in legs) list.Clear();
             foreach (var foe in Foes)
             {
                 float3 up = game.System.ReferenceBody.kind == BodyKind.Station ? new float3(0, 1, 0) : math.normalizesafe(foe.position, new float3(0, 1, 0));
                 // the more it has been hit, the more of it is holes
-                float battered = 1f - foe.health / Combat.Health(foe.kind, game.Threat);
+                float battered = 1f - foe.health / Combat.Health(foe.kind, game.Threat, foe.caste);
                 if (foe.kind == FoeKind.Raider) raiders.Add(Matrix4x4.TRS(foe.position - anchor, Quaternion.LookRotation(foe.forward, up), Vector3.one), battered, foe.seed);
                 // a drone bobs as it hovers
                 else if (foe.kind == FoeKind.Drone)
@@ -415,13 +422,13 @@ namespace Infinigame
                 else if (foe.kind == FoeKind.Sentry)
                 {
                     Quaternion facing = Quaternion.LookRotation(math.normalizesafe(Walker.Project(foe.forward, up), new float3(0, 0, 1)), up);
-                    sentries.Add(Matrix4x4.TRS(foe.position - anchor, facing, Vector3.one), battered, foe.seed);
-                    for (int i = 0; i < 6; i++)
+                    sentries[(int)foe.caste].Add(Matrix4x4.TRS(foe.position - anchor, facing, Vector3.one), battered, foe.seed);
+                    for (int i = 0; i < Models.LimbCount(foe.caste); i++)
                     {
-                        float side = i < 3 ? -1 : 1, stride = math.min(math.length(foe.velocity) * 0.012f, 0.08f);
-                        Vector3 attachment = new Vector3(side * 0.4f, 0, (i % 3 - 1) * 0.45f);
+                        float side = i < Models.LimbCount(foe.caste) / 2 ? -1 : 1, stride = math.min(math.length(foe.velocity) * 0.012f, 0.08f);
+                        Vector3 attachment = Models.LimbRoot(foe.caste, i);
                         float lift = math.max(0, math.sin(beat * 7 + (i % 2) * math.PI)) * stride;
-                        legs.Add(Matrix4x4.TRS(foe.position - anchor + (float3)(facing * (attachment + Vector3.up * lift)),
+                        legs[(int)foe.caste].Add(Matrix4x4.TRS(foe.position - anchor + (float3)(facing * (attachment + Vector3.up * lift)),
                             facing * Quaternion.Euler(0, side < 0 ? 180 : 0, 0), Vector3.one), battered, foe.seed);
                     }
                 }
@@ -448,9 +455,12 @@ namespace Infinigame
             raiders.Draw(raiderLights, raiderGlow, false, bounds);
             drones.Draw(drone, droneHull, true, bounds);
             drones.Draw(droneEye, droneGlow, false, bounds);
-            sentries.Draw(sentry, droneHull, true, bounds);
-            sentries.Draw(sentryEye, droneGlow, false, bounds);
-            legs.Draw(leg, droneHull, true, bounds);
+            for (int i = 0; i < 3; i++)
+            {
+                sentries[i].Draw(sentry[i], droneHull, true, bounds);
+                sentries[i].Draw(sentryEye[i], droneGlow, false, bounds);
+                legs[i].Draw(leg[i], droneHull, true, bounds);
+            }
             minds.Draw(mind, droneHull, true, bounds);
             minds.Draw(mindLights, droneGlow, false, bounds);
             missiles.Draw(missile, casing, false, bounds);

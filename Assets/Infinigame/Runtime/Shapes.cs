@@ -147,7 +147,7 @@ namespace Infinigame
         static Texture2D Strokes(Color background, IEnumerable<(float2 from, float2 to, float2 width, Color colour)> strokes)
         {
             // widths are for the full size: a phone gets the picture at half that
-            int size = LodSettings.Tier == 0 ? 256 : 512;
+            int size = LodSettings.Tier == 0 ? 512 : 1024;
             var pixels = new Color[size * size];
             for (int i = 0; i < pixels.Length; i++) pixels[i] = new Color(background.r, background.g, background.b, 0f);
             foreach (var (from, to, full, colour) in strokes)
@@ -243,7 +243,8 @@ namespace Infinigame
         public static (Mesh trunk, Mesh needles) Conifer()
         {
             const float height = 10f;
-            const int sides = 8, rings = 6, whorls = 15, branches = 5;
+            int sides = LodSettings.Tier == 0 ? 16 : 28;
+            const int rings = 12, whorls = 18, branches = 7;
             var vertices = new List<Vector3>();
             var normals = new List<Vector3>();
             var uvs = new List<Vector2>();
@@ -376,9 +377,9 @@ namespace Infinigame
         }
 
         // A lumpy boulder about a metre across, wrapped in the rock texture. Fewer quads make a plainer one.
-        public static Mesh Rock(int quads = 3)
+        public static Mesh Rock(int quads = 0)
         {
-            var mesh = Sphere(0.5f, quads);
+            var mesh = Sphere(0.5f, quads > 0 ? quads : LodSettings.Tier == 0 ? 6 : 12);
             var vertices = mesh.vertices;
             var uvs = new Vector2[vertices.Length];
             for (int i = 0; i < vertices.Length; i++)
@@ -422,56 +423,74 @@ namespace Infinigame
             return mesh;
         }
 
-        // Several stretched boxes and spheres as one mesh: each part is a mesh, where it goes, its size and how it is turned.
-        static Mesh Merge(params (Mesh mesh, Vector3 position, Vector3 scale, Vector3 turn)[] parts)
-        {
-            var combine = new CombineInstance[parts.Length];
-            for (int i = 0; i < parts.Length; i++)
-                combine[i] = new CombineInstance { mesh = parts[i].mesh, transform = Matrix4x4.TRS(parts[i].position, Quaternion.Euler(parts[i].turn), parts[i].scale) };
-            var mesh = new Mesh();
-            mesh.CombineMeshes(combine);
-            return mesh;
-        }
+        static Mesh grazer, birdBody, birdWing, fish;
 
-        // A stocky grazing animal about a metre at the shoulder, standing at the origin facing +z.
         public static Mesh Grazer()
         {
-            Mesh sphere = Sphere(0.5f, 4), box = Box();
-            return Merge(
-                (sphere, new Vector3(0f, 0.85f, 0f), new Vector3(0.6f, 0.62f, 1.25f), Vector3.zero),
-                (sphere, new Vector3(0f, 1f, -0.25f), new Vector3(0.5f, 0.5f, 0.7f), Vector3.zero),
-                (box, new Vector3(0f, 1.05f, 0.62f), new Vector3(0.2f, 0.5f, 0.22f), new Vector3(40f, 0f, 0f)),
-                (sphere, new Vector3(0f, 1.22f, 0.9f), new Vector3(0.26f, 0.28f, 0.46f), new Vector3(25f, 0f, 0f)),
-                (box, new Vector3(0.12f, 1.42f, 0.8f), new Vector3(0.04f, 0.22f, 0.04f), new Vector3(-20f, 0f, -20f)),
-                (box, new Vector3(-0.12f, 1.42f, 0.8f), new Vector3(0.04f, 0.22f, 0.04f), new Vector3(-20f, 0f, 20f)),
-                (box, new Vector3(0.17f, 0.3f, 0.42f), new Vector3(0.11f, 0.6f, 0.11f), Vector3.zero),
-                (box, new Vector3(-0.17f, 0.3f, 0.42f), new Vector3(0.11f, 0.6f, 0.11f), Vector3.zero),
-                (box, new Vector3(0.17f, 0.3f, -0.42f), new Vector3(0.11f, 0.6f, 0.11f), Vector3.zero),
-                (box, new Vector3(-0.17f, 0.3f, -0.42f), new Vector3(0.11f, 0.6f, 0.11f), Vector3.zero),
-                (box, new Vector3(0f, 0.95f, -0.68f), new Vector3(0.07f, 0.26f, 0.07f), new Vector3(-25f, 0f, 0f)));
+            if (grazer != null) return grazer;
+            int sides = LodSettings.Tier == 0 ? 24 : 40;
+            var body = new MeshKit { crease = 70 };
+            body.Ball(new Vector3(0, 0.83f, 0), new Vector3(0.31f, 0.34f, 0.65f), sides);
+            body.Ball(new Vector3(0, 1, 0.4f), new Vector3(0.27f, 0.38f, 0.32f), sides);
+            body.Tube(MeshKit.Path(24, new Vector3(0, 0.95f, 0.45f), new Vector3(0, 1.25f, 0.63f), new Vector3(0, 1.3f, 0.85f)), 0.2f, sides, 0.14f);
+            body.Ball(new Vector3(0, 1.27f, 0.91f), new Vector3(0.17f, 0.18f, 0.29f), sides);
+            body.Ball(new Vector3(0, 1.19f, 1.11f), new Vector3(0.15f, 0.09f, 0.14f), sides);
+            foreach (float side in new[] { -1f, 1f })
+            {
+                body.Ball(new Vector3(side * 0.15f, 1.32f, 0.98f), new Vector3(0.025f, 0.035f, 0.035f), 24);
+                body.Tube(MeshKit.Path(24, new Vector3(side * 0.13f, 1.37f, 0.77f), new Vector3(side * 0.24f, 1.66f, 0.65f), new Vector3(side * 0.2f, 1.72f, 0.85f)), 0.055f, 24, 0.004f);
+                body.Ball(new Vector3(side * 0.25f, 1.34f, 0.74f), new Vector3(0.15f, 0.035f, 0.075f), sides);
+                foreach (float end in new[] { -1f, 1f })
+                {
+                    Vector3 hip = new Vector3(side * 0.22f, 0.79f, end * 0.42f), knee = new Vector3(side * 0.23f, 0.4f, end * 0.34f), hoof = new Vector3(side * 0.22f, 0.06f, end * 0.43f);
+                    body.Ball(hip, new Vector3(0.13f, 0.22f, 0.19f), sides);
+                    body.Tube(MeshKit.Path(24, hip, knee, hoof), 0.11f, sides, 0.055f);
+                    body.Ball(knee, 0.085f, 24);
+                    body.Box(hoof + Vector3.forward * 0.025f, new Vector3(0.12f, 0.11f, 0.19f), 0.025f);
+                }
+            }
+            body.Tube(MeshKit.Path(24, new Vector3(0, 0.99f, -0.57f), new Vector3(0.08f, 0.73f, -0.78f), new Vector3(0.13f, 0.6f, -0.72f)), 0.045f, 20, 0.015f);
+            return grazer = body.Mesh("Grazer anatomy");
         }
 
-        // A soaring bird: its body and tail, and one wing hinged at the origin and reaching along +x.
-        // The other wing is the same mesh turned half way round the body.
         public static (Mesh body, Mesh wing) Bird()
         {
-            Mesh sphere = Sphere(0.5f, 3), box = Box();
-            return (
-                Merge((sphere, Vector3.zero, new Vector3(0.2f, 0.18f, 0.6f), Vector3.zero),
-                    (box, new Vector3(0f, 0f, -0.36f), new Vector3(0.2f, 0.02f, 0.28f), Vector3.zero),
-                    (box, new Vector3(0f, -0.01f, 0.32f), new Vector3(0.04f, 0.04f, 0.1f), Vector3.zero)),
-                Merge((box, new Vector3(0.5f, 0f, 0.02f), new Vector3(1f, 0.02f, 0.32f), Vector3.zero),
-                    (box, new Vector3(0.9f, 0f, -0.06f), new Vector3(0.35f, 0.015f, 0.2f), new Vector3(0f, 20f, 0f))));
+            if (birdBody != null) return (birdBody, birdWing);
+            int sides = LodSettings.Tier == 0 ? 20 : 32;
+            var body = new MeshKit(); var wing = new MeshKit();
+            body.Ball(Vector3.zero, new Vector3(0.1f, 0.095f, 0.3f), sides);
+            body.Ball(new Vector3(0, 0.045f, 0.26f), new Vector3(0.075f, 0.08f, 0.1f), sides);
+            body.Tube(MeshKit.Path(12, new Vector3(0, 0.04f, 0.32f), new Vector3(0, 0.025f, 0.4f), new Vector3(0, 0.01f, 0.43f)), 0.035f, 20, 0.002f);
+            for (int i = 0; i < 18; i++)
+            {
+                float t = i / 17f, x = 0.06f + t * 1.02f;
+                wing.Place(MeshKit.Move(new Vector3(x, 0.018f * Mathf.Sin(t * Mathf.PI), -0.02f - t * t * 0.14f)) * MeshKit.Turn(0, -t * 35, 0), () =>
+                    wing.Ball(Vector3.zero, new Vector3(0.075f, 0.012f, 0.18f * (1 - t * 0.45f)), sides));
+            }
+            for (int i = -3; i <= 3; i++)
+                body.Ball(new Vector3(i * 0.026f, -0.015f, -0.31f), new Vector3(0.027f, 0.01f, 0.15f), sides);
+            return (birdBody = body.Mesh("Bird anatomy"), birdWing = wing.Mesh("Layered flight feathers"));
         }
 
-        // A fish about half a metre long, facing +z.
         public static Mesh Fish()
         {
-            Mesh sphere = Sphere(0.5f, 3), box = Box();
-            return Merge(
-                (sphere, Vector3.zero, new Vector3(0.11f, 0.2f, 0.52f), Vector3.zero),
-                (box, new Vector3(0f, 0f, -0.32f), new Vector3(0.015f, 0.2f, 0.16f), Vector3.zero),
-                (box, new Vector3(0f, 0.11f, -0.02f), new Vector3(0.012f, 0.08f, 0.18f), Vector3.zero));
+            if (fish != null) return fish;
+            int sides = LodSettings.Tier == 0 ? 24 : 40;
+            var body = new MeshKit();
+            body.Ball(Vector3.zero, new Vector3(0.06f, 0.11f, 0.26f), sides);
+            body.Ball(new Vector3(0, 0.005f, 0.2f), new Vector3(0.047f, 0.075f, 0.085f), sides);
+            foreach (float side in new[] { -1f, 1f })
+            {
+                body.Ball(new Vector3(side * 0.046f, 0.035f, 0.21f), 0.014f, 24);
+                body.Ball(new Vector3(side * 0.065f, -0.035f, 0.04f), new Vector3(0.06f, 0.006f, 0.06f), sides);
+            }
+            for (int i = -8; i <= 8; i++)
+            {
+                float fan = i / 8f;
+                body.Tube(MeshKit.Path(12, new Vector3(0, 0, -0.2f), new Vector3(0, fan * 0.09f, -0.29f), new Vector3(0, fan * 0.14f, -0.35f + 0.05f * Mathf.Abs(fan))), 0.009f, 12, 0.003f);
+            }
+            body.Ball(new Vector3(0, 0.105f, -0.025f), new Vector3(0.009f, 0.06f, 0.11f), sides);
+            return fish = body.Mesh("Fish anatomy and fin rays");
         }
 
         // A screen that shows text, for the cockpit's instruments. It faces -z, towards the pilot.
@@ -510,6 +529,8 @@ namespace Infinigame
         {
             var hull = new Material(Resources.Load<Shader>("Hull")) { color = colour, enableInstancing = true };
             hull.SetFloat("_Size", size);
+            hull.SetTexture("_BaseMap", Textures.Albedo(Surface.Chitin));
+            hull.SetFloat("_Metallic", 0.12f);
             hull.SetColor("_Glow", glow);
             return hull;
         }

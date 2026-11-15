@@ -9,12 +9,12 @@ namespace Infinigame
     // hermit's camp, the raiders with their drones, missiles and citadel and the life of stranger worlds.
     public static partial class Models
     {
-        static Material Paint(Color colour, float metallic = 0f, float smoothness = 0.3f)
+        static Material Paint(Color colour, float metallic = 0f, float smoothness = 0.3f, Surface surface = Surface.Metal)
         {
             var material = Shapes.Material("Lit", colour);
-            material.SetTexture("_BaseMap", Machined);
+            material.SetTexture("_BaseMap", Textures.Albedo(surface));
             material.SetTextureScale("_BaseMap", Vector2.one * 2);
-            material.SetTexture("_BumpMap", machinedNormal);
+            material.SetTexture("_BumpMap", Textures.Normal(surface));
             material.SetTextureScale("_BumpMap", Vector2.one * 2);
             material.SetFloat("_BumpScale", 0.3f);
             material.EnableKeyword("_NORMALMAP");
@@ -31,7 +31,7 @@ namespace Infinigame
         }
 
         // A stuffed cushion: a rounded slab, fullest round its middle.
-        static void Pillow(MeshKit kit, Vector3 centre, Vector3 size, int sides = 20)
+        static void Pillow(MeshKit kit, Vector3 centre, Vector3 size, int sides = 48)
         {
             float[] widths = { 0f, 0.78f, 0.95f, 1f, 1f, 0.95f, 0.78f, 0f }, heights = { -1f, -1f, -0.7f, -0.3f, 0.3f, 0.7f, 1f, 1f };
             var rings = new Vector3[widths.Length][];
@@ -670,24 +670,10 @@ namespace Infinigame
             leather.Place(Move(0f, 0.6f, 0.85f) * Turn(78f, 0f, 0f), () => Pillow(leather, Vector3.zero, new Vector3(0.44f, 0.09f, 0.7f)));
             leather.Place(Move(0f, 1.06f, 0.79f) * Turn(80f, 0f, 0f), () => Pillow(leather, Vector3.zero, new Vector3(0.26f, 0.09f, 0.2f)));
 
-            // paint is weathered by the dust texture, laid small
-            Material Worn(Color colour, float metallic, float smoothness)
-            {
-                var material = Shapes.Solid(Surface.Dust, colour);
-                material.SetTexture("_BaseMap", Machined);
-            material.SetTextureScale("_BaseMap", Vector2.one * 2);
-            material.SetTexture("_BumpMap", machinedNormal);
-            material.SetTextureScale("_BumpMap", Vector2.one * 2);
-            material.SetFloat("_BumpScale", 0.3f);
-            material.EnableKeyword("_NORMALMAP");
-            material.SetFloat("_Metallic", metallic);
-                material.SetFloat("_Smoothness", smoothness);
-                return material;
-            }
             foreach (var kit in new[] { hull, plate, accent, noseHull, nosePlate, hazard }) kit.tiling = 5f;
-            Material shell = Worn(new Color(0.98f, 1f, 1.02f), 0.15f, 0.4f), grey = Worn(new Color(0.52f, 0.55f, 0.58f), 0.3f, 0.4f), gunmetal = Paint(new Color(0.1f, 0.105f, 0.12f), 0.5f, 0.35f);
-            Material orange = Worn(new Color(1f, 0.36f, 0.1f), 0.1f, 0.4f), bare = Paint(new Color(0.62f, 0.64f, 0.66f), 0.85f, 0.6f), burnt = Paint(new Color(0.3f, 0.21f, 0.16f), 0.8f, 0.45f);
-            Material yellow = Worn(new Color(1.2f, 0.9f, 0.1f), 0f, 0.35f), panes = Shapes.Material("Water", new Color(0.35f, 0.75f, 0.95f, 0.4f));
+            Material shell = Paint(new Color(0.98f, 1f, 1.02f), 0.15f, 0.4f), grey = Paint(new Color(0.52f, 0.55f, 0.58f), 0.3f, 0.4f), gunmetal = Paint(new Color(0.1f, 0.105f, 0.12f), 0.5f, 0.35f);
+            Material orange = Paint(new Color(1f, 0.36f, 0.1f), 0.1f, 0.4f), bare = Paint(new Color(0.62f, 0.64f, 0.66f), 0.85f, 0.6f), burnt = Paint(new Color(0.3f, 0.21f, 0.16f), 0.8f, 0.45f);
+            Material yellow = Paint(new Color(1.2f, 0.9f, 0.1f), 0f, 0.35f), panes = Shapes.Material("Water", new Color(0.35f, 0.75f, 0.95f, 0.4f));
 
             void Add(Transform parent, string name, Mesh mesh, Material material, bool shadows = true)
             {
@@ -955,28 +941,15 @@ namespace Infinigame
                 }
             });
 
-            Material Worn(Color colour, float metallic, float smoothness)
-            {
-                var material = Shapes.Solid(Surface.Rock, colour);
-                material.SetTexture("_BaseMap", Machined);
-            material.SetTextureScale("_BaseMap", Vector2.one * 2);
-            material.SetTexture("_BumpMap", machinedNormal);
-            material.SetTextureScale("_BumpMap", Vector2.one * 2);
-            material.SetFloat("_BumpScale", 0.3f);
-            material.EnableKeyword("_NORMALMAP");
-            material.SetFloat("_Metallic", metallic);
-                material.SetFloat("_Smoothness", smoothness);
-                return material;
-            }
-            Shapes.Part(root, "Iron", iron.Mesh("Iron"), Worn(new Color(0.42f, 0.38f, 0.37f), 0.6f, 0.4f), Vector3.zero, Vector3.one);
-            Shapes.Part(root, "Rust", rust.Mesh("Rust"), Worn(new Color(0.62f, 0.3f, 0.2f), 0.5f, 0.35f), Vector3.zero, Vector3.one);
+            Shapes.Part(root, "Iron", iron.Mesh("Iron"), Paint(new Color(0.42f, 0.38f, 0.37f), 0.6f, 0.4f), Vector3.zero, Vector3.one);
+            Shapes.Part(root, "Rust", rust.Mesh("Rust"), Paint(new Color(0.62f, 0.3f, 0.2f), 0.5f, 0.35f), Vector3.zero, Vector3.one);
             Shapes.Part(root, "Furnaces", fire.Mesh("Furnaces"), Shapes.Material("Glow", new Color(9f, 2.4f, 0.35f)), Vector3.zero, Vector3.one, false);
             Shapes.Part(root, "Pentagram", blood.Mesh("Pentagram"), Shapes.Material("Glow", new Color(8f, 0.4f, 0.1f)), Vector3.zero, Vector3.one, false);
             return root;
         }
 
         // A stone or a knot of wood: a ball with a lumpy skin.
-        static void Lump(MeshKit kit, Vector3 centre, Vector3 radii, float seed, int sides = 12, float rough = 0.22f)
+        static void Lump(MeshKit kit, Vector3 centre, Vector3 radii, float seed, int sides = 32, float rough = 0.22f)
         {
             var rings = new Vector3[sides / 2 + 1][];
             for (int i = 0; i < rings.Length; i++)
@@ -1069,17 +1042,38 @@ namespace Infinigame
             if (kind == Core.Building.Radar)
             {
                 metal.Rod(Vector3.zero, new Vector3(0, 9, 0), 0.3f, Curves);
-                metal.Box(new Vector3(0, 8, 0), new Vector3(5, 1.5f, 0.3f), 0.2f);
+                metal.Place(Move(new Vector3(0, 8.5f, 0)) * Turn(55, 0, 0), () =>
+                {
+                    metal.Lathe(new[] { 0f, 0f, 0.4f, 0.03f, 0.9f, 0.14f, 1.4f, 0.34f, 1.9f, 0.62f, 2.1f, 0.8f, 2.16f, 0.76f, 1.9f, 0.54f, 1.4f, 0.26f, 0.9f, 0.06f, 0f, -0.08f }, Curves * 2);
+                    metal.Rod(Vector3.zero, Vector3.up * 1.6f, 0.06f, 24);
+                    metal.Ball(Vector3.up * 1.6f, 0.16f, Curves);
+                    for (int i = 0; i < 6; i++)
+                    {
+                        float a = i * Mathf.PI / 3;
+                        metal.Rod(new Vector3(Mathf.Cos(a) * 2, 0.7f, Mathf.Sin(a) * 2), Vector3.up * 1.6f, 0.025f, 16);
+                    }
+                });
             }
             else if (kind == Core.Building.Mine || kind == Core.Building.Drill)
             {
                 metal.Rod(new Vector3(0, 0.5f, 0), new Vector3(0, 5, 0), 0.6f, Curves, 0.2f);
                 foreach (float x in new[] { -2f, 2f }) metal.Rod(new Vector3(x, 0, 0), new Vector3(0, 5, 0), 0.18f, 20);
+                for (int i = 0; i < 8; i++)
+                    metal.Place(Move(new Vector3(0, 0.5f + i * 0.47f, 0)), () => metal.Torus(0.48f - i * 0.025f, 0.06f, Curves, 16));
+                foreach (float x in new[] { -1f, 1f })
+                    metal.Place(Move(new Vector3(x, 1, -1.2f)), () => metal.Lathe(new[] { 0, -0.6f, 0.38f, -0.6f, 0.46f, -0.4f, 0.46f, 0.7f, 0.38f, 0.9f, 0, 0.9f }, Curves));
             }
             else if (kind == Core.Building.Turret)
             {
                 metal.Rod(Vector3.zero, new Vector3(0, 2.5f, 0), 1, Curves, 0.7f);
-                metal.Box(new Vector3(0, 2.6f, 1), new Vector3(0.5f, 0.5f, 3), 0.08f);
+                metal.Ball(new Vector3(0, 2.4f, 0), new Vector3(0.9f, 0.65f, 0.8f), Curves);
+                foreach (float side in new[] { -1f, 1f })
+                {
+                    metal.Rod(new Vector3(side * 0.5f, 2.6f, 0.2f), new Vector3(side * 0.5f, 2.6f, 2.7f), 0.16f, Curves, 0.11f);
+                    for (int i = 0; i < 7; i++)
+                        metal.Place(Move(new Vector3(side * 0.5f, 2.6f, 0.5f + i * 0.3f)) * Turn(90, 0, 0), () => metal.Torus(0.16f, 0.035f, Curves, 16));
+                    glow.Ball(new Vector3(side * 0.5f, 2.6f, 2.7f), new Vector3(0.08f, 0.08f, 0.03f), 24);
+                }
             }
             else
             {
@@ -1147,16 +1141,16 @@ namespace Infinigame
                 kit.Lathe(profile, sides, lobes);
                 kit.Lathe(back, sides, (around, ring) => lobes(around, rings - 1 - ring));
             }
-            kit.Lathe(new[] { 7.7f, 12f, 8f, 13.2f, 7.5f, 15.4f, 5.8f, 17.8f, 3.2f, 19.4f, 0f, 20f }, 32, (around, ring) => 1f + 0.08f * Mathf.Cos(8f * around) * (1f - ring / 5f));
-            kit.Lathe(new[] { 0f, 19.2f, 3f, 18.6f, 5.3f, 17.1f, 6.9f, 15f, 7.3f, 13f, 7.2f, 12.1f, 7.7f, 12f }, 32, (around, ring) => 1f + 0.08f * Mathf.Cos(8f * around) * Mathf.Min(1f, ring / 5f));
+            kit.Lathe(new[] { 7.7f, 12f, 8f, 13.2f, 7.5f, 15.4f, 5.8f, 17.8f, 3.2f, 19.4f, 0f, 20f }, Curves * 2, (around, ring) => 1f + 0.08f * Mathf.Cos(8f * around) * (1f - ring / 5f));
+            kit.Lathe(new[] { 0f, 19.2f, 3f, 18.6f, 5.3f, 17.1f, 6.9f, 15f, 7.3f, 13f, 7.2f, 12.1f, 7.7f, 12f }, Curves * 2, (around, ring) => 1f + 0.08f * Mathf.Cos(8f * around) * Mathf.Min(1f, ring / 5f));
             Membrane(new[] { 7.8f, 8.4f, 7.2f, 9.6f, 7.9f, 11f, 7.6f, 12.1f }, 56, (around, ring) => 1f + 0.035f * (3 - ring) * Mathf.Sin(14f * around + 0.8f * ring));
             Membrane(new[] { 4.6f, 6.2f, 4.1f, 8.4f, 4.7f, 10.5f, 4.3f, 12.6f }, 40, (around, ring) => 1f + 0.06f * (3 - ring) * Mathf.Sin(10f * around + 1.1f * ring));
-            kit.Ball(new Vector3(0f, 16f, 0f), new Vector3(1.7f, 2.2f, 1.7f), 12);
+            kit.Ball(new Vector3(0f, 16f, 0f), new Vector3(1.7f, 2.2f, 1.7f), Curves);
             for (int i = 0; i < 5; i++)
             {
                 float angle = 2f * Mathf.PI * i / 5f;
                 var around = new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle));
-                kit.Ball(around * 3.1f + Vector3.up * 15.2f, new Vector3(1.1f, 1.7f, 1.1f), 8);
+                kit.Ball(around * 3.1f + Vector3.up * 15.2f, new Vector3(1.1f, 1.7f, 1.1f), Curves);
                 // a feeding arm: a ribbon that twists as it trails
                 var arm = new Vector3[26];
                 for (int k = 0; k < arm.Length; k++)
@@ -1167,7 +1161,7 @@ namespace Infinigame
                 kit.Sweep(arm, k =>
                 {
                     float t = k / (arm.Length - 1f), width = 1.1f * Mathf.Pow(1f - t, 0.6f) + 0.08f, twist = 0.55f * k;
-                    return Array.ConvertAll(Oval(6, width, 0.13f), p => new Vector2(p.x * Mathf.Cos(twist) - p.y * Mathf.Sin(twist), p.x * Mathf.Sin(twist) + p.y * Mathf.Cos(twist)));
+                    return Array.ConvertAll(Oval(20, width, 0.13f), p => new Vector2(p.x * Mathf.Cos(twist) - p.y * Mathf.Sin(twist), p.x * Mathf.Sin(twist) + p.y * Mathf.Cos(twist)));
                 }, Vector3.forward, false);
             }
             for (int i = 0; i < 14; i++)
@@ -1179,7 +1173,7 @@ namespace Infinigame
                     float t = k / (tendril.Length - 1f), sway = angle + 0.5f * Mathf.Sin(5f * t + i);
                     tendril[k] = new Vector3(Mathf.Sin(sway), 0f, Mathf.Cos(sway)) * (7.5f - 2.5f * t + 0.9f * Mathf.Sin(7f * t + 2f * i) * t) + Vector3.up * (12.2f - length * t);
                 }
-                kit.Tube(tendril, 0.14f, 4, 0.02f, false);
+                kit.Tube(tendril, 0.14f, 16, 0.02f, false);
             }
             return kit.Mesh("Drifter");
         }
@@ -1192,19 +1186,19 @@ namespace Infinigame
         {
             var body = new MeshKit { crease = 180f };
             var lights = new MeshKit(body) { crease = 180f };
-            body.Ball(new Vector3(0f, 4.55f, 0f), new Vector3(0.55f, 0.46f, 0.95f), 24);
-            body.Ball(new Vector3(0f, 4.2f, -0.45f), new Vector3(0.38f, 0.42f, 0.5f), 16);
+            body.Ball(new Vector3(0f, 4.55f, 0f), new Vector3(0.55f, 0.46f, 0.95f), Curves);
+            body.Ball(new Vector3(0f, 4.2f, -0.45f), new Vector3(0.38f, 0.42f, 0.5f), Curves);
             for (int i = 0; i < 3; i++)
             {
                 // one stilt forward and two behind, each with two knees and a spread foot
                 float angle = (120f * i) * Mathf.Deg2Rad;
                 var outward = new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle));
                 Vector3 hip = outward * 0.45f + Vector3.up * 4.6f, knee = outward * 1.7f + Vector3.up * 5.75f, hock = outward * 2.5f + Vector3.up * 2.7f, foot = outward * 1.95f;
-                body.Tube(Path(10, hip, knee, hock, foot + Vector3.up * 0.08f), 0.1f, 10, 0.045f);
-                body.Ball(knee, 0.16f, 8);
-                body.Ball(hock, 0.13f, 8);
+                body.Tube(Path(10, hip, knee, hock, foot + Vector3.up * 0.08f), 0.1f, 24, 0.045f);
+                body.Ball(knee, 0.16f, Curves);
+                body.Ball(hock, 0.13f, Curves);
                 for (int toe = -1; toe <= 1; toe++)
-                    body.Spike(foot + Vector3.up * 0.1f, foot + Quaternion.Euler(0f, 50f * toe, 0f) * outward * 0.5f, 0.06f, 5);
+                    body.Spike(foot + Vector3.up * 0.1f, foot + Quaternion.Euler(0f, 50f * toe, 0f) * outward * 0.5f, 0.06f, 16);
             }
 
             // the sail: spines raked back along the spine, webbed between
@@ -1235,10 +1229,10 @@ namespace Infinigame
 
             // the feeding trunk, flared where it meets the ground
             var trunk = Path(8, new Vector3(0f, 4.2f, 0.5f), new Vector3(0f, 3f, 0.95f), new Vector3(0f, 1.4f, 0.7f), new Vector3(0f, 0.3f, 1f));
-            body.Sweep(trunk, i => Oval(8, i > trunk.Length - 4 ? 0.07f + 0.03f * (i - trunk.Length + 4) : Mathf.Lerp(0.13f, 0.07f, i / (trunk.Length - 1f))), Vector3.forward);
+            body.Sweep(trunk, i => Oval(24, i > trunk.Length - 4 ? 0.07f + 0.03f * (i - trunk.Length + 4) : Mathf.Lerp(0.13f, 0.07f, i / (trunk.Length - 1f))), Vector3.forward);
             // the stalk: up and forward, then drooping under the weight of its lamps
             var stalk = Path(7, new Vector3(0f, 4.8f, 0.75f), new Vector3(0f, 5.6f, 1.5f), new Vector3(0f, 5.95f, 2.4f), new Vector3(0f, 5.6f, 3.15f), new Vector3(0f, 5.05f, 3.4f));
-            body.Tube(stalk, 0.12f, 8, 0.04f);
+            body.Tube(stalk, 0.12f, 24, 0.04f);
             for (int i = 0; i < 3; i++)
                 lights.Ball(stalk[stalk.Length - 1] + new Vector3(0.14f * (i - 1), -0.1f - 0.05f * (i % 2), 0.02f * i), 0.13f - 0.02f * i, 10);
             for (int i = 0; i < 5; i++) lights.Ball(stalk[6 + 5 * i] + Vector3.down * 0.1f, 0.05f, 6);

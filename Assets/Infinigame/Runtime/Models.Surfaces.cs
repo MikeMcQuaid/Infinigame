@@ -4,43 +4,6 @@ namespace Infinigame
 {
     public static partial class Models
     {
-        static Texture2D machined, machinedNormal;
-        static Texture2D Machined
-        {
-            get
-            {
-                if (machined != null) return machined;
-                const int size = 512;
-                var pixels = new Color32[size * size];
-                var random = new Unity.Mathematics.Random(5729);
-                for (int y = 0; y < size; y++)
-                for (int x = 0; x < size; x++)
-                {
-                    float grain = Mathf.PerlinNoise(x * 0.09f, y * 0.7f);
-                    float wear = Mathf.PerlinNoise(x * 0.035f, y * 0.035f);
-                    float scratch = y % 71 == 0 && x % 117 < 28 ? 0.13f : 0;
-                    byte value = (byte)Mathf.Clamp(214 + grain * 22 + wear * 14 + random.NextFloat(-3, 3) + scratch * 255, 0, 255);
-                    pixels[y * size + x] = new Color32(value, value, value, (byte)(130 + wear * 80));
-                }
-                machined = new Texture2D(size, size, TextureFormat.RGBA32, true) { name = "Generated machined finish", wrapMode = TextureWrapMode.Repeat, anisoLevel = 4 };
-                var normals = new Color[size * size];
-                for (int y = 0; y < size; y++)
-                for (int x = 0; x < size; x++)
-                {
-                    float dx = (pixels[y * size + (x + 1) % size].r - pixels[y * size + (x + size - 1) % size].r) / 255f;
-                    float dy = (pixels[((y + 1) % size) * size + x].r - pixels[((y + size - 1) % size) * size + x].r) / 255f;
-                    Vector3 normal = new Vector3(-dx * 2, -dy * 2, 1).normalized;
-                    normals[y * size + x] = new Color(normal.x * 0.5f + 0.5f, normal.y * 0.5f + 0.5f, normal.z * 0.5f + 0.5f, 1);
-                }
-                machinedNormal = new Texture2D(size, size, TextureFormat.RGBA32, true, true) { name = "Generated metal relief", wrapMode = TextureWrapMode.Repeat, anisoLevel = 4 };
-                machinedNormal.SetPixels(normals);
-                machinedNormal.Apply(true, true);
-                machined.SetPixels32(pixels);
-                machined.Apply(true, true);
-                return machined;
-            }
-        }
-
         public static Transform RoomPanel(Vector3 half, bool door)
         {
             var root = new GameObject(door ? "Door" : "Room").transform;
