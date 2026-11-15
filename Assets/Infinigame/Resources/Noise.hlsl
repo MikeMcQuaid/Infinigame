@@ -5,7 +5,13 @@
 
 // Set every frame by SolarSystem: the sun's position in the scene and the colour of its light in open space.
 float4 _SunPosition;
-half4 _SunLight;
+half4 _SunLight, _SecondSunLight;
+float4 _SecondSunPosition;
+half3 SecondStarlight(float3 normal)
+{
+    float3 centre = float3(UNITY_MATRIX_M._m03, UNITY_MATRIX_M._m13, UNITY_MATRIX_M._m23);
+    return _SecondSunLight.rgb * saturate(dot(normal, normalize(_SecondSunPosition.xyz - centre + 0.001)));
+}
 
 // The direction to the sun from the centre of the object being drawn. Each world is lit from where
 // the sun stands for it, not for the camera, so far-off worlds show the right phase.

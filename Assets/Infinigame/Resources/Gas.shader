@@ -78,7 +78,7 @@ Shader "Infinigame/Gas"
                 float facing = dot(normalWS, SunDirection());
                 // the deep air scatters light round the terminator and dims the limb
                 float limb = pow(saturate(dot(normalWS, GetWorldSpaceNormalizeViewDir(input.positionWS))), 0.4);
-                half3 colour = albedo * _SunLight.rgb * (0.55 * smoothstep(-0.15, 0.9, facing) * limb + 0.012);
+                half3 colour = albedo * (_SunLight.rgb * (0.55 * smoothstep(-0.15, 0.9, facing) * limb + 0.012) + SecondStarlight(normalWS) * 0.55 * limb);
                 colour = lerp(colour, MixFog(colour, InitializeInputDataFog(float4(input.positionWS, 1.0), input.fogFactor)), _Haze);
                 return half4(Veil(colour, input.positionWS, _Sky, _AirRadius), 1.0);
             }

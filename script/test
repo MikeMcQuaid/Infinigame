@@ -97,6 +97,7 @@ MONO_PATH="$mono/lib/mono/unityjit-macos:$mono/lib/mono/unityjit-macos/Facades:$
 shift
 for platform in EditMode PlayMode; do
   echo "==> Running $platform tests in Unity"
+  rm -f "Logs/$platform.xml"
   script/unity -batchmode -runTests -testPlatform $platform -testResults "$PWD/Logs/$platform.xml" -logFile Logs/$platform.log "$@" || failed=1
   [ -f Logs/$platform.xml ] || { tail -20 Logs/$platform.log; exit 1; }
   grep -o '<test-case [^>]*result="Failed"[^>]*' Logs/$platform.xml | grep -o 'fullname="[^"]*"' || true

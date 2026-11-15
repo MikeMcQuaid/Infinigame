@@ -640,7 +640,7 @@ namespace Infinigame
             trim.Box(new Vector3(0f, bow - 0.007f, 1.635f), new Vector3(0.3f, 0.054f, 0.07f), 0.008f);
             Mesh podLamp = Shape("Lamp", kit => kit.Box(Vector3.zero, new Vector3(0.042f, 0.016f, 0.004f), 0.001f));
             Mesh lever = Shape("Switch", kit => kit.Rod(Vector3.zero, new Vector3(0f, 0f, -0.028f), 0.0028f, 6, 0.0042f));
-            string[] warnings = { "HEAT", "DAMAGE", "RAD", "LANDED", "BOOST", "WARP" }, modes = { "ASSIST", "AUTO", "LAND" };
+            string[] warnings = { "HEAT", "DAMAGE", "RAD", "LANDED", "BOOST", "GATE" }, modes = { "ASSIST", "AUTO", "LAND" };
             for (int i = 0; i < warnings.Length; i++) Lamp(warnings[i], new Vector3(0.047f * (i - 2.5f), bow - 0.02f, 1.598f), podLamp, 0.0085f);
             for (int i = 0; i < modes.Length; i++)
             {
@@ -1207,408 +1207,117 @@ namespace Infinigame
             });
         }
 
-        // The hermit's camp, on the ground at the origin with +y up. "Hermit" is an old survivor
-        // standing at the origin facing +z in a patched robe and a straw hat, one hand on a gnarled
-        // staff. Behind and to one side is a ridge tent with a bedroll in it; in front and to the
-        // other side "Fire" burns in a ring of stones under a cooking pot, and carries a point light.
+        static void Add(Transform root, string name, MeshKit mesh, Material material, bool shadows = true) =>
+            Shapes.Part(root, name, mesh.Mesh(name), material, Vector3.zero, Vector3.one, shadows);
+
+        public static (Mesh body, Mesh light, Mesh leg) Sentry()
+        {
+            MeshKit body = new MeshKit(), light = new MeshKit(), leg = new MeshKit();
+            body.Box(new Vector3(0, 0.2f, 0), new Vector3(0.85f, 0.8f, 0.5f), 0.14f);
+            body.Ball(new Vector3(0, 0.72f, 0), 0.27f, 12);
+            foreach (float side in new[] { -1f, 1f })
+                body.Rod(new Vector3(side * 0.48f, 0.3f, 0), new Vector3(side * 0.55f, 0, 0.4f), 0.12f, 8);
+            light.Box(new Vector3(0, 0.72f, 0.25f), new Vector3(0.4f, 0.08f, 0.06f));
+            leg.Rod(Vector3.zero, new Vector3(0, -0.75f, 0), 0.12f, 8);
+            leg.Box(new Vector3(0, -0.78f, 0.08f), new Vector3(0.28f, 0.16f, 0.45f), 0.04f);
+            return (body.Mesh("Sentry"), light.Mesh("Sentry eyes"), leg.Mesh("Sentry leg"));
+        }
+
+        public static (Mesh body, Mesh light) Mind()
+        {
+            MeshKit body = new MeshKit(), light = new MeshKit();
+            body.Ball(Vector3.zero, 1.3f, 20);
+            for (int i = 0; i < 12; i++)
+            {
+                float angle = i * Mathf.PI / 6;
+                Vector3 point = new Vector3(Mathf.Cos(angle), Mathf.Sin(angle) * 0.7f, Mathf.Sin(angle * 3) * 0.4f) * 1.4f;
+                body.Rod(point, point + Vector3.down * 1.2f, 0.11f, 8, 0.035f);
+                light.Ball(point, 0.2f, 10);
+            }
+            return (body.Mesh("Controlling mind"), light.Mesh("Neural lights"));
+        }
+
+        public static Transform Robot()
+        {
+            var root = new GameObject("Robot").transform;
+            MeshKit plate = new MeshKit(), cable = new MeshKit(), glow = new MeshKit();
+            plate.Box(new Vector3(0, 1.1f, 0), new Vector3(0.6f, 0.65f, 0.35f), 0.1f);
+            plate.Box(new Vector3(0, 1.65f, 0), new Vector3(0.48f, 0.4f, 0.4f), 0.09f);
+            glow.Box(new Vector3(0, 1.7f, 0.21f), new Vector3(0.34f, 0.045f, 0.015f));
+            foreach (float side in new[] { -1f, 1f })
+            {
+                cable.Rod(new Vector3(side * 0.38f, 1.35f, 0), new Vector3(side * 0.4f, 0.7f, 0.04f), 0.065f, 10);
+                plate.Box(new Vector3(side * 0.4f, 0.9f, 0), new Vector3(0.2f, 0.35f, 0.2f), 0.04f);
+                cable.Rod(new Vector3(side * 0.18f, 0.9f, 0), new Vector3(side * 0.18f, 0.15f, 0), 0.07f, 10);
+                plate.Box(new Vector3(side * 0.18f, 0.35f, 0), new Vector3(0.23f, 0.4f, 0.25f), 0.05f);
+                plate.Box(new Vector3(side * 0.18f, 0.09f, 0.07f), new Vector3(0.25f, 0.18f, 0.4f), 0.04f);
+            }
+            Add(root, "Plate", plate, Paint(new Color(0.52f, 0.58f, 0.65f), 0.8f, 0.4f));
+            Add(root, "Conduits", cable, Paint(new Color(0.08f, 0.12f, 0.15f), 0.6f, 0.4f));
+            Add(root, "Visor", glow, Shapes.Material("Glow", new Color(0.2f, 3, 5)), false);
+            return root;
+        }
+
         public static Transform Camp()
         {
-            var root = new GameObject("Camp").transform;
-            Transform hermit = Child(root, "Hermit"), site = Child(root, "Site"), fire = Child(root, "Fire");
+            var root = new GameObject("Robot shelter").transform;
+            var robot = Robot(); robot.name = "Hermit"; robot.SetParent(root, false);
+            var workshop = Building(Core.Building.Workshop); workshop.SetParent(root, false); workshop.localPosition = new Vector3(5, 0, -3);
+            var fire = new GameObject("Fire").transform; fire.SetParent(root, false); fire.localPosition = new Vector3(-3, 0, 2);
+            return root;
+        }
 
-            var skin = new MeshKit { crease = 180f };
-            MeshKit Kit(float crease = 40f) => new MeshKit(skin) { crease = crease };
-            MeshKit robe = Kit(180f), mantle = Kit(180f), linen = Kit(180f), hair = Kit(180f), straw = Kit(60f), leather = Kit(60f), cord = Kit(180f), staff = Kit(180f), eyes = Kit(180f), brass = Kit(), glow = Kit();
-            foreach (var kit in new[] { robe, mantle, linen }) kit.tiling = 9f;
-            staff.tiling = 6f;
-
-            // The robe is one cloth from hem to neck: narrow where the rope gathers it, and falling in
-            // folds that deepen towards the hem. The old man stoops, so its top leans forward.
-            float[] wide = { 0.1f, 0.3f, 0.5f, 0.25f, 0.92f, 0.21f, 1.04f, 0.175f, 1.2f, 0.2f, 1.36f, 0.225f, 1.42f, 0.21f, 1.47f, 0.1f };
-            float[] deep = { 0.1f, 0.27f, 0.5f, 0.21f, 0.92f, 0.165f, 1.04f, 0.135f, 1.2f, 0.145f, 1.36f, 0.135f, 1.42f, 0.12f, 1.47f, 0.085f };
-            float[] folds = { 0.1f, 0.11f, 0.6f, 0.07f, 0.98f, 0.035f, 1.04f, 0.012f, 1.1f, 0.03f, 1.3f, 0.012f, 1.47f, 0f };
-            float Lean(float y) => 0.075f * Mathf.Pow(Mathf.Max(0f, (y - 0.9f) / 0.6f), 2f);
-            Vector3 Robe(float round, float along)
+        public static Transform Building(Core.Building kind)
+        {
+            var root = new GameObject(kind.ToString()).transform;
+            MeshKit metal = new MeshKit(), glow = new MeshKit();
+            metal.Box(new Vector3(0, 0.2f, 0), new Vector3(5, 0.4f, 5), 0.1f);
+            if (kind == Core.Building.Radar)
             {
-                float angle = 2f * Mathf.PI * round, y = Mathf.Lerp(0.1f + 0.015f * Mathf.Sin(5f * angle), 1.47f, along);
-                float fold = 1f + Key(y, folds) * (0.5f * Mathf.Sin(7f * angle + 0.6f) + 0.3f * Mathf.Sin(13f * angle + 2.1f + 3f * y) + 0.2f * Mathf.Sin(19f * angle + 4.4f));
-                return new Vector3(Key(y, wide) * fold * Mathf.Sin(angle), y, Key(y, deep) * fold * Mathf.Cos(angle) + Lean(y));
+                metal.Rod(Vector3.zero, new Vector3(0, 9, 0), 0.3f, 10);
+                metal.Box(new Vector3(0, 8, 0), new Vector3(5, 1.5f, 0.3f), 0.2f);
             }
-            Panels(Robe, new[] { 0f, 1f }, new[] { 0f, 1f }, 0.028f, 0f, 0f, (i, j) => robe);
-            // an under-robe shows below the hem, and the dark inside stops anyone seeing through
-            Vector3 Under(float round, float along)
+            else if (kind == Core.Building.Mine || kind == Core.Building.Drill)
             {
-                float angle = 2f * Mathf.PI * round, y = Mathf.Lerp(0.05f + 0.012f * Mathf.Sin(7f * angle + 1f), 0.24f, along);
-                float fold = 1f + 0.05f * (Mathf.Sin(9f * angle + 2f) + 0.5f * Mathf.Sin(17f * angle));
-                return new Vector3(0.245f * fold * Mathf.Sin(angle), y, 0.215f * fold * Mathf.Cos(angle));
+                metal.Rod(new Vector3(0, 0.5f, 0), new Vector3(0, 5, 0), 0.6f, 12, 0.2f);
+                foreach (float x in new[] { -2f, 2f }) metal.Rod(new Vector3(x, 0, 0), new Vector3(0, 5, 0), 0.18f, 8);
             }
-            Panels(Under, new[] { 0f, 1f }, new[] { 0f, 1f }, 0.03f, 0f, 0f, (i, j) => linen);
-            eyes.Lathe(new[] { 0f, 0.18f, 0.23f, 0.18f }, 16);
-
-            // Patches sewn on with big stitches.
-            (float round, float along, float width, float height, MeshKit cloth)[] patches =
+            else if (kind == Core.Building.Turret)
             {
-                (0.06f, 0.2f, 0.07f, 0.11f, mantle), (0.9f, 0.42f, 0.06f, 0.08f, linen), (0.16f, 0.52f, 0.05f, 0.09f, linen), (0.42f, 0.3f, 0.08f, 0.1f, mantle), (0.7f, 0.15f, 0.07f, 0.09f, linen), (0.97f, 0.74f, 0.05f, 0.07f, mantle),
-            };
-            var raisedRobe = Lifted(Robe, 0.004f);
-            foreach (var (round, along, width, height, cloth) in patches)
+                metal.Rod(Vector3.zero, new Vector3(0, 2.5f, 0), 1, 12, 0.7f);
+                metal.Box(new Vector3(0, 2.6f, 1), new Vector3(0.5f, 0.5f, 3), 0.08f);
+            }
+            else
             {
-                Panels(raisedRobe, new[] { round, round + width }, new[] { along, along + height }, 0.02f, 0.002f, 0.006f, (i, j) => cloth, cloth);
-                for (int i = 0; i < 16; i++)
+                metal.Box(new Vector3(-1.8f, 1.5f, 0), new Vector3(1, 3, 4), 0.1f);
+                metal.Box(new Vector3(1.8f, 1.5f, 0), new Vector3(1, 3, 4), 0.1f);
+                metal.Box(new Vector3(0, 3, 0), new Vector3(5, 0.4f, 4), 0.1f);
+                if (kind == Core.Building.Workshop)
                 {
-                    // four stitches along each edge
-                    bool level = i < 8;
-                    float t = (i % 4 + 0.3f) / 4f, u = level ? round + width * t : round + (i < 12 ? 0.004f : width - 0.004f), v = level ? along + (i < 4 ? 0.006f : height - 0.006f) : along + height * t;
-                    cord.Rod(Lifted(Robe, 0.006f)(u, v), Lifted(Robe, 0.006f)(u + (level ? width * 0.12f : 0f), v + (level ? 0f : height * 0.12f)), 0.0022f, 4);
+                    var suit = Robot(); suit.name = "Powered armour"; suit.SetParent(root, false); suit.localScale = Vector3.one * 1.25f;
+                    var helm = new MeshKit();
+                    helm.Box(new Vector3(0, 2.1f, 0), new Vector3(0.7f, 0.65f, 0.6f), 0.07f);
+                    for (int i = -2; i <= 2; i++) helm.Rod(new Vector3(i * 0.1f, 1.8f, 0.31f), new Vector3(i * 0.1f, 2.36f, 0.31f), 0.018f, 6);
+                    Add(root, "Fluted great helm", helm, Paint(new Color(0.25f, 0.3f, 0.35f), 0.9f, 0.5f));
+                    glow.Box(new Vector3(0, 2.2f, 0.33f), new Vector3(0.5f, 0.035f, 0.03f));
                 }
             }
+            glow.Box(new Vector3(0, 0.45f, 2.5f), new Vector3(4, 0.08f, 0.08f));
+            Add(root, "Iron", metal, Paint(new Color(0.25f, 0.3f, 0.35f), 0.7f, 0.4f));
+            Add(root, "Power", glow, Shapes.Material("Glow", new Color(0.2f, 2, 3)), false);
+            return root;
+        }
 
-            // A short mantle over the shoulders, ragged along its edge, with its hood rolled behind the neck.
-            float[] mantleWide = { 1.14f, 0.25f, 1.3f, 0.27f, 1.4f, 0.255f, 1.44f, 0.17f, 1.5f, 0.095f }, mantleDeep = { 1.14f, 0.185f, 1.3f, 0.175f, 1.4f, 0.15f, 1.44f, 0.12f, 1.5f, 0.085f };
-            Vector3 Mantle(float round, float along)
-            {
-                float angle = 2f * Mathf.PI * round, y = Mathf.Lerp(1.14f + 0.03f * Mathf.Sin(9f * angle) + 0.02f * Mathf.Sin(17f * angle + 1f), 1.5f, along);
-                float fold = 1f + 0.03f * (1f - along) * (Mathf.Sin(11f * angle + 1f) + 0.6f * Mathf.Sin(23f * angle));
-                return new Vector3(Key(y, mantleWide) * fold * Mathf.Sin(angle), y, Key(y, mantleDeep) * fold * Mathf.Cos(angle) + Lean(y));
-            }
-            Panels(Mantle, new[] { 0f, 1f }, new[] { 0f, 1f }, 0.022f, 0f, 0f, (i, j) => mantle);
-            mantle.flip = true;
-            Panels(Lifted(Mantle, -0.005f), new[] { 0f, 1f }, new[] { 0f, 1f }, 0.04f, 0f, 0f, (i, j) => mantle);
-            mantle.flip = false;
-            Pillow(mantle, new Vector3(0f, 1.5f, -0.065f), new Vector3(0.23f, 0.08f, 0.14f));
-
-            // Arms: wide sleeves that hang at the cuff, with the under-robe's sleeve running on to the wrist.
-            void Sleeve(Vector3 shoulder, Vector3 elbow, Vector3 wrist)
-            {
-                var arm = Path(6, shoulder, elbow, wrist);
-                robe.Sweep(arm, i =>
-                {
-                    float t = i / (arm.Length - 1f), radius = Mathf.Lerp(0.07f, 0.1f, t * t);
-                    var outline = Oval(18, radius, radius * 1.2f);
-                    for (int k = 0; k < outline.Length; k++) outline[k] = outline[k] * (1f + 0.07f * Mathf.Sin(5f * k * Mathf.PI / 9f + i)) + Vector2.down * (0.07f * t * t);
-                    return outline;
-                }, Vector3.up, false);
-                linen.Sweep(new[] { Vector3.Lerp(elbow, wrist, 0.5f), wrist, wrist + (wrist - elbow).normalized * 0.03f }, i => Oval(12, 0.045f - 0.006f * i), Vector3.up, false);
-            }
-            // the right hand is closed round the staff, the left hangs open; each arm ends where its hand begins
-            Vector3 reach = new Vector3(0.05f, 0.3f, 0.95f).normalized, inward = Vector3.Cross(reach, Vector3.up).normalized;
-            Vector3 fist = new Vector3(0.42f, 1.24f, 0.325f) - reach * 0.1f - inward * 0.03f, open = new Vector3(-0.28f, 0.87f, 0.105f), droop = new Vector3(0.03f, -1f, 0.12f).normalized;
-            Sleeve(new Vector3(0.2f, 1.38f, 0.04f), new Vector3(0.38f, 1.1f, -0.02f), fist - reach * 0.04f);
-            Sleeve(new Vector3(-0.2f, 1.38f, 0.04f), new Vector3(-0.29f, 1.1f, 0.02f), open - droop * 0.04f);
-            Hand(skin, fist, Vector3.up, reach, inward, 75f);
-            Hand(skin, open, new Vector3(0.2f, 0f, 1f), droop, new Vector3(1f, 0f, -0.2f), 14f);
-
-            // The head, bowed a little: brow, nose, cheekbones and ears melted onto a skull, the eyes set in under the brow.
-            var head = Move(0f, 1.615f, 0.085f) * Turn(9f, 0f, 0f);
-            skin.Place(head, () =>
-            {
-                skin.Blob(p =>
-                {
-                    p.x = Mathf.Abs(p.x);
-                    float face = Melt(Ellipsoid(p, new Vector3(0f, 0.03f, -0.012f), new Vector3(0.086f, 0.1f, 0.104f)), Ellipsoid(p, new Vector3(0f, -0.045f, 0.028f), new Vector3(0.068f, 0.09f, 0.08f)), 0.03f);
-                    face = Melt(face, Capsule(p, new Vector3(0.012f, 0.036f, 0.09f), new Vector3(0.058f, 0.04f, 0.068f), 0.015f, 0.014f), 0.012f);
-                    face = Melt(face, Ellipsoid(p, new Vector3(0.05f, -0.015f, 0.066f), new Vector3(0.026f, 0.02f, 0.028f)), 0.015f);
-                    face = Melt(face, Capsule(p, new Vector3(0f, 0.024f, 0.098f), new Vector3(0f, -0.032f, 0.132f), 0.011f, 0.018f), 0.01f);
-                    face = Carve(face, Ellipsoid(p, new Vector3(0.033f, 0.014f, 0.094f), new Vector3(0.02f, 0.011f, 0.02f)), 0.006f);
-                    face = Melt(face, Ellipsoid(p, new Vector3(0.086f, 0f, -0.002f), new Vector3(0.012f, 0.03f, 0.02f)), 0.006f);
-                    face = Carve(face, Ellipsoid(p, new Vector3(0.097f, 0.002f, 0.004f), new Vector3(0.006f, 0.017f, 0.01f)), 0.004f);
-                    return Melt(face, Capsule(p, new Vector3(0f, -0.09f, -0.01f), new Vector3(0f, -0.2f, -0.035f), 0.048f, 0.055f), 0.02f);
-                }, new Vector3(-0.118f, -0.215f, -0.135f), new Vector3(0.118f, 0.145f, 0.165f), 0.0075f);
-                foreach (float side in new[] { -1f, 1f }) eyes.Ball(new Vector3(side * 0.033f, 0.013f, 0.0855f), 0.0078f, 10);
-
-                // A long beard, a moustache, whiskers down the cheeks, bushy brows and hair to the collar, all combed into strands.
-                hair.Blob(p =>
-                {
-                    p.x = Mathf.Abs(p.x);
-                    float beard = Capsule(new Vector3(p.x, p.y, (p.z - 0.07f) * 1.5f + 0.07f), new Vector3(0f, -0.09f, 0.07f), new Vector3(0f, -0.3f, 0.09f), 0.062f, 0.014f);
-                    beard = Melt(beard, Capsule(p, new Vector3(0.006f, -0.052f, 0.116f), new Vector3(0.062f, -0.1f, 0.082f), 0.013f, 0.008f), 0.01f);
-                    beard = Melt(beard, Capsule(p, new Vector3(0.074f, -0.02f, 0.03f), new Vector3(0.055f, -0.1f, 0.06f), 0.018f, 0.024f), 0.012f);
-                    beard = Mathf.Min(beard, Capsule(p, new Vector3(0.014f, 0.05f, 0.103f), new Vector3(0.062f, 0.052f, 0.078f), 0.0085f, 0.006f));
-                    beard = Melt(beard, Capsule(new Vector3(p.x, p.y, (p.z + 0.075f) * 1.4f - 0.075f), new Vector3(0f, 0f, -0.075f), new Vector3(0f, -0.2f, -0.09f), 0.085f, 0.07f), 0.012f);
-                    beard = Melt(beard, Capsule(p, new Vector3(0.08f, 0.02f, -0.03f), new Vector3(0.085f, -0.16f, -0.02f), 0.03f, 0.02f), 0.012f);
-                    return beard + 0.0035f * Mathf.Sin(p.x * 260f + 1.7f * Mathf.Sin(p.y * 45f));
-                }, new Vector3(-0.135f, -0.335f, -0.155f), new Vector3(0.135f, 0.105f, 0.155f), 0.009f);
-
-                // The hat: a wide cone of coiled straw with ribs down it and a bound rim, tied under the chin.
-                straw.Place(Move(0f, 0.07f, -0.012f) * Turn(-3f, 0f, 0f), () =>
-                {
-                    var coil = new float[2 * 31];
-                    for (int i = 0; i <= 30; i++)
-                    {
-                        coil[2 * i] = 0.4f * (1f - i / 30f);
-                        coil[2 * i + 1] = 0.215f * i / 30f + (i % 2 == 0 ? 0f : 0.0045f);
-                    }
-                    straw.Lathe(coil, 48);
-                    straw.Lathe(new[] { 0.07f, 0.165f, 0.395f, -0.006f, 0.4f, 0f }, 48);
-                    straw.Place(Move(0f, -0.002f, 0f), () => straw.Torus(0.4f, 0.007f, 48, 6));
-                    for (int i = 0; i < 16; i++)
-                        straw.Place(Turn(0f, 22.5f * i, 0f), () => straw.Rod(new Vector3(0f, 0.003f, 0.4f), new Vector3(0f, 0.212f, 0.012f), 0.0035f, 4));
-                    foreach (float side in new[] { -1f, 1f })
-                        cord.Tube(Path(5, new Vector3(side * 0.1f, 0.11f, 0.02f), new Vector3(side * 0.092f, -0.05f, 0.03f), new Vector3(side * 0.06f, -0.18f, 0.07f), new Vector3(0f, -0.215f, 0.1f)), 0.003f, 5);
-                });
-            });
-
-            // A rope round the waist, laid up from three strands, knotted at the front with its ends hanging.
-            Vector2[] Strands(int i, float radius)
-            {
-                var outline = new Vector2[9];
-                for (int k = 0; k < 9; k++)
-                {
-                    float angle = 2f * Mathf.PI * k / 9f;
-                    outline[k] = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * (radius * (1f + 0.28f * Mathf.Cos(3f * angle + i * 1.1f)));
-                }
-                return outline;
-            }
-            var waist = new Vector3[49];
-            for (int i = 0; i <= 48; i++)
-            {
-                float angle = 2f * Mathf.PI * (i % 48) / 48f;
-                waist[i] = new Vector3(0.19f * Mathf.Sin(angle), 1.04f + 0.01f * Mathf.Cos(angle), 0.15f * Mathf.Cos(angle) + Lean(1.04f));
-            }
-            cord.Sweep(waist, i => Strands(i, 0.013f), Vector3.up, false, false, true);
-            Lump(cord, new Vector3(-0.05f, 1.035f, 0.165f), new Vector3(0.03f, 0.026f, 0.022f), 2f, 10, 0.15f);
-            foreach (float end in new[] { 0f, 1f })
-            {
-                var tail = Path(6, new Vector3(-0.05f, 1.03f, 0.17f), new Vector3(-0.065f - 0.03f * end, 0.93f, 0.2f), new Vector3(-0.06f - 0.05f * end, 0.74f + 0.08f * end, 0.215f));
-                cord.Sweep(tail, i => Strands(i, 0.011f), Vector3.forward);
-                Lump(cord, tail[tail.Length - 1] + Vector3.down * 0.012f, new Vector3(0.016f, 0.022f, 0.016f), 3f + end, 8, 0.2f);
-            }
-
-            // A satchel on a strap across the chest, and a water gourd at the other hip.
-            leather.Sweep(Path(5, new Vector3(0.14f, 1.4f, -0.12f), new Vector3(0.13f, 1.475f, 0.03f), new Vector3(0.02f, 1.3f, 0.2f), new Vector3(-0.15f, 1.1f, 0.18f), new Vector3(-0.235f, 0.98f, 0.06f)),
-                i => Outline(-0.019f, -0.004f, 0.019f, -0.004f, 0.019f, 0.004f, -0.019f, 0.004f), new Vector3(0.3f, 0.3f, 1f), false, false);
-            leather.Place(Move(-0.265f, 0.87f, 0.05f) * Turn(0f, -75f, 6f), () =>
-            {
-                leather.Box(Vector3.zero, new Vector3(0.24f, 0.2f, 0.085f), 0.025f);
-                leather.Box(new Vector3(0f, 0.05f, 0.046f), new Vector3(0.25f, 0.12f, 0.012f), 0.005f);
-                brass.Box(new Vector3(0f, 0f, 0.054f), new Vector3(0.03f, 0.035f, 0.006f), 0.002f);
-            });
-            straw.Place(Move(0.215f, 0.76f, 0.1f) * Turn(0f, 0f, -8f), () =>
-            {
-                straw.Lathe(new[] { 0f, 0f, 0.04f, 0.012f, 0.066f, 0.065f, 0.052f, 0.118f, 0.027f, 0.15f, 0.036f, 0.182f, 0.028f, 0.212f, 0.012f, 0.225f }, 16);
-                staff.Lathe(new[] { 0.012f, 0.225f, 0.014f, 0.245f, 0f, 0.247f }, 8);
-                cord.Rod(new Vector3(0f, 0.16f, 0f), new Vector3(-0.03f, 0.275f, 0.02f), 0.003f, 4);
-            });
-
-            // Feet in sandals, showing under the hem.
-            skin.Mirror(() =>
-            {
-                skin.Blob(p =>
-                {
-                    float foot = Melt(Ellipsoid(p, new Vector3(0.1f, 0.05f, 0.1f), new Vector3(0.045f, 0.034f, 0.105f)), Capsule(p, new Vector3(0.1f, 0.06f, 0.03f), new Vector3(0.1f, 0.22f, 0.02f), 0.04f, 0.045f), 0.03f);
-                    for (int toe = 0; toe < 5; toe++)
-                        foot = Melt(foot, Capsule(p, new Vector3(0.066f + 0.0175f * toe, 0.038f, 0.19f - 0.007f * toe), new Vector3(0.064f + 0.0185f * toe, 0.03f, 0.232f - 0.011f * toe), toe == 0 ? 0.015f : 0.0105f, toe == 0 ? 0.013f : 0.009f), 0.008f);
-                    return foot;
-                }, new Vector3(0.035f, 0f, -0.04f), new Vector3(0.17f, 0.26f, 0.27f), 0.0075f);
-                leather.Place(Move(0.1f, 0.011f, 0f) * Turn(90f, 0f, 0f), () => leather.Plate(Outline(-0.045f, -0.018f, 0.045f, -0.018f, 0.058f, 0.1f, 0.052f, 0.21f, 0.01f, 0.255f, -0.04f, 0.225f, -0.055f, 0.1f), 0.018f, 0.004f));
-                foreach (float z in new[] { 0.155f, 0.075f })
-                    leather.Sweep(Path(4, new Vector3(0.046f, 0.018f, z), new Vector3(0.062f, 0.07f, z - 0.01f), new Vector3(0.1f, 0.092f, z - 0.015f), new Vector3(0.138f, 0.07f, z - 0.01f), new Vector3(0.154f, 0.018f, z)),
-                        i => Outline(-0.011f, -0.003f, 0.011f, -0.003f, 0.011f, 0.003f, -0.011f, 0.003f), Vector3.forward, false, false);
-                leather.Rod(new Vector3(0.088f, 0.02f, 0.2f), new Vector3(0.098f, 0.088f, 0.145f), 0.004f, 5);
-            });
-
-            // The staff: gnarled, knotted and curled over at the top where a lantern hangs.
-            var stick = Path(5, new Vector3(0.42f, 0f, 0.32f), new Vector3(0.428f, 0.5f, 0.327f), new Vector3(0.414f, 1f, 0.332f), new Vector3(0.422f, 1.5f, 0.322f), new Vector3(0.432f, 1.9f, 0.33f),
-                new Vector3(0.44f, 2.02f, 0.37f), new Vector3(0.42f, 2.08f, 0.44f), new Vector3(0.39f, 2.04f, 0.485f), new Vector3(0.385f, 1.97f, 0.455f));
-            staff.Sweep(stick, i =>
-            {
-                float t = i / (stick.Length - 1f), radius = Mathf.Lerp(0.027f, 0.017f, t) * (1f + 0.3f * Mathf.Pow(Mathf.Abs(Mathf.Sin(i * 0.83f)), 6f));
-                var outline = Oval(10, radius);
-                for (int k = 0; k < 10; k++) outline[k] *= 1f + 0.1f * Mathf.Sin(k * 2.2f + i * 0.5f);
-                return outline;
-            }, Vector3.forward);
-            staff.Tube(new[] { new Vector3(0.418f, 1.62f, 0.325f), new Vector3(0.45f, 1.7f, 0.31f), new Vector3(0.462f, 1.74f, 0.3f) }, 0.011f, 6, 0.004f);
-            Lump(staff, new Vector3(0.424f, 1.9f, 0.33f), new Vector3(0.032f, 0.034f, 0.032f), 1f, 10);
-            Lantern(brass, glow, new Vector3(0.386f, 1.965f, 0.457f));
-
-            // The tent, pitched behind and to the left with its door towards the fire.
-            MeshKit canvas = Kit(180f), timber = Kit(), rope = Kit(180f), wool = Kit(180f), iron = Kit(), hide = Kit(180f), lamp = Kit(180f);
-            canvas.tiling = 6f;
-            timber.tiling = 4f;
-            canvas.Place(Move(-2.6f, 0f, -1.2f) * Turn(0f, 25f, 0f), () =>
-            {
-                // the cloth sags between the ridge and the pegs
-                Vector3 Tent(float across, float along)
-                {
-                    float s = 1f - 2f * across, slope = Mathf.Abs(s);
-                    float y = 1.35f * (1f - slope) - 0.07f * Mathf.Sin(Mathf.PI * slope) * (0.6f + 0.4f * Mathf.Sin(Mathf.PI * along)) + 0.006f * Mathf.Sin(40f * along + 3f * s) * Mathf.Sin(Mathf.PI * slope);
-                    return new Vector3(0.95f * s, y + 0.02f, Mathf.Lerp(-1.2f, 1.2f, along));
-                }
-                Panels(Tent, new[] { 0f, 0.5f, 1f }, new[] { 0f, 1f }, 0.06f, 0f, 0f, (i, j) => canvas);
-                canvas.flip = true;
-                Panels(Lifted(Tent, -0.006f), new[] { 0f, 0.5f, 1f }, new[] { 0f, 1f }, 0.08f, 0f, 0f, (i, j) => canvas);
-                canvas.flip = false;
-                var gable = new Vector3[25];
-                for (int i = 0; i < 25; i++) gable[i] = Tent(i / 24f, 0f);
-                canvas.Skin(new[] { gable }, true, true, true);
-                // the door flaps are tied back to either side
-                void Peg(Vector3 at, Vector3 lean) => timber.Rod(at + Vector3.up * 0.12f + lean.normalized * 0.05f, at + Vector3.down * 0.03f - lean.normalized * 0.01f, 0.014f, 6, 0.008f);
-                foreach (float side in new[] { -1f, 1f })
-                {
-                    canvas.Place(Size(side, 1f, 1f), () =>
-                    {
-                        Vector3 apex = new Vector3(0f, 1.37f, 1.2f), corner = new Vector3(0.95f, 0.02f, 1.2f), tied = new Vector3(0.82f, 0.25f, 1.5f);
-                        var flap = new Vector3[9][];
-                        for (int a = 0; a <= 8; a++)
-                        {
-                            flap[a] = new Vector3[7];
-                            for (int b = 0; b <= 6; b++)
-                                flap[a][b] = Vector3.Lerp(Vector3.Lerp(apex, corner, a / 8f), Vector3.Lerp(apex, tied, a / 8f), b / 6f) + new Vector3(0.05f, 0f, 0.1f) * (Mathf.Sin(Mathf.PI * b / 6f) * a / 8f);
-                        }
-                        canvas.Skin(flap, false);
-                        canvas.flip = !canvas.flip;
-                        canvas.Skin(flap, false);
-                        canvas.flip = !canvas.flip;
-                    });
-                    // pegs along the hem, each with a loop of cord
-                    for (int i = 0; i < 5; i++)
-                    {
-                        var peg = new Vector3(side * 1.06f, 0f, -1.1f + 0.55f * i);
-                        Peg(peg, new Vector3(side, 0f, 0f));
-                        rope.Rod(new Vector3(side * 0.95f, 0.03f, peg.z), peg + new Vector3(side * 0.03f, 0.08f, 0f), 0.004f, 4);
-                    }
-                    foreach (float end in new[] { -1f, 1f })
-                    {
-                        Vector3 top = new Vector3(0f, 1.43f, end * 1.21f), peg = new Vector3(side * 0.75f, 0f, end * 2.25f);
-                        rope.Tube(Path(4, top, Vector3.Lerp(top, peg, 0.5f) + Vector3.down * 0.04f, peg + Vector3.up * 0.08f), 0.006f, 5);
-                        Peg(peg, new Vector3(side * 0.3f, 0f, end * 0.5f));
-                    }
-                }
-                foreach (float end in new[] { -1f, 1f }) timber.Rod(new Vector3(0f, 0f, end * 1.21f), new Vector3(0f, 1.47f, end * 1.21f), 0.026f, 8, 0.022f);
-                timber.Rod(new Vector3(0f, 1.385f, -1.26f), new Vector3(0f, 1.385f, 1.26f), 0.022f, 8);
-                Lantern(iron, lamp, new Vector3(0.06f, 1.4f, 1.27f));
-
-                // inside: a mat, a pillow and a rolled blanket strapped up
-                canvas.Box(new Vector3(-0.3f, 0.035f, -0.1f), new Vector3(0.62f, 0.05f, 1.75f), 0.02f);
-                Pillow(wool, new Vector3(-0.3f, 0.1f, 0.05f), new Vector3(0.56f, 0.06f, 1.1f));
-                Pillow(canvas, new Vector3(-0.3f, 0.12f, -0.75f), new Vector3(0.42f, 0.1f, 0.26f));
-                wool.Place(Move(0.38f, 0.14f, -0.5f) * Turn(0f, 0f, 90f) * Turn(0f, 20f, 0f), () =>
-                {
-                    wool.Lathe(new[] { 0f, -0.3f, 0.1f, -0.3f, 0.125f, -0.27f, 0.125f, 0.27f, 0.1f, 0.3f, 0f, 0.3f }, 16);
-                    foreach (float strap in new[] { -0.15f, 0.15f }) Band(hide, 0.12f, 0.131f, strap - 0.015f, strap + 0.015f, 16);
-                });
-            });
-
-            // Round the camp: a log to sit on, a chopping block with the axe left in it, a stack of
-            // firewood, a strapped chest, a bucket and fish drying on a rack.
-            timber.Sweep(new[] { new Vector3(2.5f, 0.17f, -0.1f), new Vector3(2.58f, 0.17f, 0.4f), new Vector3(2.7f, 0.17f, 0.95f) }, i => Oval(12, 0.17f - 0.01f * i, 0.165f), Vector3.up);
-            timber.Place(Move(0.7f, 0f, -1.7f), () =>
-            {
-                timber.Lathe(new[] { 0f, 0f, 0.2f, 0f, 0.215f, 0.06f, 0.19f, 0.36f, 0f, 0.37f }, 12);
-                timber.Rod(new Vector3(0.02f, 0.45f, 0f), new Vector3(0.44f, 0.82f, 0.14f), 0.017f, 8);
-                iron.Place(Aim(new Vector3(0f, 0.36f, 0f), new Vector3(0.06f, 0.5f, 0.02f), Vector3.right), () => iron.Plate(Outline(-0.08f, -0.02f, 0.06f, -0.02f, 0.05f, 0.14f, -0.05f, 0.14f), 0.034f, 0.016f, 0.03f));
-            });
-            for (int i = 0; i < 6; i++)
-            {
-                int row = i < 3 ? 0 : i < 5 ? 1 : 2;
-                float z = -2.15f + 0.15f * (i - new[] { 0, 3, 5 }[row]) + 0.075f * row;
-                timber.Sweep(new[] { new Vector3(1.15f + 0.03f * i, 0.07f + 0.125f * row, z), new Vector3(1.8f + 0.02f * i, 0.07f + 0.125f * row, z + 0.02f) }, k => Oval(8, 0.072f, 0.068f), Vector3.up);
-            }
-            timber.Place(Move(-1.25f, 0.2f, 0.35f) * Turn(0f, -20f, 0f), () =>
-            {
-                timber.Box(Vector3.zero, new Vector3(0.62f, 0.4f, 0.4f), 0.015f);
-                timber.Box(new Vector3(0f, 0.215f, 0f), new Vector3(0.65f, 0.035f, 0.43f), 0.01f);
-                foreach (float strap in new[] { -0.2f, 0.2f }) iron.Box(new Vector3(strap, 0.01f, 0f), new Vector3(0.04f, 0.46f, 0.415f), 0.004f);
-                iron.Box(new Vector3(0f, 0.12f, 0.205f), new Vector3(0.06f, 0.07f, 0.02f), 0.004f);
-            });
-            timber.Place(Move(2.25f, 0f, 1.95f), () =>
-            {
-                timber.Lathe(new[] { 0f, 0f, 0.11f, 0f, 0.135f, 0.25f, 0.123f, 0.25f, 0.1f, 0.02f, 0f, 0.02f }, 14);
-                foreach (float height in new[] { 0.05f, 0.2f }) Band(iron, 0.11f + 0.1f * height, 0.118f + 0.1f * height, height - 0.012f, height + 0.012f, 14);
-                rope.Tube(Path(5, new Vector3(-0.13f, 0.24f, 0f), new Vector3(-0.08f, 0.36f, 0.03f), new Vector3(0.08f, 0.36f, 0.03f), new Vector3(0.13f, 0.24f, 0f)), 0.006f, 5);
-            });
-            timber.Place(Move(-1.2f, 0f, 2f) * Turn(0f, 35f, 0f), () =>
-            {
-                foreach (float side in new[] { -1f, 1f })
-                {
-                    timber.Rod(new Vector3(side * 0.6f, 0f, 0f), new Vector3(side * 0.58f, 1.2f, 0f), 0.024f, 7, 0.018f);
-                    timber.Rod(new Vector3(side * 0.58f, 1.12f, 0f), new Vector3(side * 0.66f, 1.34f, 0.03f), 0.014f, 6, 0.008f);
-                    timber.Rod(new Vector3(side * 0.6f, 0.3f, 0f), new Vector3(side * 0.6f, 0f, 0.3f), 0.014f, 6);
-                }
-                timber.Rod(new Vector3(-0.72f, 1.21f, 0.01f), new Vector3(0.72f, 1.23f, 0.01f), 0.016f, 7);
-                for (int i = 0; i < 4; i++)
-                {
-                    float x = -0.4f + 0.27f * i;
-                    rope.Rod(new Vector3(x, 1.21f, 0.01f), new Vector3(x, 1.12f, 0.01f), 0.003f, 4);
-                    Lump(hide, new Vector3(x, 0.96f, 0.01f), new Vector3(0.045f, 0.17f, 0.014f), i * 2.3f, 10, 0.12f);
-                    hide.Triangle(new Vector3(x, 0.8f, 0.01f), new Vector3(x - 0.05f, 0.72f, 0.01f), new Vector3(x + 0.05f, 0.72f, 0.01f));
-                    hide.Triangle(new Vector3(x, 0.8f, 0.01f), new Vector3(x + 0.05f, 0.72f, 0.01f), new Vector3(x - 0.05f, 0.72f, 0.01f));
-                }
-            });
-
-            // The fire, built round its own middle: a ring of stones, logs leaning in over embers,
-            // flames and a pot hung from a tripod.
-            MeshKit stone = Kit(180f), logs = Kit(), flame = Kit(180f), embers = Kit(180f), pot = Kit();
-            stone.tiling = 2f;
-            logs.tiling = 7f;
-            for (int i = 0; i < 9; i++)
-            {
-                float angle = 2f * Mathf.PI * i / 9f + 0.2f * Mathf.Sin(i * 1.7f), size = 0.13f + 0.035f * (i * 7 % 4);
-                Lump(stone, new Vector3(Mathf.Sin(angle) * 0.54f, size * 0.5f, Mathf.Cos(angle) * 0.54f), new Vector3(size, size * 0.7f, size * 0.85f), i * 1.9f);
-            }
-            logs.Lathe(new[] { 0.44f, 0.01f, 0.3f, 0.04f, 0f, 0.05f }, 16);
-            for (int i = 0; i < 5; i++)
-            {
-                float angle = (72f * i + 10f) * Mathf.Deg2Rad;
-                var outward = new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle));
-                logs.Sweep(new[] { outward * 0.42f + Vector3.up * 0.05f, outward * 0.2f + Vector3.up * 0.11f, outward * -0.03f + Vector3.up * 0.2f }, k => Oval(8, 0.055f - 0.004f * k, 0.05f - 0.004f * k), Vector3.up);
-                Lump(embers, outward * 0.12f + Vector3.up * 0.07f, new Vector3(0.04f, 0.025f, 0.035f), i, 8);
-                Lump(embers, Quaternion.Euler(0f, 36f, 0f) * outward * 0.2f + Vector3.up * 0.06f, new Vector3(0.03f, 0.02f, 0.03f), i + 5f, 8);
-                float lean = 10f + 4f * (i % 3), scale = 0.55f + 0.2f * (i % 3);
-                flame.Place(Move(outward * 0.1f + Vector3.up * 0.1f) * Turn(lean * outward.z, 0f, -lean * outward.x) * Size(scale), () =>
-                    flame.Lathe(new[] { 0f, 0f, 0.07f, 0.05f, 0.1f, 0.14f, 0.075f, 0.27f, 0.035f, 0.4f, 0f, 0.52f }, 10, (around, ring) => 1f + 0.2f * Mathf.Sin(3f * around + ring * 0.9f + i)));
-            }
-            flame.Place(Move(0f, 0.1f, 0f), () => flame.Lathe(new[] { 0f, 0f, 0.08f, 0.05f, 0.11f, 0.15f, 0.08f, 0.3f, 0.04f, 0.46f, 0f, 0.62f }, 12, (around, ring) => 1f + 0.2f * Mathf.Sin(3f * around + ring * 1.1f)));
-            for (int i = 0; i < 3; i++)
-            {
-                float angle = (120f * i + 30f) * Mathf.Deg2Rad;
-                var foot = new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle)) * 0.68f;
-                logs.Rod(foot, Vector3.up * 1.42f - foot * 0.09f, 0.024f, 7, 0.018f);
-            }
-            for (int i = 0; i < 3; i++) logs.Place(Move(0f, 1.3f + 0.025f * i, 0f), () => logs.Torus(0.05f - 0.004f * i, 0.011f, 10, 5));
-            Chain(pot, new Vector3(0f, 1.3f, 0f), new Vector3(0f, 0.95f, 0f), 0f, 0.07f, 0.006f);
-            pot.Lathe(new[] { 0f, 0.5f, 0.1f, 0.51f, 0.17f, 0.58f, 0.195f, 0.69f, 0.178f, 0.79f, 0.19f, 0.805f, 0.19f, 0.82f, 0.168f, 0.82f, 0.163f, 0.79f, 0.17f, 0.76f }, 20);
-            logs.Lathe(new[] { 0.17f, 0.76f, 0f, 0.765f }, 20);
-            pot.Tube(Path(6, new Vector3(-0.19f, 0.81f, 0f), new Vector3(-0.13f, 0.9f, 0f), new Vector3(0f, 0.95f, 0f), new Vector3(0.13f, 0.9f, 0f), new Vector3(0.19f, 0.81f, 0f)), 0.007f, 5);
-            fire.localPosition = new Vector3(1.6f, 0f, 0.9f);
-            var light = fire.gameObject.AddComponent<Light>();
-            light.type = LightType.Point;
-            light.color = new Color(1f, 0.6f, 0.3f);
-            light.range = 12f;
-            light.intensity = 6f;
-
-            // cloth is the sand texture laid small, which gives it a weave; wood is bark and stone is rock
-            Material Cloth(Color tint) => Shapes.Solid(Surface.Sand, tint);
-            Material bark = Shapes.Solid(Surface.Bark, new Color(1.5f, 1.3f, 1.15f)), blackened = Paint(new Color(0.09f, 0.085f, 0.08f), 0.7f, 0.35f), tanned = Paint(new Color(0.3f, 0.19f, 0.11f), 0f, 0.3f);
-            Material hemp = Cloth(new Color(0.8f, 0.68f, 0.45f)), fireGlow = Shapes.Material("Glow", new Color(5f, 1.4f, 0.25f));
-            void Add(Transform parent, string name, MeshKit kit, Material material, bool shadows = true)
-            {
-                if (kit.Triangles > 0) Shapes.Part(parent, name, kit.Mesh(name), material, Vector3.zero, Vector3.one, shadows);
-            }
-            Add(hermit, "Skin", skin, Paint(new Color(0.74f, 0.53f, 0.4f), 0f, 0.35f));
-            Add(hermit, "Robe", robe, Cloth(new Color(0.5f, 0.33f, 0.2f)));
-            Add(hermit, "Mantle", mantle, Cloth(new Color(0.3f, 0.25f, 0.2f)));
-            Add(hermit, "Linen", linen, Cloth(new Color(0.78f, 0.72f, 0.58f)));
-            Add(hermit, "Hair", hair, Paint(new Color(0.82f, 0.8f, 0.76f), 0f, 0.25f));
-            Add(hermit, "Straw", straw, Cloth(new Color(1.05f, 0.9f, 0.5f)));
-            Add(hermit, "Leather", leather, tanned);
-            Add(hermit, "Cord", cord, hemp);
-            Add(hermit, "Staff", staff, bark);
-            Add(hermit, "Eyes", eyes, Paint(new Color(0.03f, 0.025f, 0.02f), 0f, 0.8f));
-            Add(hermit, "Lantern", brass, Paint(new Color(0.45f, 0.33f, 0.14f), 0.8f, 0.5f));
-            Add(hermit, "Lamp", glow, fireGlow, false);
-            Add(site, "Canvas", canvas, Cloth(new Color(0.86f, 0.8f, 0.62f)));
-            Add(site, "Timber", timber, Cloth(new Color(0.52f, 0.38f, 0.25f)));
-            Add(site, "Ropes", rope, hemp);
-            Add(site, "Blankets", wool, Cloth(new Color(0.55f, 0.2f, 0.16f)));
-            Add(site, "Iron", iron, blackened);
-            Add(site, "Hides", hide, tanned);
-            Add(site, "Lamp", lamp, fireGlow, false);
-            Add(fire, "Stones", stone, Shapes.Solid(Surface.Rock, new Color(0.8f, 0.8f, 0.8f)));
-            Add(fire, "Logs", logs, Shapes.Solid(Surface.Bark, new Color(0.8f, 0.7f, 0.65f)));
-            Add(fire, "Pot", pot, blackened);
-            Add(fire, "Flame", flame, fireGlow, false);
-            Add(fire, "Embers", embers, Shapes.Material("Glow", new Color(3.5f, 0.5f, 0.08f)), false);
+        public static Transform Gate()
+        {
+            var root = new GameObject("Gate").transform;
+            MeshKit frame = new MeshKit(), power = new MeshKit();
+            var rim = new Vector3[65];
+            for (int i = 0; i < rim.Length; i++) rim[i] = new Vector3(Mathf.Cos(i * Mathf.PI / 32), Mathf.Sin(i * Mathf.PI / 32), 0) * 80;
+            frame.Tube(rim, 8, 12);
+            power.Tube(rim, 2, 10);
+            Add(root, "Ring", frame, Paint(new Color(0.3f, 0.36f, 0.42f), 0.85f, 0.4f));
+            Add(root, "Conduit", power, Shapes.Material("Glow", new Color(0.3f, 3, 5)), false);
             return root;
         }
 

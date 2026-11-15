@@ -21,7 +21,7 @@ namespace Infinigame
     //
     // It also keeps the game, which is a string of missions (see Campaign). The player wakes
     // buried, with nothing, and wins everything they carry and fly from the raiders, a mission at
-    // a time, until their citadel falls and its warp drive opens the way to a harder system.
+    // a time, until their citadel falls and the colonies power the gate to another system.
     // Dying costs only the mission in hand, which begins again. Each save slot holds a game and a
     // journal of its own, and the game opens on a title page where one is chosen.
     public class Game : MonoBehaviour
@@ -33,6 +33,13 @@ namespace Infinigame
             public int depth = 1, runs;
             // which mission is in hand, and everything won by the ones before it, as Campaign's bits
             public int stage, kit;
+            public int fitted = -1;
+            public double clock;
+            public bool gate;
+            public Presence presence = new Presence();
+            public Moonfall fall = new Moonfall();
+            public Colony cargo = new Colony { world = -1, robots = 0 };
+            public List<Colony> colonies = new List<Colony>();
             public float look = DesktopControls.Sensitivity;
             public List<Entry> journal = new List<Entry>();
             public List<string> talk = new List<string>();
@@ -40,7 +47,7 @@ namespace Infinigame
 
         // How many slots there are, and how many clicks it takes to dig out of the ground.
         public const int Slots = 3, Digs = 6;
-        public const string Settings = "Settings", Cheats = "Cheats";
+        public const string Settings = "Settings", Cheats = "Cheats", Workshop = "Workshop", ColonyPage = "Colony";
         // The rows of the settings page before those of the oracle's voices.
         const int Dials = 5;
         public static readonly string[] Menu = { "Resume", "Controls", Settings, Cheats, "New game", "Quit to title", "Quit to desktop" };
@@ -55,20 +62,33 @@ namespace Infinigame
         public Sounds Sounds { get; private set; }
         public Speech Speech { get; private set; }
         public Effects Effects { get; private set; }
+        public Frontier Frontier { get; private set; }
+        public Presence Presence => save.presence;
+        public Moonfall Fall => save.fall;
+        public List<Colony> Colonies => save.colonies;
+        public Colony Cargo => save.cargo;
+        public bool GatePowered => save.gate;
+        public Colony Settlement => Colonies.FirstOrDefault(colony => colony.world == System.Reference && math.distance(Player.Position, colony.site) < 120);
+        public void Collect(float3 resources)
+        {
+            Cargo.ore += resources.x; Cargo.ice += resources.y; Cargo.salvage += resources.z;
+            Notify(resources.z > 0 ? $"SALVAGE +{resources.z:0}" : resources.y > 0 ? $"ICE +{resources.y:0}" : $"ORE +{resources.x:0}");
+        }
+
         public uint Seed => save.seed;
         public int Slot { get; private set; }
         // How many systems deep the game has gone, which mission is in hand there (Campaign.Won once
         // the citadel has fallen) and how tough that makes the raiders.
         public int Depth => save.depth;
         public int Stage => save.stage;
-        public int Threat => 1 + 4 * (save.depth - 1) + save.stage / 4;
+        public int Threat => 1 + 4 * (save.depth - 1) + save.stage / 4 + (int)(Presence.played / 1800);
         public Mission Mission => Campaign.Missions[math.min(save.stage, Campaign.Citadel)];
         // Still under the ground, and how many handfuls of it have been torn away.
         public bool Buried => save.stage == Campaign.Buried;
         public int Dug { get; private set; }
         // What the player is about, for the HUD.
-        public string Objective => save.stage >= Campaign.Won ? "THE SYSTEM IS FREE  ·  G IN OPEN SPACE WARPS TO THE NEXT"
-            : $"{Mission.name.ToUpperInvariant()}  ·  {(Outpost.Fallen ? Outpost.Errand : Mission.task)}{(Outpost.World >= 0 && Outpost.Left > 0 && Outpost.Left < Mission.count ? $"  ·  {Outpost.Left} LEFT" : "")}";
+        public string Objective => save.stage >= Campaign.Won ? save.fall.destroyed ? save.gate ? "THE GATE IS POWERED  ·  FLY TO IT AND PRESS G" : "POWER THE GATE AT A COLONY WORKSHOP" : save.fall.active ? "MOON ENGINES BURNING  ·  CLEAR THE TARGET WORLD" : "BUILD MOON ENGINES AT A COLONY WORKSHOP"
+            : $"{Mission.name.ToUpperInvariant()}  ·  {(Outpost.Fallen ? Outpost.Errand : Mission.task)}";
         // Where the mission in hand leads on the world the player is at, relative to its centre:
         // the stranger's fire, the raiders' place or what they guarded. Nowhere, if it is on another world.
         public float3? Goal => System.Reference == SolarSystemDescriptor.Home && save.stage == Campaign.Stranger ? Hermit.Position
@@ -96,7 +116,9 @@ namespace Infinigame
         public string Tally { get; private set; }
         // The menu on screen, if any.
         public string[] Items => Dead ? Over : Confirming ? Confirm
-            : Page == Cheats ? new[] { "Skip this mission", "Back a mission", "Take every weapon and all gear", "Mend suit and hull", "Back" }
+            : Page == Cheats ? new[] { "Skip this mission", "Back a mission", "Take every weapon and all gear", "Mend suit and hull", "Next system", "Back" }
+            : Page == Workshop ? Suit.Modules.Select(gear => $"{(Player.Has(gear) ? "FITTED" : Campaign.Has(Player.kit, gear) ? "FIT" : "LOCKED")}  ·  {Campaign.Name(gear)}  ·  {Suit.Cost(gear)} POWER").Append("Back").ToArray()
+            : Page == ColonyPage ? Enum.GetValues(typeof(Building)).Cast<Building>().Select(building => $"{(Settlement?.Has(building) == true ? "BUILT" : "BUILD")}  {building.ToString().ToUpperInvariant()}").Concat(new[] { Workshop, "Build moon engines", "Power gate", "Back" }).ToArray()
             : Voice >= 0 ? new[]
             {
                 $"Have {Page} write", $"MODEL   ·   {Oracle.Model(Voice).name.ToUpperInvariant()}", $"THINKING   ·   {Oracle.Effort(Voice).ToUpperInvariant()}",
@@ -114,7 +136,9 @@ namespace Infinigame
         // On a voice's page: how the player stands with it and what it has been asked for so far,
         // and what the highlighted item would do.
         public string Standing => Voice < 0 ? null : $"{signedIn[Voice]}{(Voice == Oracle.Voice ? "   ·   IN USE" : "")}   ·   {Oracle.Used(Voice)}";
-        public string Hint => Page == Cheats ? Selected == 2 ? "EVERYTHING THE RAIDERS HOLD BUT THE CITADEL'S WARP DRIVE: EVERY GUN, THE SHIP AND ALL THAT IS FITTED TO IT, TORPEDOES AND ALL"
+        public string Hint => Page == Workshop ? $"THREE SLOTS  ·  SIX POWER  ·  {Player.energy:0} ENERGY  ·  BEAMS, THRUSTERS AND SHIELDS SHARE ONE RESERVE"
+            : Page == ColonyPage ? $"ORE {Settlement?.ore:0}  ·  ICE {Settlement?.ice:0}  ·  SALVAGE {Settlement?.salvage:0}  ·  ROBOTS {Settlement?.robots}\n" + (Selected < 7 ? $"COST {Colony.Cost((Building)Selected).x:0} ORE  {Colony.Cost((Building)Selected).y:0} ICE  {Colony.Cost((Building)Selected).z:0} SALVAGE" : Selected == 8 ? $"120 ORE  ·  80 ICE  ·  60 SALVAGE  ·  WORKSHOP AND FOUR ROBOTS  ·  DESTROYS {System.Descriptor.bodies[Fall.world].name.ToUpperInvariant()} AND ITS COLONIES" : Selected == 9 ? "100 ORE  ·  120 ICE  ·  100 SALVAGE  ·  EIGHT ROBOTS  ·  FINAL MIND DESTROYED" : "FIT EQUIPMENT YOU HAVE RECOVERED")
+            : Page == Cheats ? Selected == 2 ? "RECOVER ALL SUIT MODULES, SHIP SYSTEMS AND TORPEDOES"
                 : "FOR NOW, WHILE THE GAME IS BEING MADE: JUMP FROM MISSION TO MISSION WITH ALL THAT THE EARLIER ONES WIN"
             : Page == Settings ? Selected switch
             {
@@ -150,12 +174,10 @@ namespace Infinigame
         public string Notice { get; private set; }
         public float NoticeAt { get; private set; } = float.MinValue;
 
-        // The warp drive, once it has been taken from the citadel, needs open space round it.
-        bool InOpenSpace => Player.flying && !Player.ship.landed && math.length(Player.Position) > System.ReferenceBody.radius * 1.6f;
-        public bool CanWarp => InOpenSpace && Player.Has(Gear.Warp);
+        public bool CanWarp => Player.flying && save.gate && math.distance(Player.Position, System.ToReference(System.Gate)) < 180f;
 
         // What the interact key would do right now.
-        public string Prompt => Hermit.Near ? $"Talk to {Hermit.Name}" : Outpost.Near ? $"Take {Campaign.Spoils(save.stage).ToLowerInvariant()}" : Player.Prompt;
+        public string Prompt => Outpost.AtConsole && !Outpost.Fallen ? "Hack door and sentries" : Hermit.Near ? $"Talk to {Hermit.Name}" : Outpost.Near ? $"Take {Campaign.Spoils(save.stage).ToLowerInvariant()}" : Player.Prompt ?? (Settlement != null ? "Colony and workshop" : null);
 
         Save save;
         Hud hud;
@@ -200,6 +222,8 @@ namespace Infinigame
             gameObject.AddComponent<Rainfall>();
             Player = new GameObject("Player").AddComponent<Player>();
             Player.Init(System);
+            Player.game = this;
+            gameObject.AddComponent<DeviceControls>().game = this;
             Scanner = gameObject.AddComponent<Scanner>();
             Scanner.game = this;
             Hermit = gameObject.AddComponent<Hermit>();
@@ -219,6 +243,8 @@ namespace Infinigame
             hud = gameObject.AddComponent<Hud>();
             hud.game = this;
             gameObject.AddComponent<FrameLog>().game = this;
+            Frontier = gameObject.AddComponent<Frontier>();
+            Frontier.game = this;
             Enter();
             ShowTitle();
         }
@@ -227,13 +253,36 @@ namespace Infinigame
         // mission in hand begins on, settles its hermit and the raiders' outpost and clears the air.
         void Load()
         {
-            var system = SolarSystemDescriptor.Generate(save.seed);
+            var system = save.depth == 1 ? SolarSystemDescriptor.Generate(save.seed) : SolarSystemDescriptor.Beyond(save.seed);
+            var bodies = system.bodies.ToList();
+            bodies.Add(new BodyDescriptor { name = "Gate", kind = BodyKind.Gate, radius = 80, soiRadius = 500,
+                orbit = new Orbit { parent = 0, radius = system.bodies[SolarSystemDescriptor.Home].orbit.radius + 25000, period = 18000, phase = 1.5 } });
+            system.bodies = bodies.ToArray();
+            if (save.fall.moon < 0)
+            {
+                save.fall.moon = Campaign.FinalMoon(system);
+                save.fall.world = system.bodies[save.fall.moon].orbit.parent;
+            }
+            system.moonfall = save.fall;
+            System.RestoreClock(save.clock);
             // once the ship can leave the air a mission begins over the world it is on; the citadel's, well away from its guns
             System.Build(system, save.stage > Campaign.Tower && save.stage < Campaign.Citadel ? Campaign.World(system, save.stage) : SolarSystemDescriptor.Home);
+            if (Colonies.Count == 0 && save.stage > 2)
+                for (int stage = 2; stage < math.min(save.stage, Campaign.Citadel); stage++)
+                {
+                    int world = Campaign.World(system, stage);
+                    if (Colonies.Any(colony => colony.world == world)) continue;
+                    float3 site = Campaign.Site(system, stage);
+                    Colonies.Add(new Colony { world = world, site = site * system.bodies[world].GroundRadius(site), buildings = 1 << (int)Building.Depot, ore = 25, ice = 15, salvage = 25 });
+                }
             Player.kit = save.kit;
+            if (save.fitted < 0 || !Suit.Fits(save.kit, save.fitted)) save.fitted = Suit.Default(save.kit);
+            Player.fitted = save.fitted;
+            Player.energy = Suit.Capacity;
             Hermit.Settle();
             Battle.Reset();
             Outpost.Settle();
+            Frontier.Settle();
         }
 
         // Puts the player where the mission in hand begins, whole: on the ground where they woke
@@ -300,10 +349,18 @@ namespace Infinigame
                 if (keys != null && keys.altKey.isPressed && keys.enterKey.wasPressedThisFrame) Screen.fullScreen = !Screen.fullScreen;
                 if (keys != null && (keys.minusKey.wasPressedThisFrame || keys.equalsKey.wasPressedThisFrame)) Look(DesktopControls.Sensitivity * (keys.minusKey.wasPressedThisFrame ? 0.8f : 1.25f));
                 // the hermit is talked to at his fire, or from anywhere once he rides in the ship
-                if (c.interact && Hermit.Near || c.talk && Hermit.Aboard)
+                if (c.interact && Hermit.Near || c.talk && Player.Has(Gear.Suit))
                 {
                     Hermit.Greet();
                     c = default;
+                }
+                else if (c.interact && Outpost.Use()) c = default;
+                else if (c.ride && Settlement != null)
+                {
+                    var colony = Settlement;
+                    colony.ore += Cargo.ore; colony.ice += Cargo.ice; colony.salvage += Cargo.salvage;
+                    Cargo.ore = Cargo.ice = Cargo.salvage = 0;
+                    Pause(); Page = ColonyPage; c = default;
                 }
                 else if (c.interact && Outpost.Near)
                 {
@@ -329,8 +386,11 @@ namespace Infinigame
 
             int bound = Player.Destination;
             string held = Player.Weapon.name;
+            bool landed = Player.ship.landed, hot = Player.Heat > Player.HeatLimit * 0.9f;
             Player.beacon = Goal ?? float3.zero;
             Player.Tick(c);
+            if (Player.flying && !landed && Player.ship.landed) Hermit.Remark($"Landing confirmed on {System.ReferenceBody.name}. I will watch the ship while you are outside.");
+            if (!hot && Player.Heat > Player.HeatLimit * 0.9f && !Player.Dead) Hermit.Remark("Temperature is reaching our protection limit. Move away from the heat.");
             // behind the title page the view drifts slowly from side to side
             if (Title) Camera.main.transform.Rotate(0f, 20f * Mathf.Sin(0.15f * Time.unscaledTime), 0f);
             // taking up a different weapon, or going from the ship's to your own, names it
@@ -355,12 +415,15 @@ namespace Infinigame
             {
                 Notify($"ARRIVED  ·  {System.Descriptor.bodies[bound].name.ToUpperInvariant()}");
                 Sounds.Chime();
+                Hermit.Remark($"Arrival confirmed at {System.Descriptor.bodies[bound].name}. I am watching the approaches.");
             }
             // a fight waits for a conversation, a menu or a look at the map
             if (!Paused && !Dead && !Hermit.Talking && !Player.SystemView)
             {
                 Outpost.Tick();
                 Battle.Tick(c);
+                Frontier.Tick();
+                save.clock = System.Clock;
             }
             if (Player.Dead && !Dead) Die();
         }
@@ -375,6 +438,11 @@ namespace Infinigame
         public void Dig(float3 point, float size)
         {
             System.Bodies[System.Reference].Dig(point, size);
+            if (System.ReferenceBody.kind == BodyKind.Rock)
+            {
+                float3 up = math.normalizesafe(point);
+                Collect(System.ReferenceBody.heat < 180 || math.abs(up.y) > 0.8f ? new float3(0, math.min(size, 8), 0) : new float3(math.min(size, 8), 0, 0));
+            }
             Player.Shaken(point, size);
         }
 
@@ -399,20 +467,34 @@ namespace Infinigame
         // from now on, they are made whole, and the next begins.
         public void Advance()
         {
+            if (save.stage >= Campaign.Won) return;
             var done = Mission;
             string spoils = Campaign.Spoils(save.stage);
             bool crewed = Hermit.Aboard;
             foreach (var gear in done.wins)
             {
                 save.kit |= 1 << (int)gear;
-                Player.Wield(gear);
+                int fitted = Player.fitted | 1 << (int)gear;
+                if (Suit.Modules.Contains(gear) && Suit.Fits(save.kit, fitted)) Player.fitted = fitted;
             }
             Player.kit = save.kit;
+            if (Outpost.World >= 0 && done.guards != FoeKind.Base)
+            {
+                Presence.Liberate(Outpost.World);
+                if (!Colonies.Any(colony => colony.world == Outpost.World))
+                {
+                    var colony = new Colony { world = Outpost.World, site = Outpost.Position, ore = 35, ice = 15, salvage = 30 };
+                    colony.Build(Building.Depot);
+                    Colonies.Add(colony);
+                }
+            }
+            save.fitted = Player.fitted;
             save.stage++;
+            Frontier.Settle();
             Player.health = Player.MaxHealth;
             Player.hull = Player.MaxHull;
-            Notify(save.stage == Campaign.Won ? "THE WARP DRIVE IS YOURS  ·  G IN OPEN SPACE"
-                : spoils.Length == 0 ? "DAYLIGHT  ·  SOMEONE HAS LIT A FIRE NEAR BY"
+            Notify(save.stage == Campaign.Won ? "SHIELD CORE DESTROYED  ·  BUILD MOON ENGINES AT YOUR WORKSHOP"
+                : spoils.Length == 0 ? "DAYLIGHT  ·  A ROBOT IS CALLING NEAR BY"
                 : $"{done.name.ToUpperInvariant()}  ·  YOU HAVE {spoils}{(Hermit.Aboard && !crewed ? $"  ·  {Hermit.Name.ToUpperInvariant()} FLIES WITH YOU NOW  ·  RETURN TO TALK" : "")}");
             Sounds.Chime();
             Outpost.Settle();
@@ -426,14 +508,16 @@ namespace Infinigame
         void Stow()
         {
             Player.captive = save.stage < Campaign.Won && Mission.wins.Contains(Gear.Ship);
-            if (Player.captive) Player.Park(Outpost.Prize);
+            if (Player.captive) Player.Park(Outpost.Place(new float3(0, Ship.Clearance, -24)));
         }
 
         // Cheating: straight to a mission, with all that the ones before it win and nothing more.
         public void Jump(int stage)
         {
             save.stage = math.clamp(stage, 0, Campaign.Won);
+            if (save.stage < Campaign.Citadel && Fall.destroyed) { save.fall = new Moonfall(); save.gate = false; }
             save.kit = Campaign.Kit(save.stage);
+            save.fitted = -1;
             Write();
             Begin();
         }
@@ -473,9 +557,9 @@ namespace Infinigame
         {
             string from = Confirming ? "Quit to desktop" : Page;
             int voice = Voice;
-            if (!Confirming) Page = voice >= 0 ? Settings : null;
+            if (!Confirming) Page = voice >= 0 ? Settings : from == Workshop ? ColonyPage : null;
             Confirming = false;
-            Selected = voice >= 0 ? Dials + voice : Array.IndexOf(Items, from);
+            Selected = voice >= 0 ? Dials + voice : math.max(0, Array.IndexOf(Items, from));
         }
 
         void Detail(int tier)
@@ -527,15 +611,40 @@ namespace Infinigame
         // Acts on the highlighted menu item.
         void Choose()
         {
-            if (Page == Cheats && Selected < 4)
+            if (Page == Workshop && Selected < Suit.Modules.Length)
+            {
+                int fitted = Player.fitted ^ (1 << (int)Suit.Modules[Selected]);
+                if (Suit.Fits(Player.kit, fitted)) { Player.fitted = save.fitted = fitted; Write(); }
+                else Notify("THAT FIT NEEDS OWNED EQUIPMENT, A FREE SLOT AND ENOUGH POWER");
+                return;
+            }
+            if (Page == ColonyPage && Selected < 10)
+            {
+                var colony = Settlement;
+                if (colony == null) { Resume(); return; }
+                if (Selected < 7) { if (!colony.Build((Building)Selected)) Notify("CHECK THE DEPOT, RESOURCES AND EXISTING BUILDINGS"); }
+                else if (!colony.Has(Building.Workshop)) Notify("BUILD A WORKSHOP FIRST");
+                else if (Selected == 7) { Page = Workshop; Selected = 0; }
+                else if (Selected == 8)
+                {
+                    if (Stage >= Campaign.Won && !Fall.active && !Fall.destroyed && colony.robots >= 4 && colony.Spend(new float3(120, 80, 60))) Frontier.Launch();
+                    else Notify("THE CITADEL MUST FALL  ·  FOUR ROBOTS AND ENGINE MATERIALS NEEDED");
+                }
+                else if (!save.gate && Fall.destroyed && Colonies.Sum(c => c.robots) >= 8 && colony.Spend(new float3(100, 120, 100))) save.gate = true;
+                else Notify("THE FINAL MIND MUST FALL  ·  EIGHT ROBOTS AND GATE MATERIALS NEEDED");
+                Frontier.Settle(); Write(); return;
+            }
+            if (Page == Cheats && Selected < 5)
             {
                 if (Selected < 2) Jump(save.stage + (Selected == 0 ? 1 : -1));
                 else if (Selected == 2)
                 {
                     // all that every mission before the citadel wins, wherever the game has got to
                     Player.kit = save.kit |= Campaign.Kit(Campaign.Citadel);
+                    Player.fitted = save.fitted = Suit.Default(save.kit);
                     Write();
                 }
+                else if (Selected == 4) { NextSystem(); return; }
                 else (Player.health, Player.hull) = (Player.MaxHealth, Player.MaxHull);
                 Resume();
                 return;
@@ -627,22 +736,28 @@ namespace Infinigame
 
         void Warp()
         {
-            if (!Player.Has(Gear.Warp)) Notify("THERE IS NO WARP DRIVE ABOARD  ·  THE RAIDERS' CITADEL HAS ONE");
-            else if (!InOpenSpace) Notify("THE WARP DRIVE NEEDS OPEN SPACE");
-            else
-            {
-                // On to the next seed, a system deeper, arriving over its moon with everything won
-                // so far. The drive burns out in the jump: the next citadel has another.
-                save.seed++;
-                save.depth++;
-                save.stage = Campaign.Tower + 1;
-                save.kit &= ~(1 << (int)Gear.Warp);
-                save.talk.Clear();
-                Enter();
-                Sounds.Warp();
-                Notify($"DEPTH {Depth}  ·  THE RAIDERS HERE ARE HARDER");
-                Write();
-            }
+            if (CanWarp) NextSystem();
+            else Notify(save.gate ? "FLY INTO THE GATE TO CROSS" : "THE GATE NEEDS REPAIRS AND COLONY POWER");
+        }
+
+        public void NextSystem()
+        {
+            save.seed++;
+            save.depth++;
+            save.stage = Campaign.Tower + 1;
+            save.kit |= Campaign.Kit(save.stage);
+            save.kit &= ~(1 << (int)Gear.GateParts);
+            save.gate = false;
+            save.clock = 0;
+            save.presence = new Presence();
+            save.fall = new Moonfall();
+            save.colonies.Clear();
+            save.talk.Clear();
+            Enter();
+            Resume();
+            Sounds.Warp();
+            Notify($"DEPTH {Depth}  ·  AN UNCHARTED SYSTEM");
+            Write();
         }
 
         // Killed. Nothing is lost but the mission in hand, which begins again.
@@ -662,6 +777,13 @@ namespace Infinigame
             save.seed = math.hash(new uint2(save.seed, (uint)++save.runs)) % 1000000u + 1u;
             save.depth = 1;
             save.stage = save.kit = 0;
+            save.fitted = -1;
+            save.clock = 0;
+            save.gate = false;
+            save.fall = new Moonfall();
+            save.presence = new Presence();
+            save.colonies.Clear();
+            save.cargo = new Colony { world = -1, robots = 0 };
             save.talk.Clear();
             Write();
         }

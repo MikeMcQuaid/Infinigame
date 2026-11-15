@@ -558,53 +558,37 @@ namespace Infinigame.Tests
         }
 
         [Test]
-        public void TheShipCarriesFourDifferentWeaponsAndThePlayerFive()
+        public void TheShipAndSuitEachHaveFourDifferentWeapons()
         {
             foreach (var rack in new[] { Combat.Guns, Combat.Arms })
             {
-                Assert.AreEqual(rack == Combat.Guns ? 4 : 5, rack.Length);
+                Assert.AreEqual(4, rack.Length);
                 Assert.AreEqual(rack.Length, rack.Select(weapon => weapon.name).Distinct().Count());
                 Assert.AreEqual(rack.Length, rack.Select(weapon => weapon.voice).Distinct().Count(), "each sounds different");
                 // quick and light, or slow and heavy: no weapon is simply the best
                 Assert.AreNotEqual(System.Array.IndexOf(rack, rack.OrderBy(weapon => weapon.period).First()), System.Array.IndexOf(rack, rack.OrderByDescending(weapon => weapon.damage * weapon.pellets).First()));
             }
-            Assert.AreEqual(8, Combat.Guns.Concat(Combat.Arms).Select(weapon => weapon.voice).Distinct().Count(), "a missile sounds like a missile, from the ship or the shoulder");
+            Assert.AreEqual(6, Combat.Guns.Concat(Combat.Arms).Select(weapon => weapon.voice).Distinct().Count(), "a missile sounds like a missile, from the ship or the shoulder");
         }
 
         [Test]
-        public void WhatIsCarriedOnFootIsAFirearm()
+        public void SuitWeaponsOfferFourDifferentWaysToFight()
         {
-            // all but the launcher, whose missiles are slow, chase and leave a hole
-            Assert.AreEqual(1, Combat.Arms.Count(weapon => weapon.homing > 0f && weapon.clip > 0 && weapon.reload > 1f));
-            foreach (var weapon in Combat.Arms.Where(weapon => weapon.homing == 0f))
-            {
-                Assert.Greater(weapon.clip, 0, $"{weapon.name} has a magazine");
-                Assert.Greater(weapon.reload, 1f, "which takes a moment to change");
-                Assert.Greater(weapon.kick, 0f, "and it kicks");
-                Assert.Greater(weapon.speed, 40f * Tuning.WalkSpeed, "its bullets are far too quick to step aside from");
-                Assert.Less(weapon.blast, 1.2f, "and small arms dig no craters");
-            }
-            foreach (var weapon in Combat.Guns) Assert.AreEqual(0, weapon.clip, $"{weapon.name} is fed by the ship");
-            // fired fast, on the run or in the air, a firearm scatters: the same shots land wider
-            var rifle = Combat.Arms[2];
-            float Widest(float wild)
-            {
-                var rnd = new Random(5);
-                var shots = new List<Bolt>();
-                for (int i = 0; i < 40; i++) Combat.Fire(rifle, From, Ahead, float3.zero, ref rnd, shots, wild);
-                return shots.Max(shot => math.length(math.cross(math.normalize(shot.velocity), Ahead)));
-            }
-            Assert.Greater(Widest(0.03f), 4f * Widest(0f));
+            Assert.IsTrue(Combat.Arms[0].melee);
+            Assert.IsTrue(Combat.Arms[1].beam);
+            Assert.Greater(Combat.Arms[2].homing, 0);
+            Assert.IsTrue(Combat.Arms[3].rail);
+            Assert.Greater(Combat.Arms[3].period, Combat.Arms[2].period);
+            Assert.IsTrue(Combat.Arms.All(weapon => weapon.clip == 0));
+            Assert.IsTrue(Combat.Arms.Skip(1).All(weapon => weapon.energy > 0));
         }
 
         [Test]
-        public void TheShotgunThrowsACloudOfShotThatOnlyBitesUpClose()
+        public void FistsCanBreakGroundAndMissilesReachFlyingTargets()
         {
-            var shotgun = Combat.Arms[1];
-            float full = Combat.Health(FoeKind.Raider, 1);
-            Assert.Less(Shoot(shotgun, From + Ahead * 15f, out int bolts), full - 3f * shotgun.damage, "most of it lands at fifteen paces");
-            Assert.AreEqual(9, bolts);
-            Assert.AreEqual(full, Shoot(shotgun, From + Ahead * 200f, out _), "none of it reaches two hundred");
+            Assert.GreaterOrEqual(Combat.Arms[0].blast, 1.2f);
+            Assert.Less(Combat.Arms[0].speed * Combat.Arms[0].life, 5f);
+            Assert.Greater(Combat.Arms[2].speed * Combat.Arms[2].life, 1500);
         }
 
         [Test]

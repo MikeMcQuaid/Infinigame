@@ -63,7 +63,12 @@ namespace Infinigame
             }
             if (descriptor.kind == BodyKind.Station)
             {
-                Models.Station(radius).SetParent(transform, false);
+                // The citadel is drawn as navigable rooms by Outpost.
+                return;
+            }
+            if (descriptor.kind == BodyKind.Gate)
+            {
+                Models.Gate().SetParent(transform, false);
                 return;
             }
             terrain = Shapes.Ground(descriptor);
@@ -148,6 +153,7 @@ namespace Infinigame
             terrain.SetFloat("_Haze", IsReference ? math.smoothstep(0.95f, 0.6f, math.length(camera) / Descriptor.soiRadius) : 0f);
             // the clock blasts are timed by: molten rock cools as it runs on
             terrain.SetFloat("_Clock", Time.time);
+            terrain.SetFloat("_Blight", Descriptor.blight);
             QuadtreeLod.Select(camera, Descriptor.radius, maxDepth, lod.splitFactor, isReady, draw, wanted, shown, showing);
             (shown, showing) = (showing, shown);
             drawSet.Clear();

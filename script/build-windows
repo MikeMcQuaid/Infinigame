@@ -1,0 +1,7 @@
+#!/bin/bash
+# Build for a Windows PC with SteamVR selected as its OpenXR runtime.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+script/bootstrap
+mkdir -p Logs
+script/unity -batchmode -quit -buildTarget Win64 -executeMethod Infinigame.Editor.Platforms.Windows -logFile Logs/build-windows.log

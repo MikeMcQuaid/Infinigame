@@ -169,14 +169,31 @@ namespace Infinigame
         {
             path = Path.Combine(Application.persistentDataPath, Store);
             held = new Account();
+#if UNITY_IOS && !UNITY_EDITOR
+            IntPtr value = InfinigameReadAccount(Store);
+            if (value != IntPtr.Zero)
+            {
+                JsonUtility.FromJsonOverwrite(System.Runtime.InteropServices.Marshal.PtrToStringUTF8(value), held);
+                InfinigameFreeAccount(value);
+            }
+#else
             if (File.Exists(path)) JsonUtility.FromJsonOverwrite(File.ReadAllText(path), held);
+#endif
         }
 
-        // The folder is the player's own, and on a phone the game's own, so nobody else can read this.
         static void Keep()
         {
+#if UNITY_IOS && !UNITY_EDITOR
+            if (InfinigameWriteAccount(Store, JsonUtility.ToJson(held)) != 0) throw new IOException("The device could not save the account in its Keychain.");
+#else
             if (path != null) File.WriteAllText(path, JsonUtility.ToJson(held));
+#endif
         }
+#if UNITY_IOS && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")] static extern IntPtr InfinigameReadAccount(string name);
+        [System.Runtime.InteropServices.DllImport("__Internal")] static extern void InfinigameFreeAccount(IntPtr value);
+        [System.Runtime.InteropServices.DllImport("__Internal")] static extern int InfinigameWriteAccount(string name, string value);
+#endif
 
         // Which voice writes, with which of its models and how much thought.
         public static int Voice
@@ -604,8 +621,20 @@ namespace Infinigame
             string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             // an app started from the Finder has a bare PATH, so look where the tools get installed too
             string found = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
-                .Concat(new[] { "/opt/homebrew/bin", "/usr/local/bin", Path.Combine(home, ".local/bin"), Path.Combine(home, "go/bin") })
-                .Select(place => Path.Combine(place, Tools[tool])).FirstOrDefault(File.Exists);
+                .Concat(new[] { "/opt/homebrew/bin", "/usr/local/bin", Path.Combine(home, ".local/bin"), Path.Combine(home, "go/bin"), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm"), Path.Combine(home, "AppData/Local/Microsoft/WinGet/Links") })
+                .SelectMany(place => new[] { Path.Combine(place, Tools[tool] + ".exe"), Path.Combine(place, Tools[tool]) }).FirstOrDefault(File.Exists);
+            string entry = null;
+            if (Environment.OSVersion.Platform == PlatformID.Win32NT && (found == null || Path.GetExtension(found) != ".exe"))
+            {
+                string package = tool == 1 ? "@openai/codex/bin/codex.js" : tool == 2 ? "@anthropic-ai/claude-code/cli.js" : null;
+                if (package != null)
+                {
+                    entry = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm/node_modules", package);
+                    if (!File.Exists(entry)) entry = null;
+                }
+                found = entry == null ? null : (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
+                    .Select(place => Path.Combine(place, "node.exe")).FirstOrDefault(File.Exists);
+            }
             if (found == null)
                 throw new InvalidOperationException($"No way to reach {Voices[voice]}. Give the game a key or sign in from the menu, or install {Makers[voice]}'s {Tools[tool]} (script/bootstrap does).");
             // an agent looks about the folder it is started in: it gets an empty one
@@ -618,6 +647,7 @@ namespace Infinigame
                 // an app started from the Finder has no locale either, and without one a curly apostrophe arrives as three question marks
                 StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8,
             };
+            if (entry != null) start.ArgumentList.Add(entry);
             foreach (string argument in arguments) start.ArgumentList.Add(argument);
             using var process = Process.Start(start);
             // nothing is fed to it, and it must not wait for anything

@@ -44,15 +44,15 @@ Detail tiers are Unity quality levels (Mobile, VR, PC), with per-platform defaul
 
 ## The campaign
 
-`Core/Campaign.cs` is a table of missions, each with a world, a guard and the `Gear` it wins. What the player owns is a bit set of `Gear` (`Player.kit`), and everything that gates play asks it: weapons (`Weapon.needs`), the jetpack, the bike, the ship, the orbital drive, the radiation shield and so on. `Game` holds the stage, saves it, and moves it on in `Advance`.
+`Core/Campaign.cs` is a table of missions and recovered equipment. Ownership is the stable `Player.kit` bit set; `Player.fitted` holds the suit modules chosen at a workshop. `Suit` validates the slots and power budget. `Game` owns progression and saves it.
 
-`Outpost` is the place a mission is about: a fort, the guards that turn out of it and the prize they keep. Killing the guard does not win the mission. The prize has to be taken: by hand from its crate, or, for what is too heavy to carry, by landing the ship beside it. The citadel is the last such place.
+`Outpost` draws the shield and rooms, spawns their controlling mind and sentries and opens the prize when the mind dies. The citadel is a ship-sized tunnel with a timed escape after its core is destroyed. The later colony phase moves a moon onto the final mind's world and powers the gate.
 
-The hermit (`Hermit.cs`) briefs each mission from the table, so the story needs no language model. Once the ship is won he rides in it as copilot.
+The recovery robot (`Hermit.cs`) briefs each mission from the table, so the story needs no language model. After the first meeting it speaks over the radio; once the ship is recovered it joins the cockpit.
 
 ## Language models
 
-`Oracle.cs` turns a persona and a prompt into a reply, for the scanner's journal and the hermit's free talk. It never holds a key of its own. For each of its two voices, Claude and ChatGPT, it tries in order:
+`Oracle.cs` turns a persona and a prompt into a reply, for the scanner's journal and the robot's free talk. It never holds a key of its own. For each of its two voices, Claude and ChatGPT, it tries in order:
 
 1. a key the player has given it (environment or clipboard), sent straight to the maker's API with `UnityWebRequest`;
 2. for ChatGPT, OpenAI's Sign in with ChatGPT, done by the game in the player's browser;
@@ -62,19 +62,19 @@ The game can start each tool's own sign-in from the settings page. It never show
 
 ## Effects
 
-`Effects.cs` draws everything that burns, bursts, smokes or steams: explosions, hits on a hull, steam off water, mushroom clouds and the hermit's fire. It is built from three kinds of thing, each drawn in one instanced call: puffs (`Resources/Puff.shader`), sparks (`Spark.shader`) and tumbling wreckage. `Battle` decides which effect a strike calls for. Raiders and drones are drawn with `Hull.shader`, which takes how battered each one is through `Instances.Add` and eats glowing holes in it to match.
+`Effects.cs` draws everything that burns, bursts, smokes or steams: explosions, hits on a hull, steam off water, mushroom clouds and workshop lights. It is built from three kinds of thing, each drawn in one instanced call: puffs (`Resources/Puff.shader`), sparks (`Spark.shader`) and tumbling wreckage. `Battle` decides which effect a strike calls for. Raiders and drones are drawn with `Hull.shader`, which takes how battered each one is through `Instances.Add` and eats glowing holes in it to match.
 
 ## Interface, sound and speech
 
 - `Hud.cs` builds one uGUI canvas in front of the camera, from code. It reads state and never changes it. Markers for worlds, foes and mission goals are placed each frame by `Mark`, which hides what a world is in the way of, keeps names from overlapping and holds a guide mark at the edge of the screen when its place is out of view.
-- `Core/Synth.cs` computes every sound effect as samples, and `Core/Riffs.cs` writes a song for each system. `Sounds.cs` and `Music.cs` play them. Audio files dropped into `Resources/Music` replace the synthesised song.
-- `Speech.cs` speaks the hermit's lines with the operating system's own voice where there is one.
-- `Models.cs`, `MeshKit.cs` and `Shapes.cs` build every mesh and material: the ship and its cockpit, the hermit and his camp, raiders, drones and the citadel. `Arms.cs` builds the weapons held in view.
+- `Core/Synth.cs` computes every sound effect as samples, and `Core/Riffs.cs` writes a song for each system. `Sounds.cs` and `Music.cs` play them. Audio files dropped into `Resources/Music` replace the synthesised song. `Playlist` schedules complete tracks with equal-power crossfades; `Music` uses two streaming decks per mood.
+- `Speech.cs` speaks the robot's lines with the existing macOS system voice. Other platforms use text.
+- `Models.cs`, `MeshKit.cs` and `Shapes.cs` build every mesh and material: the ship and its cockpit, the robot and its workshop, raiders, drones and the citadel. `Arms.cs` builds the powered gauntlets.
 - `Cockpit.cs` drives the ship's instruments. `Models.Ship` names every part that moves or lights, `Player.Tick` fills a `Readings` struct with what the ship is doing, and `Cockpit.Show` eases each needle, lamp, switch and the stick to match. Nothing on the dash is decoration.
 
 ## Saving
 
-A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, the mission stage, the gear bit set, the journal and the talk. Worlds are never saved, since the seed remakes them. Settings that belong to the device (detail, music, speech) are `PlayerPrefs`. What the player has given the oracle is a separate file that never travels with a save.
+A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, the mission stage, the gear bit set, fitted modules, colony resources, presence clock, moonfall, gate state, journal and talk. Worlds are never saved, since the seed remakes them. Settings that belong to the device (detail, music, speech) are `PlayerPrefs`. What the player has given the oracle is a separate file that never travels with a save.
 
 ## Tests and tooling
 
@@ -94,3 +94,13 @@ A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, 
 | A key | `Controls` and `DesktopControls.Read`, then the list in `Hud.Help` |
 | Something on screen | `Hud.Awake` to build it, `Hud.LateUpdate` to drive it |
 | A setting | `Game.Items`, `Game.Choose`, `Game.Hint` |
+
+## The suit and colony expansion
+
+`Suit` owns the three-slot, six-power loadout and shared energy rules. `Player.kit` still records ownership; `Player.fitted` records the modules selected at a workshop. Stable gear bit positions preserve equipment from older saves. `Combat.Ray` handles continuous beams and piercing rail shots, while missiles remain bolts. `Shield` rejects incoming fire at the boundary before damage or splash is applied.
+
+`Interior` describes built rooms as boxes in a local frame. `Outpost` draws those same boxes and resolves movement against them. Terrain collision still comes only from `GroundRadius`. A stationary `FoeKind.Mind` controls the outpost; its death opens the prize and scatters the bodies. Sentries observe noise, light and visibility, and a terminal turns them against the mind. The citadel has a ship-sized tunnel layout and an escape timer.
+
+`Presence`, `Colony` and `Moonfall` keep the new simulation in the core. `Frontier` steps the colonies only during play, draws the buildings and robots and stages the moon impact. Game saves hold those states, the clock, collected resources, loadout and gate power. `SolarSystemDescriptor.Beyond` uses a separate random stream; `Generate` retains the original system's draws. The gate is appended by `Game.Load`, leaving existing body indices stable.
+
+`Radar` draws a transparent sphere and 3D contacts separately from the canvas. `DeviceControls` supplies touch and XR input through `Controls`. The iOS native bridge stores account data in Keychain. Speech remains local to macOS; other platforms show dialogue as text. `Platforms` configures device exports and the Windows OpenXR loader and Valve Index profile. The platform settings are generated by code when building.

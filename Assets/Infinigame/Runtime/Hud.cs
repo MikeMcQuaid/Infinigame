@@ -25,17 +25,17 @@ namespace Infinigame
         {
             ("ON FOOT", new[]
             {
-                "W A S D|Run", "Mouse|Look", "Space|Jump, hold to jetpack", "W  aloft|The pack flies where you look", "Shift|Sprint", "F|Talk, take, board the ship", "Click|Fire", "R|Reload",
-                "1 2 3|Pistol, shotgun, rifle", "4 5|Sniper rifle, launcher", "B|On or off the bike", "Right click|Scan what you face",
+                "W A S D|Run", "Mouse|Look", "Space|Jump, hold for thrusters", "W  aloft|Fly where you look", "Shift|Sprint", "F|Talk, take, board the ship", "Click|Fire", "R|Toggle fitted cloak",
+                "1 2 3 4|Fists, beam, missiles, rail", "B|Colony and workshop", "Right click|Scan what you face",
             }),
             ("IN THE SHIP", new[]
             {
                 "W A S D|Thrust and strafe", "Mouse|Steer", "Space  Ctrl|Climb, descend", "Shift|Boost", "Q  E|Roll", "F|Land, then leave",
-                "Click|Fire", "1 2 3 4|Cannons, missiles, lance, torpedoes", "T|Autopilot to what you face", "G|Warp, with the citadel's drive", "Z|Flight assist", "V|Cockpit or chase view", "Right click|Scan the world ahead",
+                "Click|Fire", "1 2 3 4|Cannons, missiles, lance, torpedoes", "T|Autopilot to what you face", "G|Cross the powered gate", "Z|Flight assist", "V|Cockpit or chase view", "Right click|Scan the world ahead",
             }),
             ("ANYWHERE", new[]
             {
-                "Tab|Hold for the map and the mission", "Return|Talk to your copilot", "H|Show this", "Esc|Close this, pause", "M|Music on or off", "[  ]|Less or more detail", "-  =|Slower or faster look",
+                "Tab|Hold for the map and the mission", "Return|Talk to your robot", "H|Show this", "Esc|Close this, pause", "M|Music on or off", "[  ]|Less or more detail", "-  =|Slower or faster look",
                 "Opt Return|Full screen or window",
             }),
         };
@@ -55,7 +55,7 @@ namespace Infinigame
         Canvas canvas;
         Sprite panel, outline;
         CanvasGroup status, prompt, banner, card, talk, menu, controls, hint, run, news, radar, chart, brief, asking, caption;
-        Text place, readout, promptText, bannerTitle, bannerSub, cardHead, cardTitle, cardBody, cardFoot, briefHead, briefTitle, briefTask, briefRows, briefWords, askText, captionText;
+        Text place, readout, promptText, promptKey, bannerTitle, bannerSub, cardHead, cardTitle, cardBody, cardFoot, briefHead, briefTitle, briefTask, briefRows, briefWords, askText, captionText;
         Text speaker, line, draft, talkKeys, menuTitle, menuSub, menuNote, menuKeys, stats, vitalName, runText, newsText;
         Text[] menuItems;
         Image fuel, fuelTrack, vital, vitalTrack, charge, reticle, menuBar, flash, murk, beacon, askMark;
@@ -139,23 +139,8 @@ namespace Infinigame
             Fill(run.transform, Vector2.one, new Vector2(0f, -26f), new Vector2(220f, 3f), Faint);
             charge = Fill(run.transform, Vector2.one, new Vector2(0f, -26f), new Vector2(220f, 3f), Accent);
 
-            // The radar: a disc seen from behind and above, the ship at its middle and ahead at its far
-            // edge. Whatever is hunting you is a blip, raised or sunk on a stalk by how far above or
-            // below you it is.
             radar = Group(root, new Vector2(1f, 0f), new Vector2(-56f, 48f), new Vector2(320f, 190f));
-            Fill(radar.transform, bottom, new Vector2(0f, 20f), new Vector2(320f, 150f), new Color(Accent.r, Accent.g, Accent.b, 0.55f), Disc());
-            Fill(radar.transform, bottom, new Vector2(0f, 93f), new Vector2(5f, 5f), Ink, dot);
-            // where the mission leads: on the rim, towards it, until it is near enough to be on the disc
-            beacon = Fill(radar.transform, bottom, Vector2.zero, new Vector2(9f, 9f), Accent);
-            beacon.rectTransform.pivot = centre;
-            beacon.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 45f);
-            blips = new Image[20];
-            stalks = new Image[blips.Length];
-            for (int i = 0; i < blips.Length; i++)
-            {
-                stalks[i] = Fill(radar.transform, bottom, Vector2.zero, new Vector2(1.5f, 0f), Harm);
-                blips[i] = Fill(radar.transform, bottom, Vector2.zero, new Vector2(7f, 7f), Harm, dot);
-            }
+            new GameObject("Globe radar").AddComponent<Radar>().game = game;
 
             // The system map's table: every world at a glance.
             chart = Group(root, topLeft, new Vector2(56f, -150f), new Vector2(1120f, 420f));
@@ -199,7 +184,7 @@ namespace Infinigame
             prompt = Group(root, bottom, new Vector2(0f, 176f), new Vector2(700f, 44f));
             promptPlate = Fill(prompt.transform, centre, Vector2.zero, Vector2.zero, Plate, panel).rectTransform;
             promptCap = Fill(prompt.transform, centre, Vector2.zero, new Vector2(40f, 40f), Ink, outline).rectTransform;
-            Label(promptCap, centre, Vector2.zero, new Vector2(40f, 40f), 19, TextAnchor.MiddleCenter, Ink, "F");
+            promptKey = Label(promptCap, centre, Vector2.zero, new Vector2(40f, 40f), 19, TextAnchor.MiddleCenter, Ink, "F");
             promptText = Label(prompt.transform, centre, Vector2.zero, new Vector2(600f, 40f), 22, TextAnchor.MiddleLeft, Ink);
             promptText.rectTransform.pivot = new Vector2(0f, 0.5f);
 
@@ -248,9 +233,9 @@ namespace Infinigame
             Stretch(Fill(menu.transform, centre, Vector2.zero, Vector2.zero, Shade));
             menuTitle = Label(menu.transform, centre, new Vector2(0f, 250f), new Vector2(1600f, 90f), 62, TextAnchor.MiddleCenter, Ink);
             menuSub = Label(menu.transform, centre, new Vector2(0f, 178f), new Vector2(1600f, 26f), 16, TextAnchor.MiddleCenter, Dim);
-            menuNote = Label(menu.transform, centre, new Vector2(0f, 142f), new Vector2(1600f, 22f), 13, TextAnchor.MiddleCenter, Dim);
+            menuNote = Label(menu.transform, centre, new Vector2(0f, 150f), new Vector2(1600f, 52f), 13, TextAnchor.MiddleCenter, Dim);
             menuBar = Fill(menu.transform, centre, Vector2.zero, new Vector2(3f, 30f), Accent);
-            menuItems = new Text[8];
+            menuItems = new Text[12];
             for (int i = 0; i < menuItems.Length; i++)
                 menuItems[i] = Label(menu.transform, centre, new Vector2(0f, 64f - 60f * i), new Vector2(900f, 50f), 30, TextAnchor.MiddleCenter, Ink);
             menuKeys = Label(menu.transform, bottom, new Vector2(0f, 64f), new Vector2(1200f, 18f), 12, TextAnchor.LowerCenter, Dim);
@@ -288,26 +273,6 @@ namespace Infinigame
             texture.SetPixels(pixels);
             texture.Apply();
             return Sprite.Create(texture, new Rect(0f, 0f, size, size), Vector2.one * 0.5f, 100f, 0, SpriteMeshType.FullRect, Vector4.one * (size * 0.4f));
-        }
-
-        // A radar's face: a round rim with range rings and cross-hairs, stretched to an ellipse where it is used.
-        static Sprite Disc()
-        {
-            const int size = 256;
-            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
-            var pixels = new Color[size * size];
-            for (int y = 0; y < size; y++)
-            for (int x = 0; x < size; x++)
-            {
-                float2 at = (new float2(x, y) + 0.5f) / size * 2f - 1f;
-                float rim = math.length(at), lines = 0f;
-                foreach (float ring in new[] { 0.33f, 0.66f, 0.985f }) lines = math.max(lines, 1f - math.saturate(math.abs(rim - ring) * size / (ring > 0.9f ? 3f : 1.6f)));
-                lines = math.max(lines, 0.6f * (1f - math.saturate(math.cmin(math.abs(at)) * size / 1.6f)));
-                pixels[y * size + x] = new Color(1f, 1f, 1f, rim > 1f ? 0f : math.max(0.1f, lines));
-            }
-            texture.SetPixels(pixels);
-            texture.Apply();
-            return Sprite.Create(texture, new Rect(0f, 0f, size, size), Vector2.one * 0.5f);
         }
 
         // Children are placed from one corner of their parent, given as the anchor, which is also their own pivot.
@@ -395,8 +360,16 @@ namespace Infinigame
             // world for that coarseness to stay far below a pixel, or its text would shiver.
             canvas.planeDistance = Mathf.Max(100f, Mathf.NextPowerOfTwo((int)(0.02f * canvas.worldCamera.transform.position.magnitude)));
 
+            if (DeviceControls.VR)
+            {
+                canvas.renderMode = RenderMode.WorldSpace;
+                canvas.transform.localScale = Vector3.one * 0.0008f;
+                float3 up = math.normalizesafe(player.Position);
+                Quaternion facing = player.flying ? (Quaternion)player.ship.rotation : Quaternion.LookRotation(player.walker.forward, up);
+                canvas.transform.SetPositionAndRotation((Vector3)(player.Position - system.Anchor) + facing * new Vector3(0, player.flying ? 0.8f : 1.6f, 2), facing);
+            }
             // where you are and how you are travelling; the cockpit has its own dials, so the big figures step aside there
-            string craft = planetView ? "MAP" : player.SystemView ? "SYSTEM MAP" : !player.flying ? player.walker.swimming ? "SWIMMING" : player.riding ? "ON THE BIKE" : "ON FOOT"
+            string craft = planetView ? "MAP" : player.SystemView ? "SYSTEM MAP" : !player.flying ? player.walker.swimming ? "SWIMMING" : player.cloaked ? "CLOAKED" : "IN THE SUIT"
                 : player.ship.landed ? "SHIP  ·  LANDED" : player.landing ? "SHIP  ·  LANDING"
                 : player.Autopilot ? $"AUTOPILOT TO {worlds[player.Destination].name.ToUpperInvariant()}" : $"SHIP  ·  ASSIST {(player.assist ? "ON" : "OFF")}";
             // how hot it is outside, in red once it is nearly more than hull or suit can take
@@ -413,9 +386,9 @@ namespace Infinigame
             vital.color = Color.Lerp(Harm, Ink, math.smoothstep(0.25f, 0.5f, left));
             // what is in hand, and for a firearm what is left in it
             vitalName.text = $"{(player.flying ? "HULL" : "SUIT")}     " + (!player.Armed ? "UNARMED" : player.Weapon.name.ToUpperInvariant()
-                + (player.flying ? "" : game.Battle.Reloading ? "   RELOADING" : $"   {game.Battle.Rounds} / {player.Weapon.clip}"));
+                + (player.flying ? "" : $"   {player.energy:0} ENERGY"));
             vital.enabled = vitalTrack.enabled = vitalName.enabled = playing;
-            fuel.rectTransform.sizeDelta = new Vector2(220f * player.walker.fuel / Walker.JetpackFuel, 3f);
+            fuel.rectTransform.sizeDelta = new Vector2(220f * player.energy / (Suit.Capacity + (player.Has(Gear.Capacitor) ? 50 : 0)), 3f);
             fuel.enabled = fuelTrack.enabled = playing && !player.flying;
             statusPlate.sizeDelta = new Vector2(Mathf.Max(place.preferredWidth, readout.enabled ? readout.preferredWidth : 0f, 290f) + 40f, readout.enabled ? 148f : playing ? 82f : 62f);
             statusPlate.anchoredPosition = new Vector2(-20f, readout.enabled ? -18f : playing ? 48f : 68f);
@@ -434,34 +407,6 @@ namespace Infinigame
             charge.rectTransform.sizeDelta = new Vector2(game.Outpost.World < 0 ? 0f : 220f * (1f - (float)game.Outpost.Left / game.Mission.count), 3f);
             Show(run, playing);
 
-            // the radar: foes placed as the pilot sees them, ahead at the top
-            float3 heading = player.flying ? math.rotate(player.ship.rotation, new float3(0, 0, 1)) : player.walker.forward;
-            float3 above = player.flying ? math.rotate(player.ship.rotation, new float3(0, 1, 0)) : math.normalize(player.Position), across = math.cross(above, heading);
-            float3 centreOfRadar = player.flying ? player.ship.position : player.walker.position;
-            float reach = player.flying ? 3000f : 150f;
-            int contact = 0;
-            foreach (var foe in game.Battle.Foes)
-            {
-                if (contact == blips.Length) break;
-                float3 to = (foe.position - centreOfRadar) / reach;
-                // anything further off sits on the rim
-                to /= math.max(1f, math.length(to));
-                var foot = new Vector2(160f + 150f * math.dot(to, across), 95f + 68f * math.dot(to, heading));
-                float lift = 60f * math.dot(to, above);
-                blips[contact].rectTransform.anchoredPosition = foot + new Vector2(0f, lift - 3.5f);
-                blips[contact].rectTransform.sizeDelta = Vector2.one * (foe.kind == FoeKind.Base ? 13f : 7f);
-                stalks[contact].rectTransform.anchoredPosition = foot + new Vector2(0f, math.min(lift, 0f));
-                stalks[contact].rectTransform.sizeDelta = new Vector2(1.5f, math.abs(lift));
-                contact++;
-            }
-            for (int i = 0; i < blips.Length; i++) blips[i].enabled = stalks[i].enabled = i < contact;
-            beacon.enabled = game.Goal != null;
-            if (game.Goal is float3 leads)
-            {
-                float3 to = (leads - centreOfRadar) / reach;
-                to /= math.max(1f, math.length(to));
-                beacon.rectTransform.anchoredPosition = new Vector2(160f + 150f * math.dot(to, across), 95f + 68f * math.dot(to, heading));
-            }
             Show(radar, playing, 4f);
 
             // the mission in hand in full
@@ -512,6 +457,7 @@ namespace Infinigame
             if (action != null)
             {
                 promptText.text = action;
+                promptKey.text = action == "Colony and workshop" ? "B" : "F";
                 float width = 54f + promptText.preferredWidth;
                 promptCap.anchoredPosition = new Vector2(20f - width / 2f, 0f);
                 promptPlate.sizeDelta = new Vector2(width + 36f, 60f);
@@ -577,7 +523,7 @@ namespace Infinigame
             // talking with the hermit
             if (hermit.Talking)
             {
-                speaker.text = $"{hermit.Name.ToUpperInvariant()}  ·  {(hermit.Aboard ? "YOUR COPILOT" : $"HERMIT OF {system.Descriptor.bodies[SolarSystemDescriptor.Home].name.ToUpperInvariant()}")}";
+                speaker.text = $"{hermit.Name.ToUpperInvariant()}  ·  {(hermit.Aboard ? "YOUR COPILOT" : $"ROBOT OF {system.Descriptor.bodies[SolarSystemDescriptor.Home].name.ToUpperInvariant()}")}";
                 line.text = hermit.Thinking ? new string('.', 1 + (int)(now * 3f) % 3) : hermit.Line.Substring(0, math.min(hermit.Line.Length, (int)((now - hermit.Spoke) * Typing)));
                 draft.text = hermit.Thinking ? "" : $"<color=#6bdcfa>›</color>  {hermit.Draft}{((int)(now * 2f) % 2 == 0 ? "▏" : "")}";
                 // until something is typed, the questions that a number key asks
@@ -607,7 +553,7 @@ namespace Infinigame
                     menuItems[i].gameObject.SetActive(i < items.Length);
                     if (i >= items.Length) continue;
                     // a long page is set closer
-                    menuItems[i].rectTransform.anchoredPosition = new Vector2(0f, 64f - (items.Length > 7 ? 52f : 60f) * i);
+                    menuItems[i].rectTransform.anchoredPosition = new Vector2(0f, 64f - (items.Length > 9 ? 42f : items.Length > 7 ? 52f : 60f) * i);
                     menuItems[i].text = items[i];
                     menuItems[i].color = i == game.Selected ? Ink : Dim;
                 }
@@ -621,11 +567,13 @@ namespace Infinigame
             {
                 var rows = new List<int> { 0 };
                 rows.AddRange(system.Descriptor.Planets);
-                rows.Insert(5, system.Station);
+                rows.Insert(math.min(5, rows.Count), system.Station);
+                if (system.Gate >= 0) rows.Add(system.Gate);
+                rows.AddRange(Enumerable.Range(1, worlds.Length - 1).Where(i => worlds[i].kind == BodyKind.Sun));
                 string Column(string head, Func<int, BodyDescriptor, string> cell) => head + "\n" + string.Join("\n", rows.Select(row => cell(row, worlds[row])));
                 int here = system.Descriptor.Planet(system.Reference);
                 chartColumns[0].text = Column("WORLD", (row, world) => (row == here ? "›  " : "    ") + world.name.ToUpperInvariant());
-                chartColumns[1].text = Column("WHAT", (row, world) => world.kind == BodyKind.Sun ? "star" : world.kind == BodyKind.Station ? "raiders' base"
+                chartColumns[1].text = Column("WHAT", (row, world) => world.kind == BodyKind.Sun ? "star" : world.destroyed ? "rubble" : world.kind == BodyKind.Gate ? "gate" : world.kind == BodyKind.Station ? "citadel"
                     : world.kind == BodyKind.Gas ? world.heat < 100f ? "ice giant" : "gas giant" : world.SeaRadius > 0f ? "living world" : world.air > 0f ? "rock, with air" : "airless rock");
                 chartColumns[2].text = Column("RADIUS", (row, world) => Distance(world.radius));
                 chartColumns[3].text = Column("GRAVITY", (row, world) => world.kind == BodyKind.Station ? "none" : $"{world.surfaceGravity / 9.81f:0.0} g");
@@ -636,12 +584,11 @@ namespace Infinigame
                 chartColumns[7].text = Column("TILT", (row, world) => world.spinPeriod == 0 ? "" : $"{(world.spinPeriod < 0 ? 180f - math.degrees(world.tilt) : math.degrees(world.tilt)):0}°");
                 chartColumns[8].text = Column("MOONS", (row, world) => system.Descriptor.Moons(row) is int moons && moons > 0 ? moons.ToString() : "");
                 chartColumns[9].text = Column("FROM YOU", (row, world) => Distance(math.max(0f, Vector3.Distance(player.Position - system.Anchor, system.Bodies[row].transform.position) - world.radius)));
-                chartFoot.text = $"{game.Objective}   ·   FACE A WORLD AND PRESS T TO FLY THERE";
+                chartFoot.text = $"PRESENCE {game.Presence.Reach(system.Reference):0%}  ·  {game.Objective}   ·   FACE A WORLD AND PRESS T TO FLY THERE";
             }
             Show(chart, player.SystemView && !planetView && !game.Paused && !game.Dead, 6f);
 
-            if (game.ShowControls)
-                stats.text = $"{fps:0} FPS   ·   {QualitySettings.names[QualitySettings.GetQualityLevel()].ToUpperInvariant()} DETAIL   ·   {system.Bodies[system.Reference].PatchCount} PATCHES   ·   LOOK SPEED {DesktopControls.Sensitivity:0.00}   ·   ESC TO CLOSE";
+            if (game.ShowControls) stats.text = "ESC TO CLOSE";
             Show(controls, game.ShowControls && !game.Paused, 8f);
 
             // markers: other worlds, the ship when you have walked away from it, the camp, the last thing scanned
@@ -688,8 +635,9 @@ namespace Infinigame
                 {
                     float away = math.distance(foe.position, player.Position);
                     if (!playing) break;
-                    Vector3 at = foe.position - system.Anchor, lead = at + (Vector3)((foe.velocity - player.Velocity) * (away / player.Weapon.speed));
-                    if (foe.kind != FoeKind.Base) Mark(at, foe.kind == FoeKind.Raider ? "RAIDER" : "DRONE", Distance(away), Harm, true);
+                    if (!outpost.Visible((float3)eye + system.Anchor, foe.position)) continue;
+                    Vector3 at = foe.position - system.Anchor, lead = at + (Vector3)((foe.velocity - player.Velocity) * (away / math.max(1, player.Weapon.speed)));
+                    if (foe.kind != FoeKind.Base) Mark(at, foe.kind == FoeKind.Raider ? "RAIDER" : foe.kind == FoeKind.Mind ? "MIND" : foe.kind == FoeKind.Sentry ? "SENTRY" : "DRONE", Distance(away), Harm, true);
                     if (player.flying && foe.kind == FoeKind.Raider && away < 2500f && Vector3.Distance(view.WorldToScreenPoint(at), view.WorldToScreenPoint(lead)) > 14f)
                         Mark(lead, "", "", Accent);
                 }
@@ -706,6 +654,7 @@ namespace Infinigame
                 bool hidden = false;
                 for (int i = 0; i < system.Bodies.Length && !hidden && !player.SystemView; i++)
                 {
+                    if (worlds[i].destroyed || worlds[i].kind == BodyKind.Gate || worlds[i].kind == BodyKind.Station) continue;
                     Vector3 centre = system.Bodies[i].transform.position - eye;
                     float along = Vector3.Dot(centre, to.normalized);
                     hidden = i != of && along > 0f && along < to.magnitude && (centre - to.normalized * along).magnitude < worlds[i].radius * 0.97f;

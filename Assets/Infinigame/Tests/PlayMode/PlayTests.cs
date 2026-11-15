@@ -56,7 +56,7 @@ namespace Infinigame.Tests
                 asked++;
                 lastPersona = persona;
                 lastPrompt = prompt;
-                return Task.FromResult(persona.Contains("hermit")
+                return Task.FromResult(persona.Contains("autonomous robot")
                     ? "Well now, a visitor. Sit by the fire and tell me which of the lights up there you came down from."
                     : "Lantern Fir\nA resinous conifer that folds its lower boughs at dusk. Herds shelter beneath it when the storms come in off the sea.");
             };
@@ -153,7 +153,7 @@ namespace Infinigame.Tests
             Assert.AreEqual(0f, Altitude, 0.05f);
             Assert.Greater(Solar.Bodies[Home].PatchCount, 20);
             Assert.Less(Vector3.Distance(Camera.main.transform.position, Player.walker.position), 3f);
-            Assert.AreEqual(31, Solar.Bodies.Length, "a star, eight planets, twenty-one moons and the raiders' base");
+            Assert.AreEqual(32, Solar.Bodies.Length, "a star, eight planets, twenty-one moons, the citadel and the gate");
         }
 
         [UnityTest]
@@ -238,6 +238,7 @@ namespace Infinigame.Tests
             Assert.IsTrue(Player.landing, "F in flight starts the landing assist");
             for (float t = 0; t < 30f && !Player.ship.landed; t += Time.deltaTime) yield return null;
             Assert.IsTrue(Player.ship.landed);
+            StringAssert.StartsWith("Landing confirmed", game.Hermit.Line);
 
             yield return Press(new Controls { interact = true });
             Assert.IsFalse(Player.flying, "F on the ground leaves the ship");
@@ -345,7 +346,7 @@ namespace Infinigame.Tests
             }
             Assert.AreEqual(Campaign.Stranger, game.Stage, "daylight");
             Assert.AreEqual(holes + Game.Digs, ground.craters.Length, "the earth really was dug away");
-            StringAssert.Contains("FIRE NEAR BY", game.Objective);
+            StringAssert.Contains("ROBOT IS CALLING", game.Objective);
             // and the way out is walkable
             input.move = Vector2.up;
             yield return Seconds(2f);
@@ -353,141 +354,157 @@ namespace Infinigame.Tests
         }
 
         [UnityTest]
-        public IEnumerator TheHermitGivesTheFirstGunAndEachOutpostClearedWinsMoreGear()
+        public IEnumerator TheRobotWakesTheSuitAndOutpostsNeedTheirMindsSilenced()
         {
             game.Jump(Campaign.Stranger);
-            var hermit = game.Hermit;
-            Assert.IsFalse(Player.Armed);
-            Assert.AreEqual(-1, game.Outpost.World, "nowhere to attack yet");
-            // unarmed, the trigger does nothing
-            yield return Press(new Controls { fire = true });
-            Assert.AreEqual(0, game.Battle.Bolts.Count);
-            Assert.IsFalse(Camera.main.transform.Find("Arms").Find("Pistol").gameObject.activeSelf, "and there is nothing in hand");
-
-            Stand(math.normalize(hermit.Position + World(math.normalize(hermit.Position)) * 2.5f), World(math.normalize(hermit.Position)));
             yield return null;
-            yield return Press(new Controls { interact = true });
-            Assert.IsTrue(hermit.Talking);
-            StringAssert.Contains("pistol", hermit.Line, "what he says of it needs no model");
-            Assert.AreEqual(0, asked);
+            game.Hermit.Greet();
+            Assert.IsTrue(Player.Has(Gear.Suit));
             Assert.AreEqual(2, game.Stage);
-            Assert.IsTrue(Player.Armed);
-            Assert.AreEqual("Pistol", Player.Weapon.name);
-            StringAssert.Contains("YOU HAVE A PISTOL", game.Notice);
             yield return Press(new Controls { menu = true });
-
-            // the outpost is a short walk off, with a fort to see and drones that turn out for whoever comes
             var outpost = game.Outpost;
-            Assert.AreEqual(Home, outpost.World);
-            Assert.That(math.distance(outpost.Position, hermit.Position), Is.InRange(120f, 700f));
-            Assert.IsNotNull(Solar.Bodies[Home].transform.Find("Outpost"));
-            Assert.AreEqual(4, outpost.Left);
-            float3 over = math.normalize(outpost.Position), beside = math.normalize(outpost.Position + World(over) * 40f);
-            Stand(beside, -World(over));
-            Player.health = 1e6f;
-            for (float t = 0; t < 10f && game.Battle.Foes.Count < 4; t += Time.deltaTime) yield return null;
-            Assert.AreEqual(4, game.Battle.Foes.Count(foe => foe.kind == FoeKind.Drone), "its whole guard turns out");
-            StringAssert.Contains("4 DRONES TO CLEAR", game.Notice);
-
-            // with no jetpack yet, holding jump adds nothing to a leap
-            game.Battle.Foes.Clear();
-            IEnumerator Leap(System.Action<float> highest)
-            {
-                float ground = Altitude, top = 0f;
-                input.jump = true;
-                for (float t = 0; t < 2.5f; t += Time.deltaTime)
-                {
-                    top = math.max(top, Altitude - ground);
-                    yield return null;
-                }
-                input.jump = false;
-                yield return Seconds(1.5f);
-                highest(top);
-            }
-            float bare = 0f, lifted = 0f;
-            yield return Leap(top => bare = top);
-            Assert.IsFalse(Player.Has(Gear.Jetpack));
-            // killing them leaves what they guarded to be taken: it is not the player's until it is picked up
-            Player.health = 30f;
-            var crate = Solar.Bodies[Home].transform.Find("Prize").gameObject;
-            Assert.IsFalse(crate.activeSelf, "nothing to take while the guard stands");
-            for (int i = 0; i < 4; i++) game.Award(FoeKind.Drone);
-            yield return null;
-            Assert.AreEqual(2, game.Stage);
-            Assert.IsTrue(outpost.Fallen && crate.activeSelf);
-            Assert.IsFalse(Player.Has(Gear.Jetpack));
-            StringAssert.Contains("TAKE A JETPACK", game.Notice);
-            StringAssert.Contains("TAKE A JETPACK", game.Objective);
-            Assert.That(math.distance(outpost.Prize, outpost.Position), Is.InRange(10f, 40f), "it stands beside the fort");
-            Assert.IsFalse(outpost.Near);
-            // walking up to the crate and taking it wins the mission, and makes the player whole
-            IEnumerator Take()
-            {
-                float3 at = math.normalize(game.Outpost.Prize);
-                Stand(math.normalize(game.Outpost.Prize + World(at) * 2.5f), -World(at));
-                yield return null;
-                StringAssert.StartsWith("Take ", game.Prompt);
-                yield return Press(new Controls { interact = true });
-            }
-            yield return Take();
-            Assert.AreEqual(3, game.Stage);
-            Assert.IsTrue(Player.Has(Gear.Jetpack));
-            Assert.AreEqual(Player.MaxHealth, Player.health);
-            StringAssert.Contains("YOU HAVE A JETPACK", game.Notice);
-            Assert.AreEqual(6, game.Outpost.Left, "and the next place of theirs is further off and better guarded");
-            Stand(beside, -World(over));
-            yield return Seconds(0.3f);
-            yield return Leap(top => lifted = top);
-            Assert.Greater(lifted, 2f * bare, "the jetpack lifts");
-
-            // the depot wins the bike, which is far quicker than legs
-            game.Battle.Foes.Clear();
-            for (int i = 0; i < 6; i++) game.Award(FoeKind.Drone);
-            yield return Take();
-            Assert.IsTrue(Player.Has(Gear.Bike) && Player.Has(Gear.Shotgun));
-            Assert.AreEqual("Shotgun", Player.Weapon.name, "what is won is taken up");
-            float3 open = Body.FindLanding(game.Seed + 1);
-            Stand(open, World(open));
-            yield return Seconds(0.3f);
-            yield return Press(new Controls { ride = true });
-            Assert.IsTrue(Player.riding);
-            Assert.IsTrue(Camera.main.transform.Find("Bike").gameObject.activeSelf, "its handlebars are in view");
-            input.move = Vector2.up;
-            yield return Seconds(3f);
-            Assert.Greater(math.length(Player.walker.velocity), 1.5f * Tuning.SprintSpeed, "even uphill");
-            input.move = Vector2.zero;
-            // and its wheels take a landing that would hurt on foot, as one off the crest of a hill does at such a speed
-            Player.walker.velocity = float3.zero;
-            Player.walker.position += math.normalize(Player.walker.position) * 9f;
-            Player.walker.grounded = false;
-            yield return Seconds(2.5f);
-            Assert.IsTrue(Player.walker.grounded);
-            Assert.AreEqual(Player.MaxHealth, Player.health);
-            yield return Press(new Controls { ride = true });
-            Assert.IsFalse(Player.riding);
-
-            // the ship stands beside the hangar for all to see, and is not the player's to board until its guard is dead
-            Assert.IsFalse(Player.Has(Gear.Ship));
-            Assert.IsTrue(Player.captive);
-            float3 hangar = game.Outpost.Position;
-            Assert.Less(math.distance(Player.ship.position, game.Outpost.Prize), 3f);
-            Stand(math.normalize(Player.ship.position + World(math.normalize(hangar)) * 4f), World(math.normalize(hangar)));
-            yield return null;
-            Assert.IsNull(game.Prompt);
-            Assert.IsFalse(hermit.Aboard);
-            for (int i = 0; i < 8; i++) game.Award(FoeKind.Drone);
-            yield return null;
-            Assert.IsFalse(Solar.Bodies[Home].transform.Find("Prize").gameObject.activeSelf, "the ship is the prize, and needs no crate");
-            StringAssert.Contains("your ship", game.Prompt);
+            Player.walker.position = outpost.Place(new float3(0, 0, -8));
+            Player.flying = false;
+            yield return Seconds(0.2f);
+            Assert.IsTrue(game.Battle.Foes.Any(foe => foe.kind == FoeKind.Mind));
+            game.Award(FoeKind.Drone);
+            Assert.IsFalse(outpost.Fallen, "patrol kills do not count as silencing the mind");
+            Player.walker.position = outpost.Place(outpost.Rooms.console);
             yield return Press(new Controls { interact = true });
-            Assert.AreEqual(Campaign.Tower, game.Stage);
-            Assert.IsTrue(Player.Has(Gear.Ship) && Player.Has(Gear.Launcher) && Player.ship.landed && !Player.captive);
-            Assert.Less(math.distance(Player.ship.position, hangar), 40f);
-            StringAssert.Contains("YOUR SHIP", game.Notice);
-            // and the hermit leaves his fire to fly in it: he says what he makes of the next mission from the seat beside the pilot's
-            Assert.IsTrue(hermit.Aboard && hermit.Remarking);
-            StringAssert.Contains($"{hermit.Name.ToUpperInvariant()} FLIES WITH YOU NOW", game.Notice);
-            Assert.AreEqual(Campaign.Missions[Campaign.Tower].brief, hermit.Line);
+            Assert.IsTrue(outpost.Open);
+            Assert.IsTrue(game.Battle.Foes.Where(foe => foe.kind == FoeKind.Sentry).All(foe => foe.friendly));
+            game.Award(FoeKind.Mind);
+            Assert.IsTrue(outpost.Fallen);
+            Assert.IsFalse(outpost.Shield.active);
+            Assert.IsFalse(Player.Has(Gear.Thrusters), "the prize still has to be collected");
+            Player.walker.position = outpost.Prize;
+            yield return Press(new Controls { interact = true });
+            Assert.AreEqual(3, game.Stage);
+            Assert.IsTrue(Player.Has(Gear.Thrusters));
+            Assert.AreEqual(1, game.Colonies.Count(colony => colony.world == Home));
+            Assert.IsTrue(game.Colonies[0].Has(Building.Depot));
+        }
+
+        [UnityTest]
+        public IEnumerator FullSongsAdvanceThroughStreamingDecksWithoutLooping()
+        {
+            var music = game.GetComponent<Music>();
+            var clips = Enumerable.Range(0, 3).Select(i => AudioClip.Create($"test-song-{i}", 44100, 1, 22050, false)).ToArray();
+            music.SetTracks(clips, new AudioClip[0]);
+            var heard = new HashSet<AudioClip>();
+            for (float until = Time.realtimeSinceStartup + 8; Time.realtimeSinceStartup < until;)
+            {
+                foreach (var source in game.GetComponents<AudioSource>().Where(source => clips.Contains(source.clip)))
+                {
+                    Assert.IsFalse(source.loop);
+                    if (source.isPlaying) heard.Add(source.clip);
+                    if (Application.isBatchMode) Assert.AreEqual(0, source.volume);
+                }
+                yield return null;
+            }
+            Assert.AreEqual(3, heard.Count);
+            music.enabled = false;
+            foreach (var source in game.GetComponents<AudioSource>().Where(source => clips.Contains(source.clip))) { source.Stop(); source.clip = null; }
+            foreach (var clip in clips) Object.Destroy(clip);
+        }
+
+        [UnityTest]
+        public IEnumerator ColoniesMoveTheMoonAndPowerTheGate()
+        {
+            game.Jump(Campaign.Won);
+            var colony = game.Colonies.First(c => c.world == Home);
+            colony.ore = colony.ice = colony.salvage = 1000;
+            colony.robots = 8;
+            Assert.IsTrue(colony.Build(Building.Workshop));
+            Assert.IsTrue(colony.Build(Building.Radar));
+            game.Frontier.Settle();
+            Assert.IsTrue(Solar.Surveyed);
+            Player.flying = false;
+            Player.walker.position = colony.site;
+            yield return Press(new Controls { ride = true });
+            Assert.AreEqual(Game.ColonyPage, game.Page);
+            for (int i = 0; i < 8; i++) yield return Press(new Controls { down = true });
+            yield return Press(new Controls { confirm = true });
+            Assert.IsTrue(game.Fall.active);
+            Assert.IsTrue(Object.FindObjectsByType<Transform>().Any(t => t.name == "Moon engine"));
+            game.Fall.began = Solar.Clock - game.Fall.duration;
+            yield return Press(new Controls { menu = true });
+            yield return Press(new Controls { menu = true });
+            yield return null;
+            Assert.IsTrue(game.Fall.destroyed);
+            Assert.IsFalse(Solar.Charted(game.Fall.world));
+            Assert.IsFalse(Solar.Bodies[game.Fall.world].gameObject.activeSelf);
+            Assert.IsFalse(game.CanWarp);
+            yield return Press(new Controls { ride = true });
+            for (int i = 0; i < 9; i++) yield return Press(new Controls { down = true });
+            yield return Press(new Controls { confirm = true });
+            Assert.IsTrue(game.GatePowered);
+            yield return Press(new Controls { menu = true });
+            yield return Press(new Controls { menu = true });
+            HoverAt(Solar.ToReference(Solar.Gate) + new float3(0, 0, -25));
+            yield return null;
+            Assert.IsTrue(game.CanWarp);
+            yield return Press(new Controls { warp = true });
+            Assert.AreEqual(2, game.Depth);
+            Assert.IsTrue(Solar.Descriptor.generated);
+        }
+
+        [UnityTest]
+        public IEnumerator WorkshopChoicesSurviveMissionRewards()
+        {
+            game.Jump(12);
+            Player.fitted = 1 << (int)Gear.Rail | 1 << (int)Gear.Armour;
+            game.Advance();
+            Assert.AreEqual(1 << (int)Gear.Rail | 1 << (int)Gear.Armour, Player.fitted);
+            game.Presence.played = 1700;
+            game.Cargo.ore = 42;
+            game.Colonies[0].robots = 7;
+            Solar.RestoreClock(1234);
+            yield return null;
+            game.Write();
+            yield return SceneManager.LoadSceneAsync("Main");
+            game = Object.FindAnyObjectByType<Game>();
+            Player.controls = () => input;
+            game.Battle.quiet = true;
+            Assert.AreEqual(1 << (int)Gear.Rail | 1 << (int)Gear.Armour, Player.fitted);
+            Assert.AreEqual(42, game.Cargo.ore);
+            Assert.AreEqual(7, game.Colonies[0].robots);
+            Assert.That(Solar.Clock, Is.InRange(1234, 1235));
+            Assert.That(game.Presence.played, Is.InRange(1700, 1701));
+        }
+
+        [UnityTest]
+        public IEnumerator ReturningToAnOutpostKeepsItsMindAndDamage()
+        {
+            game.Jump(2);
+            Player.walker.position = game.Outpost.Place(new float3(0, 0, -8));
+            yield return null;
+            game.Outpost.Tick();
+            int index = game.Battle.Foes.FindIndex(foe => foe.kind == FoeKind.Mind);
+            Assert.GreaterOrEqual(index, 0);
+            var mind = game.Battle.Foes[index];
+            mind.health = 17;
+            game.Battle.Foes[index] = mind;
+            game.Battle.Rebase(Home, Moon);
+            game.Battle.Rebase(Moon, Home);
+            game.Outpost.Tick();
+            Assert.AreEqual(17, game.Battle.Foes.Single(foe => foe.kind == FoeKind.Mind).health);
+        }
+
+        [UnityTest]
+        public IEnumerator PoweredFistsSilenceAMindFromInsideItsRooms()
+        {
+            game.Jump(2);
+            Player.health = 10000;
+            Player.walker.position = game.Outpost.Place(new float3(0, 1.2f, 16));
+            Player.walker.forward = math.normalize(Walker.Project(game.Outpost.Core - Player.Position, math.normalize(Player.Position)));
+            yield return null;
+            input.fire = true;
+            for (float until = Time.time + 5; !game.Outpost.Fallen && Time.time < until;) yield return null;
+            input.fire = false;
+            Assert.IsTrue(game.Outpost.Fallen);
+            Assert.IsTrue(game.Battle.Foes.All(foe => foe.scattered));
+            Assert.Greater(game.Cargo.salvage, 0);
         }
 
         [UnityTest]
@@ -528,7 +545,7 @@ namespace Infinigame.Tests
 
             // the mission is set out in full as it begins
             Assert.IsNotNull(Shown("The outpost"));
-            Assert.IsTrue(hud.GetComponentsInChildren<UnityEngine.UI.Text>().Any(text => text.text.Contains("A jetpack") && text.text.Contains("The depot  ·  a shotgun and a bike")), "what it wins, and what comes next");
+            Assert.IsTrue(hud.GetComponentsInChildren<UnityEngine.UI.Text>().Any(text => text.text.Contains("Suit thrusters") && text.text.Contains("The depot  ·  gauntlet beams and a cloak")), "what it wins, and what comes next");
             // and the map, until there is a ship to cross the system in, is of the world underfoot with both ends of the way on it
             input.systemView = true;
             yield return Seconds(0.5f);
@@ -564,14 +581,14 @@ namespace Infinigame.Tests
             Assert.AreEqual("THE AUTOPILOT NEEDS AN ORBITAL DRIVE", Player.Travel());
 
             // the tower's raiders have it, and once they are down it has to be fetched: landing beside it hauls it aboard
-            for (int i = 0; i < 3; i++) game.Award(FoeKind.Raider);
+            game.Award(FoeKind.Mind);
             yield return null;
             Assert.IsFalse(Player.Has(Gear.Orbiter));
-            StringAssert.Contains("LAND BESIDE THE BEACON TO HAUL AN ORBITAL DRIVE ABOARD", game.Objective);
+            StringAssert.Contains("TAKE AN ORBITAL DRIVE", game.Objective);
             float3 prize = math.normalize(game.Outpost.Prize);
-            Player.ship = Ship.Spawn(Body, math.normalize(game.Outpost.Prize + World(prize) * 12f), World(prize));
-            yield return null;
-            yield return null;
+            Player.flying = false;
+            Player.walker.position = game.Outpost.Prize;
+            yield return Press(new Controls { interact = true });
             // with it the ship climbs, and Luna is in reach but nothing beyond
             Assert.IsTrue(Player.Has(Gear.Orbiter));
             up = math.normalize(Player.ship.position);
@@ -607,72 +624,40 @@ namespace Infinigame.Tests
         }
 
         [UnityTest]
-        public IEnumerator OnlyTorpedoesBreakTheCitadelAndItsDriveWarpsToAHarderSystem()
+        public IEnumerator TheCitadelCoreRequiresEntryAndTheGateRequiresAColony()
         {
-            uint seed = game.Seed;
-            Assert.AreEqual(Campaign.Citadel, game.Stage);
-            HoverAt(math.normalize(Player.ship.position) * (Body.radius * 1.8f));
-            yield return null;
+            yield return HoverOver(Solar.Station, 500);
+            game.Battle.Foes.Clear();
+            game.Outpost.Tick();
+            Assert.IsTrue(game.Outpost.Shield.active);
             Assert.IsFalse(game.CanWarp);
-            yield return Press(new Controls { warp = true });
-            Assert.AreEqual(seed, game.Seed);
-            StringAssert.Contains("NO WARP DRIVE ABOARD", game.Notice);
-
-            yield return HoverOver(Solar.Station, 900f);
-            Assert.AreEqual(BodyKind.Station, Body.kind);
-            yield return null;
-            Assert.AreEqual(1, game.Battle.Foes.Count(foe => foe.kind == FoeKind.Base));
-            for (float t = 0; t < 20f && !game.Battle.Bolts.Any(bolt => bolt.hostile); t += Time.deltaTime) yield return null;
-            Assert.IsTrue(game.Battle.Bolts.Any(bolt => bolt.hostile), "its guns open up");
-
-            // cannon fire does nothing to it
-            float whole = game.Battle.Base;
-            Player.ship.rotation = quaternion.LookRotationSafe(-Player.ship.position, new float3(0, 1, 0));
-            input.fire = true;
-            for (float t = 0; t < 3f; t += Time.deltaTime)
-            {
-                Player.hull = Player.MaxHull;
-                yield return null;
-            }
-            Assert.AreEqual(whole, game.Battle.Base);
-            // torpedoes do: two of them finish it
-            yield return Press(new Controls { select = 4, fire = true });
-            Assert.AreEqual("Nuclear torpedoes", Player.Weapon.name);
-            for (float t = 0; t < 30f && game.Battle.Base > 0f; t += Time.deltaTime)
-            {
-                Player.hull = Player.MaxHull;
-                yield return null;
-            }
-            input.fire = false;
-            Assert.AreEqual(0f, game.Battle.Base);
-            StringAssert.Contains("THE CITADEL IS DESTROYED", game.Notice);
-            Assert.IsFalse(Solar.Bodies[Solar.Station].transform.GetChild(0).gameObject.activeSelf, "nothing is left of it");
-            yield return Seconds(1f);
-            Assert.AreEqual(0, game.Battle.Foes.Count(foe => foe.kind == FoeKind.Base), "and it does not come back");
-            // its warp drive is adrift in the wreckage, under a beacon, until a ship comes close enough to take it aboard
-            Assert.AreEqual(Campaign.Citadel, game.Stage);
-            Assert.IsFalse(Player.Has(Gear.Warp));
-            Assert.IsTrue(Solar.Bodies[Solar.Station].transform.Find("Prize").gameObject.activeSelf);
-            StringAssert.Contains("FLY TO THE BEACON", game.Objective);
-            HoverAt(game.Outpost.Prize + math.normalize(game.Outpost.Prize) * 30f);
+            float3 core = game.Outpost.Core;
+            game.Battle.Foes.Add(Combat.Spawn(FoeKind.Mind, core, new float3(0, 0, -1), 1, 1));
+            var target = game.Battle.Foes.Last();
+            game.Battle.Bolts.Add(Combat.Fire(new float3(160, 0, 600), new float3(0, 0, -1), float3.zero, 1000, 800, false, 60));
+            yield return Seconds(0.5f);
+            Assert.AreEqual(target.health, game.Battle.Foes.Last(foe => foe.kind == FoeKind.Mind).health);
+            game.Award(FoeKind.Mind);
+            Assert.IsTrue(game.Outpost.Fallen);
+            Assert.Greater(game.Outpost.Escape, 0);
+            HoverAt(new float3(0, 0, -400));
             yield return null;
             yield return null;
             Assert.AreEqual(Campaign.Won, game.Stage);
-
-            // the drive needs open space, and takes the ship a system deeper with all it has won
-            Assert.IsTrue(Player.Has(Gear.Warp));
-            HoverAt(math.normalize(Player.ship.position) * 2000f);
-            Player.hull = Player.MaxHull;
+            Assert.IsTrue(Player.Has(Gear.GateParts));
+            Assert.IsFalse(game.CanWarp, "parts alone do not power the gate");
+            int depth = game.Depth;
+            bool invalidFacing = false;
+            void Log(string message, string trace, LogType kind) => invalidFacing |= message.Contains("Look rotation viewing vector is zero");
+            Application.logMessageReceived += Log;
+            try { game.NextSystem(); }
+            finally { Application.logMessageReceived -= Log; }
+            Assert.IsFalse(invalidFacing, "the robot needs a valid facing even if no separate camp site can be found");
             yield return null;
-            Assert.IsTrue(game.CanWarp);
-            yield return Press(new Controls { warp = true });
-            Assert.AreEqual(seed + 1, game.Seed);
-            Assert.AreEqual(2, game.Depth);
-            Assert.AreEqual(Campaign.Tower + 1, game.Stage, "where the raiders hold every world again");
-            Assert.IsTrue(Player.Has(Gear.Nukes) && !Player.Has(Gear.Warp), "the drive burns out in the jump");
-            Assert.IsTrue(Player.flying);
-            Assert.AreEqual("Luna", Body.name);
-            Assert.Greater(game.Battle.Base, whole, "and their citadel there is tougher");
+            Assert.AreEqual(depth + 1, game.Depth);
+            Assert.IsTrue(Solar.Descriptor.generated);
+            Assert.IsFalse(game.GatePowered);
+            Assert.GreaterOrEqual(Solar.Gate, 0);
         }
 
         [UnityTest]
@@ -799,7 +784,7 @@ namespace Infinigame.Tests
             Oracle.Ask = (persona, prompt) => Task.FromException<string>(new System.InvalidOperationException("Not signed in to Claude."));
             yield return Press(new Controls { typed = "2" });
             yield return null;
-            StringAssert.Contains("came up out of the soil", hermit.Line);
+            StringAssert.Contains("recovered you after the crash", hermit.Line);
             yield return Press(new Controls { typed = "what now?" });
             yield return Press(new Controls { confirm = true });
             yield return null;
@@ -833,7 +818,7 @@ namespace Infinigame.Tests
             StringAssert.Contains("copilot", lastPrompt);
             StringAssert.Contains($"from the surface of {Body.name}", lastPrompt);
             StringAssert.Contains("hull is at 100 per cent", lastPrompt);
-            StringAssert.Contains("destroy the citadel", lastPrompt);
+            StringAssert.Contains("destroy the shield core", lastPrompt);
             Assert.IsTrue(Player.flying && !Player.ship.landed, "and the ship flies on while they talk");
             yield return Press(new Controls { menu = true });
             Assert.IsFalse(hermit.Talking);
@@ -925,7 +910,7 @@ namespace Infinigame.Tests
             // and the hermit is in the seat beside the pilot's, without his staff
             var copilot = cockpit.transform.Find("Copilot/Hermit");
             Assert.IsNotNull(copilot);
-            Assert.IsFalse(copilot.Find("Staff").gameObject.activeSelf);
+            Assert.IsNotNull(copilot.Find("Visor"));
         }
 
         [UnityTest]
@@ -1473,29 +1458,18 @@ namespace Infinigame.Tests
         }
 
         [UnityTest]
-        public IEnumerator TheWeaponInHandIsHeldUpInViewOnFoot()
+        public IEnumerator GauntletsReplaceCarriedGunsAndLowerInTheShip()
         {
-            var arms = Camera.main.transform.Find("Arms");
-            bool Up(int weapon) => arms.Find(Combat.Arms[weapon].name).gameObject.activeSelf;
             yield return Seconds(0.5f);
-            Assert.IsTrue(Up(0), "the blaster to begin with");
-            Assert.Less(Vector3.Distance(arms.position, Camera.main.transform.position), 0.6f, "close in front of the eye, low and to the right");
-            Assert.Greater(arms.localPosition.x, 0.1f);
-
-            // another is brought up in its place
-            yield return Press(new Controls { select = 3 });
-            yield return Seconds(0.6f);
-            Assert.IsTrue(Up(2));
-            Assert.IsFalse(Up(0));
-            // a shot kicks it back
-            float rest = arms.localPosition.z;
+            var hands = Camera.main.transform.Find("Gauntlets");
+            Assert.IsNotNull(hands);
+            Assert.IsTrue(hands.gameObject.activeSelf);
+            Assert.IsNotNull(hands.Find("Right gauntlet/Fluted plate"));
             yield return Press(new Controls { fire = true });
-            Assert.Less(arms.localPosition.z, rest - 0.01f);
-
-            // and aboard the ship there is nothing in hand
+            Assert.Greater(hands.localPosition.z, 0);
             Player.flying = true;
-            yield return Seconds(0.5f);
-            Assert.IsFalse(Up(0) || Up(1) || Up(2));
+            yield return null;
+            Assert.IsFalse(hands.gameObject.activeSelf);
         }
 
         [UnityTest]
@@ -1580,50 +1554,25 @@ namespace Infinigame.Tests
         }
 
         [UnityTest]
-        public IEnumerator APistolEmptiesReloadsKicksAndKillsADrone()
+        public IEnumerator AContinuousBeamUsesTheSameEnergyAsThrustersAndShields()
         {
-            yield return Seconds(0.5f);
-            Assert.AreEqual("Pistol", Player.Weapon.name);
-            int clip = Combat.Arms[0].clip;
-            Assert.AreEqual(clip, game.Battle.Rounds);
-            // one shot: a round gone, and the aim thrown up
-            float level = Camera.main.transform.forward.y;
-            float3 skyward = math.normalize(Player.walker.position);
-            float before = math.dot(Camera.main.transform.forward, skyward);
-            yield return Press(new Controls { fire = true });
-            Assert.AreEqual(clip - 1, game.Battle.Rounds);
-            Assert.Greater(math.dot(Camera.main.transform.forward, skyward), before + 0.005f, "it kicks");
-            Assert.AreEqual(1, game.Battle.Bolts.Count + 0, "one bullet");
-            // held down, it runs dry and changes its own magazine
+            Player.fitted = (1 << (int)Gear.Beams) | (1 << (int)Gear.Thrusters);
+            yield return Press(new Controls { select = 2 });
+            Assert.IsTrue(Player.Weapon.beam);
+            float energy = Player.energy;
             input.fire = true;
-            for (float t = 0; t < 6f && !game.Battle.Reloading; t += Time.deltaTime) yield return null;
-            Assert.IsTrue(game.Battle.Reloading);
-            Assert.AreEqual(0, game.Battle.Rounds);
-            int flying = game.Battle.Bolts.Count;
-            yield return null;
-            Assert.LessOrEqual(game.Battle.Bolts.Count, flying, "nothing fires while it is being reloaded");
+            yield return Seconds(1);
             input.fire = false;
-            yield return Seconds(Combat.Arms[0].reload + 0.2f);
-            Assert.IsFalse(game.Battle.Reloading);
-            Assert.AreEqual(clip, game.Battle.Rounds);
-            // and the player can choose to
-            yield return Press(new Controls { fire = true });
-            yield return Seconds(0.3f);
-            yield return Press(new Controls { reload = true });
-            Assert.IsTrue(game.Battle.Reloading);
-            yield return Seconds(Combat.Arms[0].reload + 0.2f);
-
-            float3 feet = Player.walker.position, up = math.normalize(feet), ahead = math.normalize(feet + Player.walker.forward * 25f);
-            game.Battle.Add(FoeKind.Drone, ahead * (Body.GroundRadius(ahead) + 1.8f));
-            Player.health = 1e6f;
-            input.fire = true;
-            for (float t = 0; t < 15f && game.Battle.Foes.Count > 0; t += Time.deltaTime)
-            {
-                // keep it in the sights
-                Player.walker.forward = math.normalize(Walker.Project(game.Battle.Foes[0].position - Player.walker.position, up));
-                yield return null;
-            }
-            Assert.AreEqual(0, game.Battle.Foes.Count, "the drone is destroyed");
+            Assert.Less(Player.energy, energy - 5);
+            Assert.AreEqual(0, game.Battle.Bolts.Count, "a continuous beam is not a stream of bolts");
+            var ray = Object.FindObjectsByType<LineRenderer>().Single(line => line.name == "Weapon beam");
+            Assert.Greater(Vector3.Distance(ray.GetPosition(0), ray.GetPosition(1)), 0);
+            Player.fitted = 1 << (int)Gear.Armour;
+            Player.energy = 50;
+            float health = Player.health;
+            Player.Hurt(20, "test shield");
+            Assert.Less(Player.energy, 50);
+            Assert.Greater(Player.health, health - 20);
         }
 
         [UnityTest]
@@ -1813,7 +1762,7 @@ namespace Infinigame.Tests
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual(0, game.Slot);
             Assert.AreEqual(3, game.Stage);
-            Assert.IsTrue(Player.Has(Gear.Jetpack) && !Player.Has(Gear.Bike));
+            Assert.IsTrue(Player.Has(Gear.Thrusters) && !Player.Has(Gear.Stealth));
             Assert.AreEqual(seed, game.Seed);
 
             // and the game opens on its title page, offering whichever was played last
@@ -1837,10 +1786,10 @@ namespace Infinigame.Tests
             game.Jump(2);
             yield return Choose(Game.Cheats);
             Assert.AreEqual(Game.Cheats, game.Page);
-            CollectionAssert.AreEqual(new[] { "Skip this mission", "Back a mission", "Take every weapon and all gear", "Mend suit and hull", "Back" }, game.Items);
+            CollectionAssert.AreEqual(new[] { "Skip this mission", "Back a mission", "Take every weapon and all gear", "Mend suit and hull", "Next system", "Back" }, game.Items);
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual(3, game.Stage);
-            Assert.IsTrue(Player.Has(Gear.Jetpack), "with what the skipped mission wins");
+            Assert.IsTrue(Player.Has(Gear.Thrusters), "with what the skipped mission wins");
             Assert.IsFalse(game.Paused);
             yield return Choose(Game.Cheats);
             yield return Press(new Controls { down = true });
@@ -1863,71 +1812,29 @@ namespace Infinigame.Tests
             StringAssert.Contains("TORPEDOES", game.Hint);
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual(1, game.Stage, "the mission in hand is still in hand");
-            Assert.IsTrue(Player.Has(Gear.Nukes) && Player.Has(Gear.Ship) && Player.Has(Gear.Launcher) && !Player.Has(Gear.Warp));
+            Assert.IsTrue(Player.Has(Gear.Nukes) && Player.Has(Gear.Ship) && Campaign.Has(Player.kit, Gear.BackMissiles) && !Player.Has(Gear.GateParts));
             Assert.IsTrue(Player.Armed);
         }
 
         [UnityTest]
-        public IEnumerator TheShipCarriesFourWeaponsAndThePlayerFiveOnceTheyAreWon()
+        public IEnumerator OnlyFittedSuitWeaponsCanBeSelected()
         {
-            yield return Seconds(0.3f);
-            Assert.AreEqual("Pistol", Player.Weapon.name);
+            Player.fitted = 1 << (int)Gear.Rail;
             yield return Press(new Controls { select = 2 });
-            Assert.AreEqual("Shotgun", Player.Weapon.name);
-            Assert.AreEqual("SHOTGUN", game.Notice);
-            yield return Press(new Controls { fire = true });
-            Assert.AreEqual(Combat.Arms[1].pellets, game.Battle.Bolts.Count, "one pull, a cloud of shot");
-            yield return Press(new Controls { cycle = 1 });
-            Assert.AreEqual("Rifle", Player.Weapon.name);
+            Assert.AreEqual("Powered fists", Player.Weapon.name);
             yield return Press(new Controls { select = 4 });
-            Assert.AreEqual("Sniper rifle", Player.Weapon.name);
-            // the launcher's missile goes after a raider overhead, which with one in hand comes for whoever is on the ground
-            yield return Press(new Controls { select = 5 });
-            Assert.AreEqual("Launcher", Player.Weapon.name);
-            game.Battle.Bolts.Clear();
-            float3 overhead = math.normalize(Player.walker.position);
-            game.Battle.Add(FoeKind.Raider, Player.walker.position + overhead * 300f + Player.walker.forward * 200f);
-            float sound = game.Battle.Foes[0].health;
-            yield return Seconds(0.5f);
-            Assert.Less(math.distance(game.Battle.Foes[0].position, Player.walker.position), 370f, "it is closing");
-            // held until the missile is away: the last weapon fired may not have settled yet
-            input.fire = true;
-            for (float t = 0; t < 3f && !game.Battle.Bolts.Any(bolt => bolt.homing > 0f && !bolt.hostile); t += Time.deltaTime) yield return null;
-            input.fire = false;
-            Assert.IsTrue(game.Battle.Bolts.Any(bolt => bolt.homing > 0f && !bolt.hostile));
-            Assert.AreEqual(Combat.Arms[4].clip - 1, game.Battle.Rounds);
-            Player.health = 1e6f;
-            for (float t = 0; t < 8f && game.Battle.Foes.Count > 0 && game.Battle.Foes[0].health == sound; t += Time.deltaTime) yield return null;
-            Assert.IsTrue(game.Battle.Foes.Count == 0 || game.Battle.Foes[0].health < sound, "and found it");
-            game.Battle.Foes.Clear();
-            game.Battle.Bolts.Clear();
-
+            Assert.AreEqual("Rail gauntlet", Player.Weapon.name);
+            Player.fitted = 1 << (int)Gear.BackMissiles;
+            yield return Press(new Controls { select = 3 });
+            Assert.AreEqual("Back missiles", Player.Weapon.name);
+            yield return Press(new Controls { fire = true });
+            Assert.IsTrue(game.Battle.Bolts.Any(bolt => bolt.homing > 0));
             HoverAt(math.normalize(Player.ship.position) * (Body.radius * 1.6f));
-            yield return null;
-            Assert.AreEqual("Pulse cannons", Player.Weapon.name, "the ship has weapons of its own");
             yield return Press(new Controls { select = 2 });
             Assert.AreEqual("Seeker missiles", Player.Weapon.name);
-
-            // a missile finds a raider that is nowhere near the nose
-            float3 nose = math.rotate(Player.ship.rotation, new float3(0, 0, 1)), wing = math.rotate(Player.ship.rotation, new float3(1, 0, 0));
-            game.Battle.Add(FoeKind.Raider, Player.ship.position + nose * 900f + wing * 350f);
-            float full = game.Battle.Foes[0].health;
-            // held until the missile is away
-            input.fire = true;
-            for (float t = 0; t < 3f && !game.Battle.Bolts.Any(bolt => bolt.homing > 0f); t += Time.deltaTime) yield return null;
-            input.fire = false;
-            for (float t = 0; t < 6f && game.Battle.Foes.Count > 0 && game.Battle.Foes[0].health == full; t += Time.deltaTime) yield return null;
-            Assert.IsTrue(game.Battle.Foes.Count == 0 || game.Battle.Foes[0].health < full, "the missile turned and hit");
-
-            // what has not been won cannot be taken up or kept in hand: early on there is the pistol and nothing else
             game.Jump(2);
-            yield return null;
-            Assert.AreEqual("Pistol", Player.Weapon.name);
-            Assert.IsTrue(Player.Armed);
-            yield return Press(new Controls { select = 2 });
-            Assert.AreEqual("Pistol", Player.Weapon.name);
-            yield return Press(new Controls { cycle = 1 });
-            Assert.AreEqual("Pistol", Player.Weapon.name);
+            yield return Press(new Controls { select = 4 });
+            Assert.AreEqual("Powered fists", Player.Weapon.name);
         }
 
         [UnityTest]
@@ -1940,13 +1847,12 @@ namespace Infinigame.Tests
             Player.ship.rotation = quaternion.LookRotationSafe(-up, World(up));
             yield return Seconds(1f);
             float before = Body.GroundRadius(up);
-            yield return Press(new Controls { select = 3 });
-            input.fire = true;
-            yield return Seconds(1.5f);
-            input.fire = false;
+            yield return Press(new Controls { select = 1 });
+            yield return Press(new Controls { fire = true });
+            yield return Seconds(0.5f);
             Assert.Greater(Body.craters.Length, 0);
             Assert.Less(Body.GroundRadius(up), before - 1f, "the ground under the ship has been dug out");
-            Assert.AreEqual(2.5f * Combat.Guns[2].blast, Body.craters[0].w, 1e-3f, "a ship's guns tear far bigger holes than their blast alone");
+            Assert.AreEqual(2.5f * Combat.Guns[0].blast, Body.craters[0].w, 1e-3f, "a ship's guns tear far bigger holes than their blast alone");
 
             // someone standing in the crater stands on its floor
             Stand(up, World(up));
@@ -1960,7 +1866,7 @@ namespace Infinigame.Tests
             yield return Seconds(0.3f);
             Assert.That(Climate.Celsius(Player.Heat), Is.InRange(-40f, 40f), "mild at home");
 
-            // on the furnace world a suit lasts moments
+            // the powered suit survives a furnace world
             int furnace = System.Array.FindIndex(Solar.Descriptor.bodies, body => body.summary.Contains("furnace"));
             yield return HoverOver(furnace, 100f);
             float3 down = math.normalize(Player.ship.position);
@@ -1968,8 +1874,7 @@ namespace Infinigame.Tests
             Stand(down, World(down));
             yield return Seconds(1.5f);
             Assert.Greater(Player.Heat, 700f);
-            Assert.Less(Player.health, Player.MaxHealth - 5f);
-            StringAssert.Contains("Roasted", Player.Cause);
+            Assert.AreEqual(Player.MaxHealth, Player.health, 0.1f, "the powered suit survives furnace heat");
             Player.health = Player.MaxHealth;
 
             // and a ship that sinks into a giant is cooked
@@ -1996,6 +1901,7 @@ namespace Infinigame.Tests
             yield return null;
             Assert.AreEqual(0, Solar.Reference);
             Assert.IsTrue(Solar.Charted(Moon), $"the moon from {math.distance(Player.ship.position, Solar.ToReference(Moon)):0} m");
+            Player.assist = false;
             Player.ship.rotation = quaternion.LookRotationSafe(Solar.ToReference(Moon) - Player.ship.position, new float3(0, 1, 0));
             yield return null;
             StringAssert.Contains(Solar.Descriptor.bodies[Moon].name.ToUpperInvariant(), Player.Travel());
@@ -2014,13 +1920,94 @@ namespace Infinigame.Tests
             Assert.Greater(Object.FindObjectsByType<MeshFilter>().Count(part => part.name == "Rocks" && part.sharedMesh.vertexCount > 100), 3);
         }
 
+        [UnityTest]
+        public IEnumerator TheRadarGlobeShowsContactsInFrontBehindAndAbove()
+        {
+            yield return null;
+            var camera = Camera.main.transform;
+            foreach (Vector3 direction in new[] { camera.forward, -camera.forward, camera.up })
+                game.Battle.Add(FoeKind.Mind, Player.Position + (float3)direction * 100);
+            yield return null;
+            yield return null;
+            var radar = Object.FindAnyObjectByType<Radar>();
+            var contacts = radar.GetComponentsInChildren<Transform>().Where(part => part.name == "Contact" && part.gameObject.activeSelf).ToArray();
+            Assert.AreEqual(3, contacts.Length);
+            Assert.IsTrue(contacts.Any(contact => contact.localPosition.z > 0));
+            Assert.IsTrue(contacts.Any(contact => contact.localPosition.z < 0));
+            Assert.AreEqual(3, contacts.Select(contact => contact.localPosition).Distinct().Count());
+            Assert.IsNotNull(radar.transform.Find("Globe").GetComponent<MeshRenderer>());
+        }
+
+        [UnityTest, Timeout(180000)]
+        public IEnumerator CapturesExpansionScreenshots()
+        {
+            Directory.CreateDirectory("Logs/Screenshots");
+            var target = new RenderTexture(1280, 720, 24);
+            Camera.main.targetTexture = target;
+            IEnumerator Shot(string name, int focus = -1)
+            {
+                for (float t = 0; t < 2; t += Time.unscaledDeltaTime) yield return null;
+                if (focus >= 0)
+                {
+                    Vector3 centre = Solar.ToReference(focus) - Solar.Anchor;
+                    Vector3 offset = new Vector3(1, 0.6f, 1).normalized * (Solar.Descriptor.bodies[focus].radius * 3 + 20);
+                    Camera.main.transform.SetPositionAndRotation(centre + offset, Quaternion.LookRotation(-offset, Vector3.up));
+                }
+                Camera.main.Render();
+                RenderTexture.active = target;
+                var image = new Texture2D(1280, 720, TextureFormat.RGB24, false);
+                image.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0);
+                File.WriteAllBytes($"Logs/Screenshots/{name}.png", image.EncodeToPNG());
+                RenderTexture.active = null;
+                Object.Destroy(image);
+            }
+            game.Jump(4);
+            Player.walker.position = game.Outpost.Place(new float3(0, 0, -10));
+            Player.walker.forward = math.normalize(Walker.Project(game.Outpost.Core - Player.Position, math.normalize(Player.Position)));
+            Player.health = 10000;
+            yield return Shot("80-interior");
+            game.Jump(Campaign.Won);
+            var colony = game.Colonies.First(c => c.world == Home);
+            colony.ore = colony.ice = colony.salvage = 1000;
+            foreach (Building building in System.Enum.GetValues(typeof(Building))) colony.Build(building);
+            game.Frontier.Settle();
+            Player.flying = false;
+            Player.walker.position = colony.site;
+            yield return Press(new Controls { ride = true });
+            yield return Shot("81-colony");
+            for (int i = 0; i < 7; i++) yield return Press(new Controls { down = true });
+            yield return Press(new Controls { confirm = true });
+            yield return Shot("82-workshop");
+            for (int i = 0; i < 3; i++) yield return Press(new Controls { menu = true });
+            game.Frontier.Launch();
+            game.Frontier.Settle();
+            yield return HoverOver(game.Fall.moon, 50);
+            Player.ship.rotation = quaternion.LookRotationSafe(-Player.ship.position, new float3(0, 1, 0));
+            yield return Shot("83-moon-engines", game.Fall.moon);
+            yield return HoverOver(Solar.Station, 500);
+            game.Jump(Campaign.Citadel);
+            yield return HoverOver(Solar.Station, 500);
+            HoverAt(new float3(0, 0, -220));
+            Player.ship.rotation = quaternion.identity;
+            Player.hull = 10000;
+            yield return Shot("84-citadel-tunnel");
+            HoverAt(Solar.ToReference(Solar.Gate) + new float3(0, 0, -200));
+            Player.ship.rotation = quaternion.identity;
+            yield return Shot("85-gate");
+            yield return HoverOver(Home, 60);
+            Player.ship.rotation = quaternion.LookRotationSafe(World(math.normalizesafe(Player.ship.position)), math.normalizesafe(Player.ship.position));
+            yield return Shot("13-cockpit");
+            Camera.main.targetTexture = null;
+            Object.Destroy(target);
+        }
+
         // Not an assertion: saves pictures to Logs/Screenshots for a look at what the game draws.
         // The tour of every world and every screen takes a few minutes.
         [UnityTest, Timeout(900000)]
         public IEnumerator CapturesScreenshots()
         {
             Directory.CreateDirectory("Logs/Screenshots");
-            foreach (string old in Directory.GetFiles("Logs/Screenshots", "*.png")) File.Delete(old);
+            foreach (string old in Directory.GetFiles("Logs/Screenshots", "*.png").Where(path => Path.GetFileName(path)[0] < '8')) File.Delete(old);
             var planet = Solar.Descriptor.bodies[Home];
             float3 sun = Sunward;
 
@@ -2385,7 +2372,7 @@ namespace Infinigame.Tests
             yield return Shot("59-the-outpost", -6f, 6f);
             // its guard dead, what they kept is there to be taken
             game.Battle.Foes.Clear();
-            for (int i = 0; i < 4; i++) game.Award(FoeKind.Drone);
+            game.Award(FoeKind.Mind);
             float3 crate = math.normalize(game.Outpost.Prize);
             Stand(math.normalize(game.Outpost.Prize + World(crate) * 4.5f), -World(crate));
             yield return Shot("65-the-prize", -4f, 5f);
@@ -2395,7 +2382,7 @@ namespace Infinigame.Tests
             yield return Press(new Controls { ride = true });
             input.move = Vector2.up;
             Player.health = 1e6f;
-            yield return Shot("60-on-the-bike", 0f, 11f);
+            yield return Shot("60-powered-suit", 0f, 11f);
             Player.health = Player.MaxHealth;
             input.move = Vector2.zero;
             yield return Press(new Controls { ride = true });

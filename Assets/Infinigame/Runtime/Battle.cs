@@ -28,34 +28,37 @@ namespace Infinigame
         public readonly List<Foe> Foes = new List<Foe>();
         public readonly List<Bolt> Bolts = new List<Bolt>();
         // What is left of the raiders' base in this system. Nothing, once it has been destroyed.
-        public float Base { get; private set; }
+        public float Base => game.Stage > Campaign.Citadel ? 0 : Foes.Where(foe => foe.kind == FoeKind.Mind).Select(foe => foe.health).DefaultIfEmpty(Combat.Health(FoeKind.Mind, game.Threat)).First();
         // When the player last fired.
         public float Fired { get; private set; } = float.MinValue;
-        // What is left in the magazine of the weapon in hand, and whether a fresh one is going in.
-        public int Rounds => rounds[game.Player.Arm];
-        public bool Reloading => reload > 0f;
 
         readonly List<Burst> bursts = new List<Burst>();
         readonly List<Strike> struck = new List<Strike>();
         readonly Instances raiders = new Instances(), drones = new Instances(), flashes = new Instances(), missiles = new Instances();
         readonly Instances[] bolts = { new Instances(), new Instances() };
-        Mesh raider, raiderLights, drone, droneEye, ball, missile;
+        Mesh raider, raiderLights, drone, droneEye, ball, missile, sentry, sentryEye, leg, mind, mindLights;
+        readonly Instances sentries = new Instances(), legs = new Instances(), minds = new Instances();
         Material raiderHull, raiderGlow, droneHull, droneGlow, ours, theirs, fire, casing;
         Random rnd = new Random(1);
         float trigger, raid, pack, ashore, launch;
         // charged: a landing charge has gone down for the landing in hand
         bool left, charged;
-        // each firearm's magazine, the one being changed and how long that has left, and how far fast firing has opened up the aim
-        readonly int[] rounds = Combat.Arms.Select(weapon => weapon.clip).ToArray();
-        int reloading;
-        float reload, wild;
+        LineRenderer ray;
 
         void Awake()
         {
             (raider, raiderLights) = Models.Raider();
             (drone, droneEye) = Models.Drone();
+            (sentry, sentryEye, leg) = Models.Sentry();
+            (mind, mindLights) = Models.Mind();
             missile = Models.Missile();
             ball = Shapes.Sphere(0.5f, 8);
+            ray = new GameObject("Weapon beam").AddComponent<LineRenderer>();
+            ray.transform.SetParent(transform, false);
+            ray.sharedMaterial = Shapes.Material("Glow", new Color(0.5f, 3, 5));
+            ray.startWidth = ray.endWidth = 0.1f;
+            ray.positionCount = 2;
+            ray.enabled = false;
             // iron dark enough to menace and pale enough to pick out against the dark of space, lit from
             // within, and holed and burning where it has been shot, in holes sized to the craft
             var iron = new Color(0.36f, 0.3f, 0.28f);
@@ -85,15 +88,14 @@ namespace Infinigame
             rnd = new Random(math.hash(new uint2(game.Seed, (uint)game.Depth)) | 1u);
             raid = 20f;
             pack = 35f;
-            Base = game.Stage > Campaign.Citadel ? 0f : Combat.Health(FoeKind.Base, game.Threat);
-            for (int i = 0; i < rounds.Length; i++) rounds[i] = Combat.Arms[i].clip;
-            reload = wild = 0f;
+            if (ray != null) ray.enabled = false;
         }
 
         // Foes and bolts are placed relative to the body the player is nearest, so they move with the player when that changes.
         public void Rebase(int from, int to)
         {
             var system = game.System;
+            game.Outpost.Leave(from);
             Bolts.Clear();
             game.Effects.Clear();
             for (int i = Foes.Count - 1; i >= 0; i--)
@@ -127,61 +129,60 @@ namespace Infinigame
             bool flying = player.flying, aloft = flying && !player.ship.landed;
             float3 up = math.normalize(player.Position), self = flying ? player.ship.position : player.walker.position + up * 1.2f;
 
-            // the base is there, with whatever is left of it, whenever the player is in its space
-            bool there = body.kind == BodyKind.Station && Base > 0f;
-            int standing = Foes.FindIndex(foe => foe.kind == FoeKind.Base);
-            if (there && standing < 0)
-            {
-                Add(FoeKind.Base, float3.zero);
-                var foe = Foes[Foes.Count - 1];
-                foe.health = Base;
-                Foes[Foes.Count - 1] = foe;
-                launch = 6f;
-                game.Notify(player.Has(Gear.Nukes) ? "THE RAIDERS' CITADEL  ·  TORPEDOES WILL BREAK IT" : "THE RAIDERS' CITADEL  ·  NOTHING YOU CARRY WILL MARK IT");
-                game.Sounds.Alarm();
-            }
-
-            // the player's weapons: the ship's in flight, what is carried on foot
+            bool there = body.kind == BodyKind.Station && Base > 0;
             trigger -= frame;
+            ray.enabled = false;
             var weapon = player.Weapon;
-            int held = player.Arm;
-            bool firearm = !flying && player.Armed;
-            // a firearm's aim settles when it is given a moment, and its magazine is changed when it
-            // runs dry or the player chooses: taking up another weapon abandons the change
-            wild = Mathf.MoveTowards(wild, 0f, 0.05f * frame);
-            if (reload > 0f && (!firearm || reloading != held)) reload = 0f;
-            if (reload > 0f && (reload -= frame) <= 0f) rounds[held] = weapon.clip;
-            if (firearm && reload <= 0f && rounds[held] < weapon.clip && (c.reload || rounds[held] == 0))
-            {
-                (reload, reloading) = (weapon.reload, held);
-                // the click of the empty chamber that started it, then the fresh magazine going in
-                if (rounds[held] == 0) game.Sounds.DryFire();
-                game.Sounds.Reload();
-            }
-            if (c.fire && trigger <= 0f && player.Armed && (aloft || (firearm && reload <= 0f && rounds[held] > 0)) && !player.Autopilot)
+            if (c.fire && trigger <= 0 && player.Armed && (aloft || !flying) && !player.Autopilot
+                && (flying || Suit.Spend(ref player.energy, weapon.energy * (weapon.beam ? frame : 1))))
             {
                 var view = Camera.main.transform;
                 float3 forward = view.forward, eye = (float3)view.position + system.Anchor;
-                left = !left;
-                int fired = Bolts.Count;
-                if (flying)
+                float3 muzzle = flying ? player.ship.position + math.rotate(player.ship.rotation, new float3(1.7f, -0.3f, 2.5f))
+                    : eye + (float3)(view.right * 0.25f + view.up * (weapon.homing > 0 ? 0.2f : -0.22f));
+                if (flying) forward = math.rotate(player.ship.rotation, new float3(0, 0, 1));
+                else if (player.Hand(UnityEngine.XR.XRNode.RightHand, out var hand, out var aim))
                 {
-                    forward = math.rotate(player.ship.rotation, new float3(0, 0, 1));
-                    Combat.Fire(weapon, player.ship.position + math.rotate(player.ship.rotation, new float3(left ? -1.7f : 1.7f, -0.3f, 2.5f)), forward, player.ship.velocity, ref rnd, Bolts);
+                    muzzle = (float3)(hand + aim * Vector3.forward * 0.12f) + system.Anchor;
+                    forward = aim * Vector3.forward;
                 }
-                else
+                if (weapon.beam || weapon.rail || weapon.melee)
                 {
-                    // from the hip, to meet the line of sight a way off: wilder fired fast, on the move or in the air
-                    float3 muzzle = eye + (float3)(view.right * 0.25f - view.up * 0.22f);
-                    float loose = wild + (player.walker.grounded ? 0.006f * math.saturate(math.length(player.walker.velocity) / Tuning.WalkSpeed) : 0.03f);
-                    Combat.Fire(weapon, muzzle, math.normalize(eye + forward * 150f - muzzle), player.walker.velocity, ref rnd, Bolts, loose);
-                    rounds[held]--;
-                    wild += weapon.bloom;
-                    player.Kick(weapon.kick);
+                    float reach = weapon.melee ? 4.5f : weapon.rail ? 2000 : flying ? 3000 : 250;
+                    float3 end = muzzle + forward * reach;
+                    if (!game.Outpost.Visible(muzzle, end))
+                    {
+                        float near = 0, far = reach;
+                        for (int i = 0; i < 14; i++)
+                        {
+                            float mid = (near + far) * 0.5f;
+                            if (game.Outpost.Visible(muzzle, muzzle + forward * mid)) near = mid; else far = mid;
+                        }
+                        reach = near;
+                        if (weapon.melee && game.Outpost.World == system.Reference) game.Outpost.Breach(muzzle + forward * (reach + 0.01f), weapon.damage);
+                    }
+                    end = Combat.Ray(Foes, body, muzzle, forward, reach, weapon.damage * (weapon.beam ? frame : 1), weapon.rail, game.Outpost.Shield, struck);
+                    if (weapon.melee)
+                    {
+                        for (int i = 0; i < Foes.Count; i++)
+                        {
+                            var foe = Foes[i];
+                            if (math.distance(foe.position, end) < foe.size + 1) { foe.velocity += forward * 45; Foes[i] = foe; }
+                        }
+                        if (math.length(end) < body.GroundRadius(math.normalizesafe(end)) + 1) game.Dig(end, 3);
+                    }
+                    else
+                    {
+                        ray.enabled = true;
+                        ray.SetPosition(0, muzzle - system.Anchor);
+                        ray.SetPosition(1, end - system.Anchor);
+                        if (game.Outpost.Shield.Blocks(muzzle, forward * reach, out _)) game.Outpost.Flash();
+                    }
                 }
+                else Combat.Fire(weapon, muzzle, forward, player.Velocity, ref rnd, Bolts);
                 trigger = weapon.period;
+                if (!weapon.beam || Time.time - Fired > 0.15f) game.Sounds.Shot(weapon.voice);
                 Fired = Time.time;
-                game.Sounds.Shot(weapon.voice);
             }
 
             // a ship setting down on ground too rough to sit on drops a charge ahead of itself to level it
@@ -204,17 +205,46 @@ namespace Infinigame
                 for (int i = 0; i < Foes.Count; i++)
                 {
                     var foe = Foes[i];
-                    // raiders and the base have no quarrel with someone on foot, unless that someone carries a launcher
-                    // to answer them with: otherwise raiders circle high, and in time leave
-                    bool hunting = foe.kind == FoeKind.Drone || flying || player.Has(Gear.Launcher);
-                    if (Combat.Hunt(ref foe, body, hunting ? self : self + up * 400f, player.Velocity, game.Threat, dt, out var shot) && hunting)
+                    bool hunting = !foe.friendly && !foe.scattered;
+                    float3 quarry = self;
+                    if (foe.kind == FoeKind.Sentry)
                     {
-                        Bolts.Add(shot);
-                        if (step == 0) game.Sounds.Shot(foe.kind == FoeKind.Raider ? 6 : foe.kind == FoeKind.Drone ? 7 : 8, 0.5f * math.saturate(1.2f - math.distance(foe.position, self) / 1500f));
+                        if (foe.friendly)
+                        {
+                            int mind = Foes.FindIndex(other => other.kind == FoeKind.Mind && other.health > 0);
+                            if (mind >= 0 && game.Outpost.Visible(foe.position, Foes[mind].position))
+                            {
+                                var target = Foes[mind]; target.health -= 8 * dt; Foes[mind] = target;
+                            }
+                            hunting = false;
+                        }
+                        else hunting = Combat.Observe(ref foe, self, c.fire ? 1 : c.sprint ? 0.6f : 0.05f, player.cloaked ? 0.03f : math.max(0.15f, math.saturate(math.dot(up, math.normalizesafe(system.ToReference(0))))) ,
+                            game.Outpost.Visible(foe.position, self), dt) == Alert.Alarmed;
+                    }
+                    float3 before = foe.position;
+                    if (hunting || foe.scattered)
+                    {
+                        bool fired = Combat.Hunt(ref foe, body, quarry, player.Velocity, game.Threat, dt, out var shot);
+                        if (foe.kind == FoeKind.Sentry) foe.position = game.Outpost.Resolve(before, foe.position, 0.9f, out _);
+                        if (fired && hunting && game.Outpost.Visible(foe.position, self))
+                        {
+                            if (foe.kind == FoeKind.Raider)
+                            {
+                                var copied = Combat.CapturedWeapon(player.kit, foe.seed);
+                                shot.velocity = math.normalizesafe(shot.velocity) * copied.speed;
+                                shot.homing = copied.homing;
+                                shot.blast = copied.blast;
+                                shot.damage = math.max(shot.damage, copied.damage * 0.12f);
+                                shot.life = copied.life;
+                            }
+                            Bolts.Add(shot);
+                        }
                     }
                     Foes[i] = foe;
                 }
-                hurt += Combat.Step(Bolts, Foes, body, self, player.Velocity, flying ? Combat.ShipRadius : Combat.PersonRadius, dt, struck);
+                for (int i = Bolts.Count - 1; i >= 0; i--)
+                    if (!game.Outpost.Visible(Bolts[i].position, Bolts[i].position + Bolts[i].velocity * dt)) Bolts.RemoveAt(i);
+                hurt += Combat.Step(Bolts, Foes, body, self, player.Velocity, flying ? Combat.ShipRadius : Combat.PersonRadius, dt, struck, game.Outpost.Shield);
             }
             if (hurt > 0f) player.Hurt(hurt, !flying ? $"Gunned down by drones on {body.name}" : there ? "Shot to pieces by the raiders' citadel" : $"Shot down over {body.name}");
 
@@ -223,6 +253,7 @@ namespace Infinigame
             var effects = game.Effects;
             foreach (var strike in struck)
             {
+                if (strike.shield) { game.Outpost.Flash(); continue; }
                 float3 where = math.normalizesafe(strike.at, up);
                 // a ship's guns, its own or a raider's, tear far bigger holes than anything carried
                 float hole = strike.blast * (player.flying ? 2.5f : 1f);
@@ -255,14 +286,14 @@ namespace Infinigame
             {
                 var foe = Foes[i];
                 float away = math.distance(foe.position, self);
-                if (foe.kind == FoeKind.Base) Base = math.max(foe.health, 0f);
                 if (foe.health <= 0f)
                 {
                     game.Effects.Explode(foe.position, foe.velocity, foe.size);
                     game.Sounds.Boom(math.saturate(1f - away / 2500f), foe.kind != FoeKind.Drone);
+                    game.Collect(new float3(0, 0, foe.kind == FoeKind.Raider ? 12 : 4));
                     game.Award(foe.kind);
                 }
-                else if (foe.kind == FoeKind.Base ? there : !(foe.kind == FoeKind.Raider ? away > 6000f || (ashore > 25f && !player.Has(Gear.Launcher)) : away > 350f)) continue;
+                else if (foe.kind == FoeKind.Mind || foe.kind == FoeKind.Sentry || (foe.kind == FoeKind.Base ? there : !(foe.kind == FoeKind.Raider ? away > 6000f || (ashore > 25f && !player.Has(Gear.BackMissiles)) : away > 350f))) continue;
                 Foes.RemoveAt(i);
             }
             for (int i = bursts.Count - 1; i >= 0; i--)
@@ -308,11 +339,12 @@ namespace Infinigame
                     Add(FoeKind.Raider, over * math.max(math.length(from), Ship.Surface(body, over) + 150f));
                 }
                 game.Notify("RAIDERS INBOUND");
+                game.Hermit.Remark("Incoming bodies of the presence. Their ships are closing on us.");
                 game.Sounds.Alarm();
             }
 
             // drones find someone on foot, though never at the hermit's fire
-            bool exposed = !player.flying && player.Has(Gear.Pistol) && body.kind == BodyKind.Rock && !player.walker.swimming
+            bool exposed = !player.flying && player.Has(Gear.Suit) && body.kind == BodyKind.Rock && !player.walker.swimming
                 && !(system.Reference == SolarSystemDescriptor.Home && math.distance(self, game.Hermit.Position) < 70f);
             if (exposed && drones < math.min(1 + game.Depth, 5) && (pack -= frame) <= 0f)
             {
@@ -334,7 +366,7 @@ namespace Infinigame
         {
             float3 anchor = game.System.Anchor;
             float beat = Time.time;
-            foreach (var list in new[] { raiders, drones, flashes, missiles, bolts[0], bolts[1] }) list.Clear();
+            foreach (var list in new[] { raiders, drones, flashes, missiles, sentries, legs, minds, bolts[0], bolts[1] }) list.Clear();
             foreach (var foe in Foes)
             {
                 float3 up = math.normalizesafe(foe.position, new float3(0, 1, 0));
@@ -344,6 +376,16 @@ namespace Infinigame
                 // a drone bobs as it hovers
                 else if (foe.kind == FoeKind.Drone)
                     drones.Add(Matrix4x4.TRS(foe.position - anchor + up * (0.12f * math.sin(beat * 3f + foe.seed % 7u)), Quaternion.LookRotation(foe.forward, up), Vector3.one), battered, foe.seed);
+                else if (foe.kind == FoeKind.Mind)
+                    minds.Add(Matrix4x4.TRS(foe.position - anchor, Quaternion.LookRotation(foe.forward, up), Vector3.one), battered, foe.seed);
+                else if (foe.kind == FoeKind.Sentry)
+                {
+                    Quaternion facing = Quaternion.LookRotation(math.normalizesafe(Walker.Project(foe.forward, up), new float3(0, 0, 1)), up);
+                    sentries.Add(Matrix4x4.TRS(foe.position - anchor, facing, Vector3.one), battered, foe.seed);
+                    foreach (float side in new[] { -1f, 1f })
+                        legs.Add(Matrix4x4.TRS(foe.position - anchor + (float3)(facing * new Vector3(side * 0.24f, -0.05f, 0)),
+                            facing * Quaternion.Euler(side * Mathf.Sin(beat * 9) * math.min(math.length(foe.velocity) * 6, 35), 0, 0), Vector3.one), battered, foe.seed);
+                }
             }
             foreach (var bolt in Bolts)
             {
@@ -367,6 +409,11 @@ namespace Infinigame
             raiders.Draw(raiderLights, raiderGlow, false, bounds);
             drones.Draw(drone, droneHull, true, bounds);
             drones.Draw(droneEye, droneGlow, false, bounds);
+            sentries.Draw(sentry, droneHull, true, bounds);
+            sentries.Draw(sentryEye, droneGlow, false, bounds);
+            legs.Draw(leg, droneHull, true, bounds);
+            minds.Draw(mind, droneHull, true, bounds);
+            minds.Draw(mindLights, droneGlow, false, bounds);
             missiles.Draw(missile, casing, false, bounds);
             bolts[0].Draw(ball, ours, false, bounds);
             bolts[1].Draw(ball, theirs, false, bounds);

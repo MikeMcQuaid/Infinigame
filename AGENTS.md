@@ -16,7 +16,7 @@ New tooling goes in `script/`, following [scripts to rule them all](https://gith
 
 ## Rules of the project
 
-- **Everything is made by code.** Terrain, models, textures, materials, shaders, the interface, sound effects and the fallback music are all generated. Do not add downloaded art, fonts, models, packages or Asset Store content. The one exception is music the owner drops into `Assets/Infinigame/Resources/Music`.
+- **Everything is made by code.** Terrain, models, textures, materials, shaders, the interface, sound effects and the fallback music are all generated. Do not add downloaded art, fonts, models or Asset Store content. Official packages may always be added. The one exception is music the owner drops into `Assets/Infinigame/Resources/Music`.
 - **The core stays pure.** `Assets/Infinigame/Core` has no scene dependencies. Game rules and numbers go there, with an EditMode test. The runtime asks the core and draws the answer.
 - **The ground is a function.** `BodyDescriptor.GroundRadius` is the terrain for walking, flying, meshing and tests alike. It is called a great deal: keep it cheap, and never add a second source of truth such as a collider.
 - **Nothing drawn may flicker.** Anything with a level of detail appears once it is big enough to see and stays until it is off screen, over the horizon or too small. No popping in and out, no z-fighting, no shimmering lines.
@@ -30,6 +30,7 @@ New tooling goes in `script/`, following [scripts to rule them all](https://gith
 
 ## Conventions
 
+- **Commit on `main` in this repository.** This explicitly overrides global instructions to commit on feature branches. If a worktree is used for edits, bring the finished changes into the main checkout before committing.
 - C# 9, as Unity compiles it. No C# 10 or later features.
 - Small diffs. No abstractions for things used once: inline them. Prefer deleting to adding.
 - Names carry the meaning; comments are brief and say why, not what.
@@ -37,7 +38,8 @@ New tooling goes in `script/`, following [scripts to rule them all](https://gith
 - Fix a bug by first writing the test that fails.
 - A feature is not finished until `script/test` passes, and anything that touches Unity APIs, shaders or the scene has been run with `script/test --unity`. `script/test` compiles against every engine library, so it will not notice a Unity module missing from `Packages/manifest.json`.
 - Tune detail budgets in `LodSettings.cs` from `Logs/frames.log`, which `script/play` writes during real play, not from guesses.
-- Temporary files go in the ignored `tmp/` folder at the repository root, which is also where extra checkouts for parallel work belong (`tmp/worktrees/<task>`).
+- Temporary files go in the ignored `tmp/` folder at the repository root. Keep all worktrees, including managed worktrees, under `/Users/Shared/sv-mike/repositories/infinigame/tmp/worktrees/<task>`.
+- Remove worktrees when their work is finished. Review outstanding changes individually, include useful changes on `main` and discard obsolete changes. Do not create cleanup stashes.
 - Never edit files under `Assets/` while a Unity test run or build is in progress on the same checkout.
 
 ## Things that bite

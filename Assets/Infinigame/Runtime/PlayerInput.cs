@@ -16,7 +16,7 @@ namespace Infinigame
         // For menus and for talking: step up or down a list, point and click, and what was typed this frame.
         public bool up, down, click, erase;
         public Vector2 pointer;
-        public string typed;
+        public string typed, replaceText;
     }
 
     public static class DesktopControls

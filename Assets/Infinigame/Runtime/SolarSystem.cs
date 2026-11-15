@@ -16,6 +16,8 @@ namespace Infinigame
         public CelestialBody[] Bodies { get; private set; }
         public int Reference { get; private set; }
         public double Clock { get; private set; }
+        public void RestoreClock(double time) => Clock = time;
+        public int Gate => Array.FindIndex(Descriptor.bodies, body => body.kind == BodyKind.Gate);
         public BodyDescriptor ReferenceBody => Descriptor.bodies[Reference];
 
         // Turns inertial directions into scene directions.
@@ -41,8 +43,9 @@ namespace Infinigame
         // Whether a body is worth a marker and a place on the autopilot's list from where the player
         // is: the star, the planets and the base always, a moon from within its own planet's space
         // or from wherever it is near enough to show as more than a speck.
-        public bool Charted(int body) => Descriptor.bodies[body].orbit.parent <= 0 || Descriptor.Planet(body) == Descriptor.Planet(Reference)
-            || Descriptor.bodies[body].radius > 0.004f * math.distance(Focus, ToReference(body));
+        public bool Surveyed;
+        public bool Charted(int body) => !Descriptor.bodies[body].destroyed && (Surveyed || Descriptor.bodies[body].orbit.parent <= 0 || Descriptor.Planet(body) == Descriptor.Planet(Reference)
+            || Descriptor.bodies[body].radius > 0.004f * math.distance(Focus, ToReference(body)));
 
         // Raised with (from, to) when the reference body changes so movers can rebase themselves.
         public event Action<int, int> ReferenceChanged;
@@ -51,7 +54,7 @@ namespace Infinigame
         // world, leaves out the haze of its air.
         [NonSerialized] public bool ShowOrbits, Clear;
 
-        Light sunlight;
+        Light sunlight, secondLight;
         LineRenderer[] orbits;
         readonly Vector4[] storms = new Vector4[Weather.Storms];
 
@@ -91,7 +94,8 @@ namespace Infinigame
             RenderSettings.fogMode = FogMode.ExponentialSquared;
             // a run begins by daylight: the clock is wound on until the sun is well up over the landing site
             float3 landing = ReferenceBody.FindLanding(descriptor.seed + 1u);
-            for (int i = 0; i < 96 && math.dot(landing, math.normalize(ToReference(0))) < 0.5f; i++) Clock += math.abs(ReferenceBody.spinPeriod) / 96;
+            if (Clock == 0)
+                for (int i = 0; i < 96 && math.dot(landing, math.normalize(ToReference(0))) < 0.5f; i++) Clock += math.abs(ReferenceBody.spinPeriod) / 96;
             Place();
         }
 
@@ -123,7 +127,7 @@ namespace Infinigame
                 Bodies[i].IsReference = i == Reference;
                 Bodies[i].transform.SetPositionAndRotation(Scene(Descriptor.PositionAt(i, Clock)), math.mul(toScene, Descriptor.bodies[i].Rotation(Clock)));
                 if (orbits[i] == null) continue;
-                orbits[i].enabled = ShowOrbits;
+                orbits[i].enabled = ShowOrbits && !Descriptor.bodies[i].destroyed;
                 if (!ShowOrbits) continue;
                 var orbit = Descriptor.bodies[i].orbit;
                 double3 centre = Descriptor.PositionAt(orbit.parent, Clock);
@@ -140,6 +144,25 @@ namespace Infinigame
             Color sun = Color.Lerp(Shapes.SunColour(Descriptor.bodies[0]), Color.white, 0.8f);
             Shader.SetGlobalVector("_SunPosition", Bodies[0].transform.position);
             Shader.SetGlobalColor("_SunLight", sun * 1.8f);
+            int second = Array.FindLastIndex(Descriptor.bodies, star => star.kind == BodyKind.Sun);
+            if (second > 0 && secondLight == null)
+            {
+                secondLight = new GameObject("Companion starlight").AddComponent<Light>();
+                secondLight.transform.SetParent(transform, false);
+                secondLight.type = LightType.Directional;
+            }
+            if (secondLight != null)
+            {
+                secondLight.enabled = second > 0;
+                if (second > 0)
+                {
+                    secondLight.transform.rotation = Quaternion.LookRotation((Vector3)(Focus - ToReference(second)));
+                    secondLight.color = Color.Lerp(Shapes.SunColour(Descriptor.bodies[second]), Color.white, 0.8f);
+                    secondLight.intensity = 0.8f * math.smoothstep(-0.1f, 0.2f, math.dot(math.normalizesafe(Focus), math.normalizesafe(ToReference(second) - Focus)));
+                }
+            }
+            Shader.SetGlobalVector("_SecondSunPosition", second > 0 ? Bodies[second].transform.position : Vector3.zero);
+            Shader.SetGlobalColor("_SecondSunLight", second > 0 ? secondLight.color * 0.8f : Color.black);
             for (int i = 0; i < storms.Length; i++) storms[i] = Weather.Storm(Descriptor.bodies[SolarSystemDescriptor.Home], i, Clock);
             Shader.SetGlobalVectorArray("_Storms", storms);
             // the lowest detail level goes without the costlier touches, such as shading within the clouds
@@ -164,7 +187,7 @@ namespace Infinigame
             sunlight.transform.rotation = Quaternion.LookRotation(-(Vector3)toSun);
             sunlight.color = Color.Lerp(sun, Color.Lerp(dusk, Color.white, 0.25f), low);
             // cloud takes the edge off the sun and scatters the rest, so shade under it is soft and never deep
-            sunlight.intensity = 1.8f * (1f - 0.5f * low) * (1f - blocked) * (1f - 0.45f * overcast);
+            sunlight.intensity = (1 - body.blight * air * 0.4f) * 1.8f * (1f - 0.5f * low) * (1f - blocked) * (1f - 0.45f * overcast);
             Color skylight = Color.Lerp(new Color(0.05f, 0.056f, 0.075f), Color.Lerp(Color.Lerp(sky, haze, 0.5f), grey, overcast) * (0.62f + 0.2f * overcast), day * air * math.saturate(body.air)).linear;
             var shade = new SphericalHarmonicsL2();
             // by night what little light there is comes from all round
@@ -173,7 +196,7 @@ namespace Infinigame
             shade.AddDirectionalLight(-(Vector3)up, sunlight.color.linear * new Color(0.5f, 0.42f, 0.28f), 0.1f * sunlight.intensity * math.saturate(elevation * 3f));
             RenderSettings.ambientProbe = shade;
             RenderSettings.fog = air > 0.02f && !Clear;
-            RenderSettings.fogDensity = underwater ? 0.05f : 0.0011f * air * body.air * (1f + 7f * Rain);
+            RenderSettings.fogDensity = underwater ? 0.05f : 0.0011f * air * body.air * (1f + 7f * Rain + body.blight * 2);
             RenderSettings.fogColor = (underwater ? Shapes.SeaColour(0.6f) : Color.Lerp(Color.Lerp(dusk, haze, math.smoothstep(0f, 0.3f, elevation)), grey, 0.8f * overcast)) * (0.08f + 0.92f * day);
         }
     }

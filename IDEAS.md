@@ -1,6 +1,6 @@
 # Ideas
 
-What the owner wants to build later, kept here so it is not lost. None of it is built, and none of it should be until the owner asks. Each idea has a note on where it would meet the code as it stands; `ARCHITECTURE.md` describes that code.
+The original expansion brief, now authorised for implementation. The sections below preserve its design intent; `README.md` and `ARCHITECTURE.md` describe the implemented behaviour. Each idea has a note on where it would meet the code as it stands; `ARCHITECTURE.md` describes that code.
 
 ## The suit
 
@@ -22,7 +22,7 @@ The jetpack, the bike and every carried firearm make way for one suit of powered
 - **What he is:** a robot AI, not a man. He speaks to the player remotely anywhere, joins the ship as copilot once it is won, and narrates the flight: arrivals, raiders inbound, heat, radiation, landings.
 - **Where it fits:** `Hermit.cs` already rides as copilot (`Aboard`) and speaks up unasked (`Remark`). Narration would hang off what `Game` already notices: arrival, raids, the hull failing, the landing charge.
 - **What changes:** his persona text, his model in `Models.Camp` and his voice. `Speech` could process the system voice so it sounds synthetic.
-- **He knows more than he says.** About who the player is, why they were buried and what the presence is. Early on he deflects and lets things slip; later the truth comes out. Whether he made the player, or is a splinter of the enemy mind himself, is still to be decided.
+- **He knows more than he says.** About who the player is, why they were buried and what the presence is. Early on he deflects and lets things slip; later the truth comes out. Decision: the robot helped create the player.
   - Where it fits: his set lines in `Campaign.Missions` seed the hints. The oracle's persona in `Hermit.cs` would be told the secret and how much of it he may give away at each stage, so free talk never spoils it.
 
 ## The opponent: one mind, many bodies
@@ -34,7 +34,7 @@ An enemy that is one species with one will: nothing to bargain with and no end t
 - **They cannot be talked to.** The hermit can only tell the player what he has overheard. The oracle could write their intercepted thought-chatter as eerie radio.
 - **They copy what they capture.** Their ships take up each weapon soon after the player wins it, which is why each world fights harder.
 - **They never stop spreading.** The presence is a clock on the whole system: it takes world after world as the hours of play go by, and each world it holds visibly worsens. A blight creeps over the ground, the sky darkens, outposts multiply and raids come harder. Every world taken back pushes it back.
-  - Where it fits: how far it has spread would be kept in the save and grow with time played. `Battle` would take its threat from it as well as from the missions, `Terrain.shader` would draw the blight, and the map would show its reach. Whether it can ever win outright, or only press harder, is still to be decided.
+  - Where it fits: how far it has spread would be kept in the save and grow with time played. `Battle` would take its threat from it as well as from the missions, `Terrain.shader` would draw the blight, and the map would show its reach. Decision: it increases pressure without a timed game over.
 - **A twist for the end:** the radiation boundary was what kept them penned in this system, and the gate the player is mending to leave it is what would let them out.
 
 ## More than one way through a mission
@@ -77,7 +77,7 @@ On some planets the player has to get around inside a place, such as a base, a b
 
 ## Radar
 
-The owner's words: "Radar isn't quite right". What is wrong has not been said, so ask before changing it.
+The owner clarified the requirement: a rendered 3D globe that displays enemies all around.
 
 - **How it works now:** a disc seen from behind and above, ahead at the top. Foes are blips on stalks for how far above or below they are, 150 m out on foot and 3 km in the ship, with a mark for where the mission leads.
 - **Possible fixes:**
@@ -123,7 +123,7 @@ The targets after macOS are iPhone (18 Pro) and iPad, and the Valve Index throug
   - **Controls:** touch input that fills `Controls`, as keyboard, mouse and gamepad do now.
   - **Detail:** the Mobile tier in `LodSettings.cs` exists but has not been tried on a device.
   - **Language models:** no command-line tools can run there. The oracle reaches a model by the player's own key or OpenAI's sign-in, which opens its page through `Assets/Plugins/iOS/InfinigameBrowser.m`, never yet built. Keys belong in the Keychain, not a file.
-  - **Speech:** Apple's speech synthesiser in place of the `say` command.
+  - **Speech:** text for now, per the owner's later clarification. No platform-specific or paid synthesis is required.
 - **SteamVR (Valve Index on Windows):**
   - **The build:** a Windows build script.
   - **Controls:** OpenXR, with tracked controllers filling `Controls`.
@@ -131,4 +131,4 @@ The targets after macOS are iPhone (18 Pro) and iPad, and the Valve Index throug
   - **Interface:** the HUD set in the world, as a panel or the cockpit's own screens, not over the view.
   - **Comfort:** a seated cockpit and comfortable movement on foot.
   - **Language models:** the makers' tools exist on Windows, though `Oracle` looks for them only where macOS installs them.
-  - **Speech:** Windows' own speech for the hermit.
+  - **Speech:** text for now, retaining only the existing local macOS speech.

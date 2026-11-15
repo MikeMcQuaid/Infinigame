@@ -60,6 +60,7 @@ namespace Infinigame.Core
             float squarest = float.MaxValue, nearest = float.MaxValue;
             for (int i = 0; i < system.bodies.Length; i++)
             {
+                if (system.bodies[i].destroyed) continue;
                 float3 to = system.ToLocal(reference, time, system.PositionAt(i, time)) - eye;
                 float along = math.dot(to, ray), wide = math.max(0f, math.length(to - ray * along) - system.bodies[i].radius) / math.max(along, 1e-3f);
                 if (along <= 0f || wide > 0.02f || wide > squarest || (wide == squarest && along >= nearest)) continue;

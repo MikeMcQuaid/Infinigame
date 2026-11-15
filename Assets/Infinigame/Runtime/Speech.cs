@@ -25,8 +25,8 @@ namespace Infinigame
         void Awake()
         {
             source = gameObject.AddComponent<AudioSource>();
-            // a little slower and lower than it was read, which ages him
-            source.pitch = 0.93f;
+            // Lower and lightly modulated to suit the machine voice.
+            source.pitch = 0.82f;
         }
 
         // Says these words, in place of whatever was being said.
@@ -76,6 +76,7 @@ namespace Infinigame
             if (mine != asked || sound == null || sound.Length == 0) return;
             Destroy(source.clip);
             source.clip = AudioClip.Create("Speech", sound.Length, 1, rate, false);
+            for (int i = 0; i < sound.Length; i++) sound[i] *= 0.75f + 0.25f * Mathf.Sin(2 * Mathf.PI * 45 * i / rate);
             source.clip.SetData(sound, 0);
             source.Play();
         }

@@ -45,7 +45,7 @@ Shader "Infinigame/Terrain"
             float _Saturation;
             float _Shore;
             float _AirRadius;
-            float _Haze;
+            float _Haze, _Blight;
             float _Clock;
         CBUFFER_END
 
@@ -193,6 +193,7 @@ Shader "Infinigame/Terrain"
                 albedo = lerp(dot(albedo, half3(0.3, 0.59, 0.11)).xxx, albedo, _Saturation);
                 // stone takes the colour of its world; ice stays white
                 albedo *= lerp(_Tint.rgb, 1.0, weights.w);
+                albedo = lerp(albedo, half3(0.08, 0.015, 0.13), _Blight * smoothstep(0.15, 0.65, mottle));
                 albedo *= (0.84 + 0.32 * mottle) * lerp(_Low.rgb, 1.0, saturate((input.uv.x - _Bands.w) / 0.03 + 1.0));
                 // the sea wets its shore: darker there, and smooth enough to shine
                 half wet = _Shore * (1.0 - smoothstep(0.05, 0.6, aboveSea + 0.3 * (patchy - 0.5))) * smoothstep(-2.0, -0.3, aboveSea);
@@ -253,7 +254,7 @@ Shader "Infinigame/Terrain"
 
                 float3 normalWS = TransformObjectToWorldNormal(normalize(normalOS + slope));
                 // a world seen from afar is lit from where the sun stands for it, so its phase is right
-                half3 distant = Veil(albedo * _SunLight.rgb * (0.55 * saturate(dot(normalWS, SunDirection())) + 0.01) + glow, input.positionWS, _Sky, _AirRadius);
+                half3 distant = Veil(albedo * (_SunLight.rgb * (0.55 * saturate(dot(normalWS, SunDirection())) + 0.01) + SecondStarlight(normalWS) * 0.55) + glow, input.positionWS, _Sky, _AirRadius);
                 if (_Haze <= 0.0) return half4(distant, 1.0);
 
                 InputData inputData = (InputData)0;

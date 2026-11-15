@@ -41,7 +41,16 @@ namespace Infinigame.Core
         {
             var body = system.bodies[index];
             float3 sun = system.ToLocal(index, time, system.PositionAt(0, time));
-            float space = Sunlit(Au(system, math.distance(position, sun))), distance = math.length(position);
+            float space = Sunlit(Au(system, math.distance(position, sun))), distance = math.length(position), extra = 0;
+            for (int i = 1; i < system.bodies.Length; i++)
+            {
+                var star = system.bodies[i];
+                if (star.kind != BodyKind.Sun) continue;
+                float3 light = system.ToLocal(index, time, system.PositionAt(i, time));
+                float warmth = Sunlit(Au(system, math.distance(position, light))) * math.sqrt(star.radius / system.bodies[0].radius);
+                extra += math.pow(warmth, 4);
+            }
+            space = math.pow(math.pow(space, 4) + extra, 0.25f);
             if (body.kind == BodyKind.Sun || body.kind == BodyKind.Station || distance < 1e-3f) return space;
 
             float3 up = position / distance;
@@ -59,6 +68,7 @@ namespace Infinigame.Core
             if (body.SeaRadius > 0f)
                 // a living world is colder at its poles and on its mountain tops
                 surface -= 32f * up.y * up.y + 55f * math.saturate((ground - body.radius) / body.terrain.MaxHeight);
+            surface = math.pow(math.pow(math.max(surface, 0), 4) + extra, 0.25f);
             return math.lerp(surface, space, math.smoothstep(0f, 0.3f * body.radius, height));
         }
 

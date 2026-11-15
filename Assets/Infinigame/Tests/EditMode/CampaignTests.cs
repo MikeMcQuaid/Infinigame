@@ -16,8 +16,8 @@ namespace Infinigame.Tests
             CollectionAssert.AreEquivalent(Enum.GetValues(typeof(Gear)), won, "everything is won somewhere, and nowhere twice");
             Assert.AreEqual(Campaign.Won, Campaign.Missions.Length);
             Assert.AreEqual(0, Campaign.Missions[Campaign.Buried].wins.Length, "digging yourself out wins nothing but daylight");
-            CollectionAssert.AreEqual(new[] { Gear.Pistol }, Campaign.Missions[Campaign.Stranger].wins, "the hermit gives the first gun");
-            CollectionAssert.AreEqual(new[] { Gear.Warp }, Campaign.Missions[Campaign.Citadel].wins);
+            CollectionAssert.AreEqual(new[] { Gear.Suit }, Campaign.Missions[Campaign.Stranger].wins, "the hermit gives the first gun");
+            CollectionAssert.AreEqual(new[] { Gear.GateParts }, Campaign.Missions[Campaign.Citadel].wins);
             Assert.AreEqual(FoeKind.Base, Campaign.Missions[Campaign.Citadel].guards);
             foreach (var mission in Campaign.Missions.Skip(2)) Assert.Greater(mission.count, 0, mission.name);
         }
@@ -26,7 +26,7 @@ namespace Infinigame.Tests
         public void WhatHasBeenWonGrowsMissionByMission()
         {
             Assert.AreEqual(0, Campaign.Kit(Campaign.Stranger), "you begin with nothing");
-            Gear[] order = { Gear.Pistol, Gear.Jetpack, Gear.Bike, Gear.Ship, Gear.Orbiter, Gear.Shield, Gear.Nukes, Gear.Warp };
+            Gear[] order = { Gear.Suit, Gear.Thrusters, Gear.Stealth, Gear.Ship, Gear.Orbiter, Gear.Shield, Gear.Nukes, Gear.GateParts };
             int last = 0;
             foreach (var gear in order)
             {
@@ -34,10 +34,10 @@ namespace Infinigame.Tests
                 Assert.Greater(stage, last, $"{gear} comes after what came before it");
                 last = stage;
             }
-            Assert.IsFalse(Campaign.Has(Campaign.Kit(Campaign.Citadel), Gear.Warp));
+            Assert.IsFalse(Campaign.Has(Campaign.Kit(Campaign.Citadel), Gear.GateParts));
             Assert.IsTrue(Campaign.Has(Campaign.Kit(Campaign.Citadel), Gear.Nukes), "the citadel is faced with torpedoes in hand");
-            Assert.AreEqual("A SHOTGUN AND A BIKE", Campaign.Spoils(3));
-            Assert.AreEqual("A RIFLE, A MISSILE LAUNCHER AND YOUR SHIP", Campaign.Spoils(4), "the launcher comes with the ship it is for shooting at");
+            Assert.AreEqual("GAUNTLET BEAMS AND A CLOAK", Campaign.Spoils(3));
+            Assert.AreEqual("A CAPACITOR, BACK MISSILES AND YOUR SHIP", Campaign.Spoils(4), "the launcher comes with the ship it is for shooting at");
         }
 
         [Test]
@@ -45,7 +45,7 @@ namespace Infinigame.Tests
         {
             foreach (var weapon in Combat.Guns.Concat(Combat.Arms))
                 Assert.IsTrue(Campaign.Has(Campaign.Kit(Campaign.Won), weapon.needs), weapon.name);
-            Assert.AreEqual(Gear.Pistol, Combat.Arms[0].needs);
+            Assert.AreEqual(Gear.Suit, Combat.Arms[0].needs);
             Assert.AreEqual(Gear.Ship, Combat.Guns[0].needs, "the ship comes with its cannons");
         }
 

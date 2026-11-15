@@ -98,7 +98,7 @@ namespace Infinigame
             Light("RAD", r.irradiated ? throb : 0f, Danger);
             Light("LANDED", r.landed ? 1f : 0f, Safe);
             Light("BOOST", r.boost ? 1f : 0f, Caution);
-            Light("WARP", r.warp ? 1f : 0f, Fine);
+            Light("GATE", r.warp ? 1f : 0f, Fine);
         }
 
         // The named part, found once: a path down from "Cockpit", as Models.Ship laid it out.

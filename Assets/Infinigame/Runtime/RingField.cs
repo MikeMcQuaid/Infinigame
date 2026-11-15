@@ -76,7 +76,7 @@ namespace Infinigame
             // Where the camera is in the body's frame. With the scene riding on the player, far from
             // this body, the body's own place in the scene is the player's position turned about: exact.
             Vector3 eyeScene = Camera.main.transform.position;
-            double3 camera = owner.IsReference ? (double3)(float3)eyeScene + (double3)system.Anchor : (double3)(float3)transform.InverseTransformPoint(eyeScene);
+            double3 camera = (owner != null && owner.IsReference) ? (double3)(float3)eyeScene + (double3)system.Anchor : (double3)(float3)transform.InverseTransformPoint(eyeScene);
             double radial = math.length(camera.xz);
             int frame = Time.frameCount, applied = 0;
             for (int size = 0; size < Rings.Classes; size++)
@@ -125,7 +125,7 @@ namespace Infinigame
                         if (chunk.item == null) continue;
                         // carried round with its band, and set down relative to the player
                         double3 now = TurnY(chunk.middle, turned);
-                        if (owner.IsReference) chunk.item.transform.SetPositionAndRotation((Vector3)(float3)(now - (double3)system.Anchor), rotation);
+                        if ((owner != null && owner.IsReference)) chunk.item.transform.SetPositionAndRotation((Vector3)(float3)(now - (double3)system.Anchor), rotation);
                         else chunk.item.transform.SetPositionAndRotation(transform.TransformPoint((Vector3)(float3)now), transform.rotation * rotation);
                     }
                 }

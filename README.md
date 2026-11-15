@@ -1,21 +1,31 @@
 # Infinigame
 
-A tiny procedural copy of our solar system to explore on foot and by ship: a sun, four rocky worlds, an asteroid belt and four giants with their moons and rings, all true spheres with their own gravity. One world is alive, with seas, forests, weather, herds, birds, fish, a moon and a hermit to talk to. Stranger things live elsewhere. Scan anything and Claude or ChatGPT writes its journal entry.
+A procedural solar system to explore in powered armour and by ship. The first system is a tiny copy of our own, with spherical worlds, seas, forests, weather and strange life. Beyond its gate are generated systems with their own worlds, living moons and sometimes two stars. Scan anything and Claude or ChatGPT writes its journal entry.
 
-You wake buried, with no memory and nothing in your hands, and dig yourself out. Raiders hold every world of the system. Everything you come to carry, ride and fly is taken from them, a mission at a time: a pistol, a jetpack, a bike, your own ship back, the drive to leave the air, a shield against the radiation beyond the moon, and then world by world stronger weapons, plating and shields, until you hold the nuclear torpedoes that are the only thing their citadel in the asteroid belt cannot shrug off. Its warp drive takes you on to a harder system. Dying costs only the mission in hand.
+You wake buried, with no memory. A recovery robot helps wake your suit and stays on the radio, later joining the ship as copilot. The enemy is one presence with many bodies. Each outpost shelters a controlling mind: destroy it and its bodies scatter. Shields stop fire from outside, including nuclear torpedoes, so you must enter the rooms, hack their terminals or break in with powered fists.
 
-Built with Unity 6.6 (6000.6.9f1) and URP. Everything is generated from code: terrain, models, textures, materials, the interface, sound effects and music. There are no downloaded assets, though you can drop in music of your own.
+Recovered equipment gives you choices. Fit three suit modules within six units of power at a robot workshop. Beams, thrusters, missiles, a rail gauntlet, heavy plate, a cloak and a capacitor compete for those slots. Beams, flight and shielding share your energy reserve. The suit survives vacuum, radiation and furnace heat, but reaching space is still the ship's job.
+
+Liberated worlds support robot colonies. Blast rock for ore, collect polar or lunar ice and recover salvage from wrecks. Robots build depots, mines, drills, turrets, radar masts and workshops, then more robots. The presence spreads with time played, blights worlds and raids colonies; reclaiming a world pushes it back. There is no timed game over.
+
+The ending has two stages. Fly through the citadel's turning tunnels, destroy the shield core and escape before it collapses. Then have a colony build engines to drop a small moon onto the final mind's world. The surviving colonies can power the repaired gate. The robot knows why opening it earlier would have been a terrible mistake.
+
+Built with Unity 6.6 (6000.6.9f1) and URP. Everything is generated from code: terrain, models, textures, materials, the interface, sound effects and music. Official Unity packages provide engine and platform support; there are no downloaded art assets, though you can drop in music of your own.
+
+The texture and model generators, shaders, material settings and Unity metadata belong in Git. Surface colour, height and normal maps are generated in memory, so there are no exported texture copies to commit. The application icon and the small documentation pictures below also stay in normal Git. Build output, Unity's cache and test captures stay ignored.
 
 ![The home world from orbit](docs/home.jpg)
 
 | | |
 |---|---|
-| ![Buried: digging out](docs/buried.jpg) | ![The raiders' first outpost and its drones](docs/outpost.jpg) |
-| ![On the bike](docs/bike.jpg) | ![The title page](docs/title.jpg) |
+| ![Buried: digging out](docs/buried.jpg) | ![Inside a shielded outpost](docs/outpost.jpg) |
+| ![The powered suit](docs/suit.jpg) | ![The title page](docs/title.jpg) |
+| ![Building a robot colony](docs/colony.jpg) | ![Choosing suit modules at the workshop](docs/workshop.jpg) |
 | ![The ship over the home world](docs/ship.jpg) | ![From the pilot's seat](docs/cockpit.jpg) |
+| ![Inside the citadel's tunnels](docs/citadel.jpg) | ![The gate to another system](docs/gate.jpg) |
 | ![A ringed giant and its moons](docs/giant.jpg) | ![The raiders' base in the asteroid belt](docs/base.jpg) |
 | ![Raiders closing on a damaged ship](docs/raiders.jpg) | ![Drones attacking on foot](docs/drones.jpg) |
-| ![Talking with the hermit](docs/hermit.jpg) | ![The system map](docs/map.jpg) |
+| ![The recovery robot and its workshop](docs/hermit.jpg) | ![The system map](docs/map.jpg) |
 | ![A nuclear torpedo's mushroom cloud](docs/mushroom.jpg) | ![Io, with lava in its calderas](docs/io.jpg) |
 
 These are frames from the game, taken by `script/test --unity`.
@@ -26,10 +36,12 @@ These follow [scripts to rule them all](https://github.com/github/scripts-to-rul
 
 | Script | What it does |
 |---|---|
-| `script/bootstrap` | Installs Unity Hub, the Unity CLI, Anthropic's `ant` and OpenAI's `codex` from the `Brewfile`, then the pinned editor version. Only Unity is required: with no model to ask, the scanner says how to set one up and the hermit keeps to his set words. |
-| `script/setup` | Bootstraps, makes sure the current user has a Unity licence and, if they can reach neither Claude nor ChatGPT, signs them in to Claude for the scanner and the hermit. See Setup below. |
+| `script/bootstrap` | Installs Unity Hub, the Unity CLI, Anthropic's `ant` and OpenAI's `codex` from the `Brewfile`, then the pinned editor version. Only Unity is required: with no model to ask, the scanner says how to set one up and the robot keeps to his set words. |
+| `script/setup` | Bootstraps, makes sure the current user has a Unity licence and, if they can reach neither Claude nor ChatGPT, signs them in to Claude for the scanner and the robot. See Setup below. |
 | `script/editor` | Opens the game in the Unity editor, on the game scene. Press Play. |
 | `script/play` | Plays the game as a standalone app, building it first if the project has changed or the last build has no Burst-compiled code. The game's log goes to `Logs/Player.log` and its frame rate to `Logs/frames.log`. |
+| `script/build-ios` | Exports `Build/iOS` for signing and running on iPhone or iPad in Xcode. Requires Unity iOS Build Support. |
+| `script/build-windows` | Builds `Build/Windows/Infinigame.exe` with OpenXR and the Valve Index controller profile. Requires Windows Build Support. Select SteamVR as the PC's OpenXR runtime. |
 | `script/build` | Builds `Build/Infinigame.app` for macOS. Unity's build log goes to `Logs/build.log`. |
 | `script/test` | Compiles every assembly and runs the EditMode tests. Needs no Unity licence. |
 | `script/test --unity` | Also runs the EditMode and PlayMode tests inside Unity and saves pictures to `Logs/Screenshots`. |
@@ -39,7 +51,7 @@ These follow [scripts to rule them all](https://github.com/github/scripts-to-rul
 
 `Infinigame.app` in the repository root is a link to the latest build, to open from the Finder. Opened that way it does not rebuild itself or write the logs that `script/play` asks for.
 
-`ARCHITECTURE.md` says how the code fits together, `AGENTS.md` what to know before changing it and `IDEAS.md` what may come next.
+`ARCHITECTURE.md` says how the code fits together, `AGENTS.md` what to know before changing it and `IDEAS.md` preserves the expansion brief.
 
 ## Setup
 
@@ -52,11 +64,11 @@ A licence is tied to a network hardware address that changes now and then. Unity
 
 `script/test` on its own needs none of this.
 
-### The scanner and the hermit
+### The scanner and the robot
 
 Their words are written by Claude or by ChatGPT. Which of them, with which model and how much thought, is yours to choose under Settings on the game's menu, where each has a page of its own to sign in from. The game is never built with a key in it and never shows a sign-in form: signing in happens in your browser. It reaches a voice by the first of these that it finds:
 
-1. **A key of your own.** Copy an API key from [platform.claude.com](https://platform.claude.com/settings/keys) or [platform.openai.com](https://platform.openai.com/api-keys) and choose Use the key on the clipboard on that voice's page, or set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`. The game then asks the maker's API itself, which works on any device, a phone included. Claude Max, Ultra and Team plans [include API credits every month](https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers), once claimed on claude.ai under Settings, Billing, and so do [ChatGPT Pro and Business plans](https://developers.openai.com/api/docs/guides/chatgpt-api-credits). The key stays in a file on your device and is never shown.
+1. **A key of your own.** Copy an API key from [platform.claude.com](https://platform.claude.com/settings/keys) or [platform.openai.com](https://platform.openai.com/api-keys) and choose Use the key on the clipboard on that voice's page, or set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`. The game then asks the maker's API itself, which works on any device, a phone included. Claude Max, Ultra and Team plans [include API credits every month](https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers), once claimed on claude.ai under Settings, Billing, and so do [ChatGPT Pro and Business plans](https://developers.openai.com/api/docs/guides/chatgpt-api-credits). The key stays on your device, in Keychain on iOS and a local file on desktop, and is never shown.
 2. **Continue with ChatGPT.** OpenAI's own [Sign in with ChatGPT](https://developers.openai.com/siwc/token-sharing-open-source): approve in your browser, and what the game asks counts against your ChatGPT Plus or Pro plan. It needs no other tool. Anthropic allows no sign-in to Claude inside other people's apps, so Claude has no such road.
 3. **The makers' command-line tools**, on a computer, each with the sign-in it keeps for itself. Every one of them can be told to sign in from its voice's page of the menu:
    - Anthropic's [`ant`](https://github.com/anthropics/anthropic-cli) (Sign in with ant, or `ant auth login`) is paid from your account's API credits.
@@ -71,24 +83,24 @@ Without any of these the game plays as normal and says how to fix it when you sc
 
 | Input | On foot | In the ship |
 |---|---|---|
-| W A S D | run, and once well off the ground with a jetpack fly wherever you look | thrust and strafe |
+| W A S D | run, and with fitted thrusters fly wherever you look | thrust and strafe |
 | Mouse | look | steer |
-| Space | jump, hold for the jetpack once you have it, with W to fly forward | lift |
+| Space | jump, hold for fitted thrusters, with W to fly forward | lift |
 | Ctrl or C | | descend |
 | Shift | sprint | boost |
 | Q / E | | roll |
-| F | talk to the hermit, take what an outpost kept, board the ship | land, then leave |
+| F | talk to the robot, take what an outpost kept, board the ship | land, then leave |
 | Click (hold) | fire | fire |
-| 1 to 5 or the wheel | pistol, shotgun, rifle, sniper rifle or missile launcher | pulse cannons, seeker missiles, the lance or nuclear torpedoes |
-| R | reload | |
-| B | get on or off the bike | |
+| 1 to 5 or the wheel | fists, gauntlet beam, back missiles or rail gauntlet | pulse cannons, seeker missiles, the lance or nuclear torpedoes |
+| R | toggle the fitted cloak | |
+| B | colony and workshop, near a depot | |
 | Right click | scan what you are looking at | scan the world ahead |
 | T | | autopilot to the world you are facing, or a moon near enough to see |
 | Z | | flight assist on or off |
 | V | | cockpit or chase view |
 | Tab (hold) | the map and the mission: of the world you are on until your ship can cross the system, then of the whole system | |
-| Return | talk to the hermit, once he flies with you as copilot | |
-| G | | warp a system deeper, from open space, once you have the citadel's drive |
+| Return | talk to the robot, anywhere after the first meeting | |
+| G | | cross to the next system while inside the powered gate |
 | H | show the list of controls; Escape closes it | |
 | M | music on or off | |
 | [ and ] | lower or raise detail | |
@@ -96,39 +108,41 @@ Without any of these the game plays as normal and says how to fix it when you sc
 | Option-Return | switch between full screen and a window in the standalone app | |
 | Escape | pause menu: resume, controls, settings, cheats, a new game, quit to the title page or quit | |
 
-The game opens on its title page, over the world you last played in: choose one of three save slots to play. Settings, there and on the pause menu, hold how much detail is drawn, music, look speed, full screen, whether the hermit is heard as well as read, and who writes for the scanner and the hermit. On foot the weapon in hand is held up in view. Little else is on screen until there is something to say: where you are and how hot it is there, what is left of your suit or hull, what is in your magazine and the mission in hand. Other worlds are named in the sky wherever nothing stands in front of them, and from space each shows how far off it is. A radar at the bottom right shows foes round you in three dimensions: ahead is up the disc, and each blip stands on a stalk as far above or below the disc as the foe is above or below you. Foes in view are boxed, with a mark to aim at. Talking to the hermit is typing: Return says it and Escape leaves.
+The game opens on its title page, over the world you last played in: choose one of three save slots to play. Settings, there and on the pause menu, hold how much detail is drawn, music, look speed, full screen, whether the robot is heard as well as read, and who writes for the scanner and the robot. On foot the weapon in hand is held up in view. Little else is on screen until there is something to say: where you are and how hot it is there, what is left of your suit or hull, your shared energy reserve and the mission in hand. Other worlds are named in the sky wherever nothing stands in front of them, and from space each shows how far off it is. A rendered radar globe at the bottom right shows foes in every direction, with hollow contacts on its far hemisphere. Foes in view are boxed, with a mark to aim at. Talking to the robot is typing: Return says it and Escape leaves.
 
 `script/play` starts full screen at 60 frames a second, in step with the display. In the editor, set the Game view to Play Maximized.
 
 With flight assist on, the ship hovers, follows the horizon and climbs over terrain. With it off the ship is purely Newtonian and can orbit. The autopilot flies to another world many times faster than you may, steers round anything in the way and stops a short way off. Touching the controls takes the ship back.
 
-Your suit mends itself when left alone and the ship is patched up while it sits on the ground. Rings and the asteroid belt are made of rocks, each on its own orbit: striking one dents the hull, and never finishes it. Blasts and hard landings leave craters in the ground, and what is left depends on what was there: soil and grass are charred black, rock runs molten, glows and creeps downhill as it cools, snow and ice melt into a pool, and a shot into the sea boils it to steam. Mars, Io and Venus have volcanoes you can see from orbit, walk up and land on: Mars a few vast dead shields, Io many small cones with lava in their calderas, Venus broad low ones under its cloud. Coming in to land on ground too rough to sit on, the ship drops a landing charge that blasts a level pad for it first. Heat kills: the star cooks a ship that comes close, a giant cooks one that sinks into it, and the furnace world roasts anyone who steps outside. The cockpit and the status line show the temperature outside, in red when it is nearly too much. Everything on the ship's dash is live: speed, range, height, climb, hull, heat and thrust on dials and screens, an attitude ball, a stick and throttle that follow your hands, a selector and lamps for the weapons that are fitted, and switches and warning lamps overhead.
+Your suit mends itself when left alone and the ship is patched up while it sits on the ground. Rings and the asteroid belt are made of rocks, each on its own orbit: striking one dents the hull, and never finishes it. Blasts and hard landings leave craters in the ground, and what is left depends on what was there: soil and grass are charred black, rock runs molten, glows and creeps downhill as it cools, snow and ice melt into a pool, and a shot into the sea boils it to steam. Mars, Io and Venus have volcanoes you can see from orbit, walk up and land on: Mars a few vast dead shields, Io many small cones with lava in their calderas, Venus broad low ones under its cloud. Coming in to land on ground too rough to sit on, the ship drops a landing charge that blasts a level pad for it first. Heat kills: the star cooks a ship that comes close, a giant cooks one that sinks into it, and an unpowered suit cannot survive furnace heat. The cockpit and the status line show the temperature outside, in red when it is nearly too much. Everything on the ship's dash is live: speed, range, height, climb, hull, heat and thrust on dials and screens, an attitude ball, a stick and throttle that follow your hands, a selector and lamps for the weapons that are fitted, and switches and warning lamps overhead.
 
-Movement is quick: a run is faster than most games' sprint, a jump taken the moment you land keeps all your speed, and pushing across your own path in the air adds to it. What you carry are firearms: they run dry and are reloaded, they climb as they fire and they scatter when fired fast, on the run or in the air. A ship's guns tear far bigger holes in the ground than anything carried, and a nuclear torpedo leaves a crater you can see from orbit under a mushroom cloud that hangs for most of a minute. Raiders and drones are holed where they are hit, their edges glowing and chunks flying off, and go up in a fireball that rolls into smoke, with burning wreckage tumbling out of it.
+Movement is quick: a run is faster than most games' sprint, a jump taken as you land keeps your speed and steering across your path in the air adds to it. Thrusters remain below orbital speed and have an altitude ceiling. Powered fists knock foes back and dig craters; beams damage what they touch while held; missiles home; rail shots pierce successive targets and take time to recharge. The radar is a rendered 3D globe, with contacts all round it and hollow markers on its far side.
 
-Each system has a metal song of its own, written from its seed. It gallops along under a tune while you explore and turns heavy when foes are about. To hear music of your own instead, such as tracks made with Suno, put audio files in `Assets/Infinigame/Resources/Music` (make the folder): those named `explore` and something (`explore1.mp3`, `explore2.wav`) play while you explore and those named `battle` and something play in a fight, one of each for every system. They are set to stream as they are imported, and `script/play` rebuilds the app with them in it.
+Each system has a generated metal song as a fallback. For a compact soundtrack to commit directly, download **MP3** from Suno and put the files in `Assets/Infinigame/Resources/Music`. Use `explore-01.mp3`, `explore-02.mp3` and so on for exploration and `battle-01.mp3` for combat. Other names join the exploration playlist. With no separate battle tracks, the exploration playlist supplies both moods. Unity imports MP3 directly; M4A is not listed among its supported audio-asset formats and would need conversion. See [Unity's audio file compatibility](https://docs.unity.com/en-us/engine/6000.6/manual/audio/files/compatibility).
 
-### The missions
+Tracks stream from disk and play in name order, starting at a seed-selected track. Two audio decks overlap each ending with the next beginning using a five-second crossfade at equal power, shortened for very short clips. Songs need not loop. Unity compresses the imported audio for the target device. MP3 saves repository space, while WAV preserves a lossless source if you want to keep masters separately. Download MP3 directly instead of converting an already compressed M4A. Twenty four-minute tracks at 320 kbps total about 183 MiB, or about 9.2 MiB each; actual size depends on Suno's export bitrate. A mostly final collection of that size is reasonable in normal Git without LFS.
 
-| Mission | Where | What it wins |
-|---|---|---|
-| Buried | where you wake | daylight |
-| The stranger | the hermit's fire near by | a pistol |
-| The outpost | a short walk off | a jetpack |
-| The depot | further | a shotgun and a bike |
-| The hangar | a long ride | a rifle, a missile launcher and your ship, which cannot yet leave the air |
-| The gun tower | the far side of Earth | an orbital drive: the moon is in reach |
-| Luna | the moon | a radiation shield: the rest of the system is in reach |
-| Mars | | seeker missiles |
-| Venus | | heat plating and a stronger hull |
-| Mercury | | the lance |
-| Jupiter | Ganymede | a mender that repairs the hull in flight |
-| Saturn | Titan | a sniper rifle and armour |
-| Uranus | Titania | bulkheads |
-| Neptune | Triton | nuclear torpedoes |
-| The citadel | the asteroid belt | a warp drive, and a harder system beyond it |
+Committing WAVs directly to normal Git is a simple option for a small, mostly final soundtrack. Twenty four-minute WAVs at 44.1 kHz, stereo and 16-bit total about 807 MiB before Git compression, about 40 MiB each. Longer songs and higher bit depths increase that. GitHub warns about individual files above 50 MiB and blocks those above 100 MiB in normal Git. It recommends keeping repositories below 1 GB where possible and strongly recommends staying below 5 GB. See [GitHub's large-file guidance](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github). Normal Git does not consume the separate LFS allowance, but ordinary clones carry the audio's retained history, so replacing songs repeatedly makes the repository larger even after deleting old working copies.
 
-A mission's place is marked in red, and the world it is on in blue. The mark is never lost: with the ground in the way it stands on the horizon over the way there, and behind you it waits at the edge of the screen with an arrow. The radar carries a mark for it too, and a card sets the mission out in full as it begins and whenever you hold Tab: where it is, what it wins and what comes after. Its guards turn out when you come near: drones for someone on foot, raiders for a ship or for anyone on the ground with a launcher to answer them. Clear them and what they were keeping is left under a beacon to be taken: walk up to its crate and press F or, for what only a ship could carry, land beside it. Then it is yours, and you are made whole. Once your ship is won back the hermit leaves his fire to fly in it as your copilot: Return talks to him from anywhere, he knows how the flight is going, and he speaks up of his own accord. The hermit has something to say about each mission, which needs no model to say it; anything you type to him is answered by Claude or ChatGPT, and with neither to ask he falls back on a few set answers, which the number keys ask for. Cheats, on the pause menu while the game is being made, skip to the next mission, go back one or hand over every weapon and all gear at once. Each of the three save slots on the title page keeps a game and a journal of its own.
+Git LFS is preferable for frequently revised large audio and is required to track files above GitHub's normal per-file limit. For the same 807 MiB soundtrack, it uses 7.9% of GitHub Free's 10 GiB storage and permits twelve full soundtrack downloads within its separate 10 GiB monthly bandwidth allowance. Each changed binary adds its full size to LFS storage. With those assumptions, thirteen complete soundtrack versions exceed 10 GiB: replacing every song weekly reaches that point twelve weeks after the first upload. Replacing one song weekly takes about 234 weeks. Fresh clones and CI downloads consume LFS bandwidth, while uploads, local play and local rebuilds do not. See [GitHub's LFS billing rules](https://docs.github.com/en/billing/concepts/product-billing/git-lfs). Actual totals depend on the exported files and any other LFS repositories on the account.
+
+The repository has no music files or LFS tracking yet. If choosing LFS, configure it for the music before its first commit; keep the accompanying Unity `.meta` files in normal Git.
+
+### The missions and colony
+
+The early missions recover the suit, thrusters, beams, cloak, capacitor, shoulder missiles and ship. The tower holds the orbital drive and Luna the ship's radiation shield. The outer missions recover ship weapons, plating, a hull mender, the rail gauntlet and heavier armour. The citadel holds the gate parts and the shield core protecting the final mind.
+
+A red marker leads to the current outpost. Enter its rooms and silence the mind, then take the prize with F. A terminal can open the door and turn sentries against their own mind. Quiet movement and a fitted cloak reduce detection. Return opens the robot's radio after the first meeting, including on foot.
+
+A liberated world's first depot starts with one robot and a small stock of materials. Return to it and press B to deposit what you have collected, build or open its workshop. Mines produce ore and drills produce ice. Radar masts reveal remote moons on the map. Turrets consume ore to repel raids and recover salvage; an undefended raid costs robots. A workshop and four robots can build moon engines after the citadel falls. Powering the gate requires the final mind destroyed, eight robots across the colonies and the listed resources. Costs and stocks are shown before building.
+
+The pause menu's cheats can skip missions, grant recovered equipment or cross to a new generated system. Each save slot keeps its own equipment, fitted modules, colony stocks, spreading presence, moonfall and gate state. Dying restarts the mission in hand.
+
+### Other devices
+
+Touch controls use the lower part of the display for actions, with movement on the left and looking on the right. The Mobile detail tier is selected on iPhone and iPad. Accounts are held in the iOS Keychain. Dialogue is text on iOS and Windows; macOS keeps its existing local speech, with no paid speech service.
+
+On a Windows PC, the OpenXR path uses tracked controllers and a seated cockpit, with slower walking and snap turns for comfort. The HUD is a panel in the world. The left stick moves and the right stick snap-turns. Clicking the left stick opens the pause menu. Right trigger fires and right grip interacts. Left grip modifies the controls: trigger scans, left A opens the radio, left B opens the colony, right B toggles the cloak and right stick click crosses the gate. Without the modifier, right B changes weapon, left B holds the map and right stick click starts autopilot. In dialogue, right A, left A and right grip ask the three displayed questions. Device builds and comfort still need testing on the intended iPhone, iPad and Valve Index; a macOS test run cannot establish that they work well on those devices.
 
 ### The system
 

@@ -12,7 +12,7 @@ namespace Infinigame.Core
     }
 
     // A station is something built: it has a frame and a place on the map like any world, but no ground.
-    public enum BodyKind { Sun, Rock, Gas, Station }
+    public enum BodyKind { Sun, Rock, Gas, Station, Gate }
 
     // An orbit on rails around a parent body: a pure function of time. It is an ellipse with the
     // parent at one focus, swept faster near the parent than far from it as Kepler found, in a
@@ -60,6 +60,8 @@ namespace Infinigame.Core
     public class BodyDescriptor
     {
         public string name, summary;
+        public bool destroyed;
+        public float blight;
         public BodyKind kind;
         public float radius, surfaceGravity, soiRadius;
         public float hue; // a star's colour, 0 to 1
@@ -116,7 +118,7 @@ namespace Infinigame.Core
         // natural is the ground as it was made, whatever has been blasted out of it since.
         public float GroundRadius(float3 direction, bool natural = false)
         {
-            if (kind == BodyKind.Station) return radius * 0.55f;
+            if (kind == BodyKind.Station || kind == BodyKind.Gate) return 0f;
             float height = TerrainNoise.Height(direction, terrain);
             // x: the cone that stands here, y: how far it has smoothed away the land under it
             float2 cone = 0f;
@@ -266,17 +268,24 @@ namespace Infinigame.Core
         public int schemaVersion = 1;
         public uint seed;
         public BodyDescriptor[] bodies;
+        public Moonfall moonfall;
+        public bool generated;
 
-        public double3 PositionAt(int body, double time)
+        public double3 PositionAt(int body, double time) => moonfall != null && moonfall.active && body == moonfall.moon ? moonfall.Position(this, time) : OrbitalPosition(body, time);
+
+        public double3 OrbitalPosition(int body, double time)
         {
             double3 p = double3.zero;
+            foreach (var star in bodies) if (star.kind == BodyKind.Sun && star.orbit.parent == 0) p -= star.orbit.Position(time) * 0.5;
             for (int b = body; b >= 0; b = bodies[b].orbit.parent) p += bodies[b].orbit.Position(time);
             return p;
         }
 
         public double3 VelocityAt(int body, double time)
         {
+            if (moonfall != null && moonfall.active && body == moonfall.moon) return (PositionAt(body, time + 0.01) - PositionAt(body, time - 0.01)) / 0.02;
             double3 v = double3.zero;
+            foreach (var star in bodies) if (star.kind == BodyKind.Sun && star.orbit.parent == 0) v -= star.orbit.Velocity(time) * 0.5;
             for (int b = body; b >= 0; b = bodies[b].orbit.parent) v += bodies[b].orbit.Velocity(time);
             return v;
         }
@@ -287,7 +296,7 @@ namespace Infinigame.Core
         {
             int best = 0;
             for (int i = 1; i < bodies.Length; i++)
-                if (bodies[i].soiRadius < bodies[best].soiRadius
+                if (!bodies[i].destroyed && bodies[i].soiRadius < bodies[best].soiRadius
                     && math.distance(position, PositionAt(i, time)) < bodies[i].soiRadius * (i == current ? 1.15f : 1f))
                     best = i;
             return best;
@@ -327,7 +336,7 @@ namespace Infinigame.Core
             get
             {
                 for (int i = 0; i < bodies.Length; i++)
-                    if (bodies[i].orbit.parent == 0 && bodies[i].kind != BodyKind.Station)
+                    if (bodies[i].orbit.parent == 0 && bodies[i].kind != BodyKind.Station && bodies[i].kind != BodyKind.Gate && bodies[i].kind != BodyKind.Sun)
                         yield return i;
             }
         }
@@ -610,6 +619,81 @@ namespace Infinigame.Core
                 new TerrainParams { hillFreq = 7f, hillAmp = 0.012f * home, mountainFreq = 3f, mountainAmp = 0.015f * home, craterFreq = 3f, craterDepth = 0.004f * home }, 0f, 23f);
 
             return new SolarSystemDescriptor { seed = seed, bodies = bodies.ToArray() };
+        }
+
+        // A separate stream leaves the original system's random draws untouched.
+        public static SolarSystemDescriptor Beyond(uint seed)
+        {
+            var rnd = new Random(math.hash(new uint2(seed, 0x7531u)) | 1u);
+            var original = Generate(seed);
+            var bodies = new List<BodyDescriptor> { original.bodies[0] };
+            var names = new HashSet<string>();
+            double reach = 100000;
+            BodyDescriptor Rock(float radius, bool living) => new BodyDescriptor
+            {
+                kind = BodyKind.Rock, radius = radius, surfaceGravity = math.max(0.6f, radius / 100f), soiRadius = radius * 5,
+                heat = living ? 288 : rnd.NextFloat(40, 650), swing = living ? 12 : 50,
+                ground = rnd.NextFloat3(0.2f, 0.8f), sky = new float3(0.3f, 0.6f, 0.9f), dusk = new float3(1, 0.3f, 0.1f),
+                air = living ? 1 : 0, cloud = living ? 0.45f : 0, spinPeriod = rnd.NextFloat(480, 900),
+                terrain = new TerrainParams { hillFreq = 6, hillAmp = radius * 0.025f, mountainFreq = 3, mountainAmp = radius * 0.06f,
+                    seaDepth = living ? radius * 0.02f : 0, offset = rnd.NextFloat3(-100, 100) },
+            };
+            void Planet(BodyDescriptor body)
+            {
+                reach += body.soiRadius * 2 + rnd.NextDouble(16000, 40000);
+                body.au = (float)(reach / 180000);
+                body.orbit = new Orbit { parent = 0, radius = reach, period = reach * 0.08, phase = rnd.NextDouble(0, 6.28), eccentricity = 0.02f };
+                bodies.Add(body);
+            }
+            Planet(Rock(rnd.NextFloat(350, 600), false));
+            Planet(Rock(rnd.NextFloat(400, 900), rnd.NextBool()));
+            Planet(Rock(rnd.NextFloat(850, 1100), true));
+            void Moon(int parent, bool living)
+            {
+                var moon = Rock(rnd.NextFloat(110, 230), living);
+                moon.orbit = new Orbit { parent = parent, radius = bodies[parent].radius * (3.2 + (bodies.Count % 3) * 0.6), period = 1800 + bodies.Count * 170, phase = rnd.NextDouble(0, 6.28) };
+                moon.soiRadius = moon.radius * 1.8f;
+                bodies.Add(moon);
+            }
+            Moon(Home, true);
+            int count = rnd.NextInt(1, 8);
+            for (int i = 0; i < count; i++)
+            {
+                var planet = Rock(rnd.NextFloat(300, 1000), rnd.NextBool());
+                if (rnd.NextBool())
+                {
+                    planet.kind = BodyKind.Gas;
+                    planet.radius *= 5;
+                    planet.soiRadius = planet.radius * 8;
+                    planet.terrain = default;
+                    planet.air = 2;
+                    planet.cloud = 0.6f;
+                    planet.ringInner = planet.radius * 1.4f;
+                    planet.ringOuter = planet.radius * 2.1f;
+                    planet.ringDensity = 0.6f;
+                }
+                Planet(planet);
+                int parent = bodies.Count - 1;
+                int moons = rnd.NextInt(0, 4);
+                for (int m = 0; m < moons; m++) Moon(parent, rnd.NextBool());
+            }
+            // The finale always has a small moon and an uninhabited target of its own.
+            Planet(Rock(650, false));
+            Moon(bodies.Count - 1, false);
+            var station = Array.Find(original.bodies, body => body.kind == BodyKind.Station);
+            station.orbit.radius = reach + 18000;
+            bodies.Add(station);
+            if (rnd.NextBool())
+            {
+                bodies.Add(new BodyDescriptor { kind = BodyKind.Sun, radius = bodies[0].radius * 0.7f, soiRadius = bodies[0].radius * 2,
+                    hue = 0.6f, heat = 4800, orbit = new Orbit { parent = 0, radius = 45000, period = 1400, phase = math.PI } });
+            }
+            foreach (var body in bodies)
+            {
+                do body.name = Name(ref rnd); while (!names.Add(body.name));
+                body.summary = body.kind == BodyKind.Sun ? "a star beyond the gate" : body.kind == BodyKind.Station ? "the presence's citadel" : body.SeaRadius > 0 ? "a living world beyond the gate" : "an uncharted world";
+            }
+            return new SolarSystemDescriptor { seed = seed, bodies = bodies.ToArray(), generated = true };
         }
 
         // Days in the home world's year. The real 365 would take sixty hours to play through; at

@@ -144,7 +144,7 @@ namespace Infinigame.Tests
         {
             float3 up = World.Land(World.Planet), along = World.Tangent(up);
             float ground = World.Planet.GroundRadius(up);
-            var launcher = Combat.Arms.Single(weapon => weapon.needs == Gear.Launcher);
+            var launcher = Combat.Arms.Single(weapon => weapon.needs == Gear.BackMissiles);
             var foes = new List<Foe> { Combat.Spawn(FoeKind.Raider, up * (ground + 400f) + along * 250f, along, 1, 7u) };
             var bolts = new List<Bolt>();
             var rnd = new Random(1);

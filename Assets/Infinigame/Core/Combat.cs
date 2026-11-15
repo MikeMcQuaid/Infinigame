@@ -6,7 +6,8 @@ namespace Infinigame.Core
 {
     // Raiders are ships that hunt the player's ship; drones hover over the ground and hunt the player
     // on foot; the base is the raiders' station, which shoots at whatever comes near.
-    public enum FoeKind { Raider, Drone, Base }
+    public enum FoeKind { Raider, Drone, Base, Mind, Sentry }
+    public enum Alert { Calm, Searching, Alarmed }
 
     // Position is relative to the body's centre, like the player's.
     public struct Foe
@@ -17,7 +18,9 @@ namespace Infinigame.Core
         public float health, cooldown, size;
         // A raider fires in bursts, and breaks away after each pass before turning back.
         public int burst;
-        public bool away;
+        public bool away, scattered, friendly;
+        public Alert alert;
+        public float suspicion;
         public uint seed;
     }
 
@@ -42,6 +45,8 @@ namespace Infinigame.Core
         // throws the aim up by and a widening of its spread with each shot fired in a hurry.
         public int clip;
         public float reload, kick, bloom;
+        public bool beam, rail, melee;
+        public float energy;
         // what has to have been won before it can be used
         public Gear needs;
     }
@@ -53,7 +58,7 @@ namespace Infinigame.Core
         public float blast;
         // ground: it struck the ground or the sea. level: it was a landing charge. Otherwise it
         // struck something's hull, a foe's when foe says which.
-        public bool ground, level;
+        public bool ground, level, shield;
         public int foe;
     }
 
@@ -72,44 +77,31 @@ namespace Infinigame.Core
         {
             new Weapon { name = "Pulse cannons", speed = 900f, damage = 12f, period = 0.09f, blast = 2.5f, life = 3f, pellets = 1, voice = 0, needs = Gear.Ship },
             new Weapon { name = "Seeker missiles", speed = 420f, damage = 60f, period = 1.1f, homing = 2.4f, blast = 9f, life = 7f, pellets = 1, voice = 1, needs = Gear.Missiles },
-            new Weapon { name = "Lance", speed = 3500f, damage = 45f, period = 0.8f, blast = 4f, life = 1.2f, pellets = 1, voice = 2, needs = Gear.Lance },
+            new Weapon { name = "Lance", beam = true, speed = 3500f, damage = 56f, period = 0f, blast = 4f, life = 1.2f, pellets = 1, voice = 2, needs = Gear.Lance },
             new Weapon { name = "Nuclear torpedoes", speed = 260f, damage = 800f, period = 3.5f, blast = 60f, life = 30f, pellets = 1, voice = 10, needs = Gear.Nukes },
         };
 
-        // What is carried on foot. These are firearms: their bullets are too quick to dodge, they
-        // run dry and have to be reloaded, and they climb and scatter when fired fast.
         public static readonly Weapon[] Arms =
         {
-            new Weapon
-            {
-                name = "Pistol", speed = 380f, damage = 22f, period = 0.15f, spread = 0.004f, blast = 0.3f, life = 1.2f, pellets = 1, voice = 3,
-                clip = 12, reload = 1.5f, kick = 1.1f, bloom = 0.004f, needs = Gear.Pistol,
-            },
-            new Weapon
-            {
-                name = "Shotgun", speed = 360f, damage = 9f, period = 0.9f, spread = 0.055f, blast = 0.3f, life = 0.28f, pellets = 9, voice = 4,
-                clip = 6, reload = 2.6f, kick = 4.5f, needs = Gear.Shotgun,
-            },
-            new Weapon
-            {
-                name = "Rifle", speed = 800f, damage = 15f, period = 0.1f, spread = 0.003f, blast = 0.3f, life = 1.2f, pellets = 1, voice = 9,
-                clip = 30, reload = 2.2f, kick = 0.7f, bloom = 0.0035f, needs = Gear.Rifle,
-            },
-            new Weapon
-            {
-                name = "Sniper rifle", speed = 1400f, damage = 140f, period = 1.4f, blast = 0.6f, life = 2f, pellets = 1, voice = 5,
-                clip = 5, reload = 3f, kick = 6f, needs = Gear.Sniper,
-            },
-            // the one thing carried that can bring a ship down: its missiles chase, as the ship's own do
-            new Weapon
-            {
-                name = "Launcher", speed = 240f, damage = 70f, period = 1.2f, homing = 3f, blast = 8f, life = 9f, pellets = 1, voice = 1,
-                clip = 2, reload = 3.2f, kick = 5f, needs = Gear.Launcher,
-            },
+            new Weapon { name = "Powered fists", speed = 100, damage = 70, period = 0.45f, blast = 2f, life = 0.04f, pellets = 1, voice = 4, melee = true, needs = Gear.Suit },
+            new Weapon { name = "Gauntlet beam", speed = 1000, damage = 42, period = 0, life = 0.25f, voice = 2, beam = true, energy = 24, needs = Gear.Beams },
+            new Weapon { name = "Back missiles", speed = 240, damage = 70, period = 1.2f, homing = 3f, blast = 8f, life = 9, pellets = 1, voice = 1, energy = 15, needs = Gear.BackMissiles },
+            new Weapon { name = "Rail gauntlet", speed = 10000, damage = 140, period = 2.4f, life = 0.2f, voice = 5, rail = true, energy = 40, needs = Gear.Rail },
         };
 
+        public static Weapon CapturedWeapon(int kit, uint choice)
+        {
+            int count = 0;
+            foreach (var weapon in Guns) if (Campaign.Has(kit, weapon.needs)) count++;
+            if (count == 0) return Guns[0];
+            int chosen = (int)(choice % count);
+            foreach (var weapon in Guns)
+                if (Campaign.Has(kit, weapon.needs) && chosen-- == 0) return weapon;
+            return Guns[0];
+        }
+
         // How much a foe can take and how hard it hits, at a level of threat that starts at 1.
-        public static float Health(FoeKind kind, int depth) => (kind == FoeKind.Raider ? 60f : kind == FoeKind.Drone ? 35f : 1500f) * (1f + 0.25f * (depth - 1));
+        public static float Health(FoeKind kind, int depth) => (kind == FoeKind.Raider ? 60f : kind == FoeKind.Drone || kind == FoeKind.Sentry ? 35f : kind == FoeKind.Mind ? 120f : 1500f) * (1f + 0.25f * (depth - 1));
         public static float Damage(FoeKind kind, int depth) => (kind == FoeKind.Raider ? 6f : kind == FoeKind.Drone ? 9f : 8f) * (1f + 0.2f * (depth - 1));
 
         // Hull or health lost each second to the sun's radiation out in deep space, without a shield against it.
@@ -131,7 +123,7 @@ namespace Infinigame.Core
         public static Foe Spawn(FoeKind kind, float3 position, float3 facing, int depth, uint seed, float size = 0f) => new Foe
         {
             kind = kind, position = position, forward = math.normalizesafe(facing, new float3(0, 0, 1)), health = Health(kind, depth), cooldown = 1.5f, seed = seed | 1u,
-            size = kind == FoeKind.Raider ? 10f : kind == FoeKind.Drone ? 1.2f : size,
+            size = kind == FoeKind.Raider ? 10f : kind == FoeKind.Drone || kind == FoeKind.Sentry ? 1.2f : kind == FoeKind.Mind ? 2f : size,
         };
 
         public static Bolt Fire(float3 from, float3 direction, float3 inherit, float speed, float damage, bool hostile, float blast = 1.5f) =>
@@ -158,6 +150,15 @@ namespace Infinigame.Core
             float distance = math.max(math.length(to), 1e-3f);
             foe.cooldown -= dt;
 
+            if (foe.kind == FoeKind.Mind) return false;
+            if (foe.scattered)
+            {
+                foe.velocity = math.normalizesafe(foe.position - target, foe.forward) * 12f;
+                foe.position += foe.velocity * dt;
+                float3 over = math.normalizesafe(foe.position, up);
+                foe.position = over * math.max(math.length(foe.position), Ship.Surface(body, over) + foe.size);
+                return false;
+            }
             if (foe.kind == FoeKind.Base)
             {
                 // the station does not move: its guns track whatever is in reach and fire from its hull
@@ -170,7 +171,7 @@ namespace Infinigame.Core
                 return true;
             }
 
-            if (foe.kind == FoeKind.Drone)
+            if (foe.kind == FoeKind.Drone || foe.kind == FoeKind.Sentry)
             {
                 // close to a dozen paces, then circle, never quite still
                 float3 level = Walker.Project(to, up), toward = math.normalizesafe(level, foe.forward);
@@ -181,7 +182,7 @@ namespace Infinigame.Core
                 up = math.normalize(foe.position);
                 // it rides at head height over ground or water
                 float floor = Ship.Surface(body, up);
-                foe.position = up * math.max(floor + 0.8f, math.lerp(math.length(foe.position), floor + Hover, math.saturate(6f * dt)));
+                foe.position = up * math.max(floor + 0.8f, math.lerp(math.length(foe.position), floor + (foe.kind == FoeKind.Sentry ? 0.9f : Hover), math.saturate(6f * dt)));
                 foe.forward = to / distance;
                 if (distance > DroneReach || foe.cooldown > 0f) return false;
                 foe.cooldown = 1.4f + rnd.NextFloat(0.8f);
@@ -214,7 +215,7 @@ namespace Infinigame.Core
         // Moves every bolt a step, takes health from the foes that the player's bolts hit and
         // drops the spent ones. Returns the damage done to the player, a sphere of this size and
         // motion. Where bolts ended against something goes into struck.
-        public static float Step(List<Bolt> bolts, List<Foe> foes, BodyDescriptor body, float3 player, float3 playerVelocity, float playerRadius, float dt, List<Strike> struck)
+        public static float Step(List<Bolt> bolts, List<Foe> foes, BodyDescriptor body, float3 player, float3 playerVelocity, float playerRadius, float dt, List<Strike> struck, Shield shield = default)
         {
             float hurt = 0f;
             for (int i = bolts.Count - 1; i >= 0; i--)
@@ -236,13 +237,13 @@ namespace Infinigame.Core
                     bolt.velocity = Turn(heading, chase, bolt.homing * dt) * speed;
                 }
                 float3 step = bolt.velocity * dt, at = bolt.position + step;
-                bool hit = false, ground = false;
+                bool hit = !bolt.hostile && shield.Blocks(bolt.position, step, out at), blocked = hit, ground = false;
                 int struckFoe = -1;
-                if (bolt.hostile)
+                if (!hit && bolt.hostile)
                 {
                     if (hit = Crosses(bolt.position, step - playerVelocity * dt, player, playerRadius)) hurt += bolt.damage;
                 }
-                else
+                else if (!hit)
                     for (int f = 0; f < foes.Count && !hit; f++)
                     {
                         var foe = foes[f];
@@ -256,12 +257,13 @@ namespace Infinigame.Core
                     }
                 // the ground stops what misses
                 if (!hit) hit = ground = math.length(at) < Ship.Surface(body, math.normalize(at));
-                if (hit) struck?.Add(new Strike { at = at, blast = bolt.blast, ground = ground, level = bolt.level, foe = struckFoe });
-                if (hit && !bolt.hostile && bolt.blast >= 5f)
+                if (hit) struck?.Add(new Strike { at = at, blast = bolt.blast, ground = ground, level = bolt.level, foe = struckFoe, shield = blocked });
+                if (hit && !blocked && !bolt.hostile && bolt.blast >= 5f)
                     // a big enough bang catches whatever else is near, less the further off it is
                     for (int f = 0; f < foes.Count; f++)
                     {
                         var foe = foes[f];
+                        if (shield.Blocks(at, foe.position - at, out _)) continue;
                         float near = math.distance(foe.position, at) - foe.size;
                         if (near <= 0f || near >= bolt.blast || (foe.kind == FoeKind.Base && bolt.blast < Nuclear)) continue;
                         foe.health -= bolt.damage * (1f - near / bolt.blast);
@@ -277,6 +279,57 @@ namespace Infinigame.Core
                 bolts[i] = bolt;
             }
             return hurt;
+        }
+
+        public static Alert Observe(ref Foe foe, float3 target, float noise, float light, bool visible, float dt)
+        {
+            float3 to = target - foe.position;
+            float distance = math.length(to);
+            bool heard = distance < noise * 90f, seen = visible && distance < 55f * light && math.dot(math.normalizesafe(to), foe.forward) > 0.4f;
+            foe.suspicion = math.clamp(foe.suspicion + (seen ? 2f : heard ? 1f : -0.25f) * dt, 0, 2);
+            return foe.alert = foe.suspicion >= 1f ? Alert.Alarmed : foe.suspicion > 0f ? Alert.Searching : Alert.Calm;
+        }
+
+        // Beam damage is supplied per step; a rail ray damages every hull before the ground.
+        public static float3 Ray(List<Foe> foes, BodyDescriptor body, float3 from, float3 direction, float reach, float damage, bool pierce, Shield shield, List<Strike> struck)
+        {
+            direction = math.normalizesafe(direction, new float3(0, 0, 1));
+            float3 end = from + direction * reach;
+            if (shield.Blocks(from, direction * reach, out var stop))
+            {
+                reach = math.distance(from, stop);
+                end = stop;
+            }
+            // Sample the same height function as movement.
+            for (float distance = 0.5f; distance <= reach; distance += 0.5f)
+            {
+                float3 at = from + direction * distance;
+                if (math.length(at) >= Ship.Surface(body, math.normalizesafe(at))) continue;
+                reach = distance;
+                end = at;
+                struck?.Add(new Strike { at = at, ground = true, foe = -1, blast = 0.2f });
+                break;
+            }
+            var hits = new List<(int index, float distance)>();
+            for (int i = 0; i < foes.Count; i++)
+            {
+                var foe = foes[i];
+                if (foe.health <= 0 || foe.friendly || !Crosses(from, direction * reach, foe.position, foe.size)) continue;
+                float along = math.dot(foe.position - from, direction);
+                float perpendicular = math.lengthsq(foe.position - from) - along * along;
+                hits.Add((i, math.max(0, along - math.sqrt(math.max(0, foe.size * foe.size - perpendicular)))));
+            }
+            hits.Sort((a, b) => a.distance.CompareTo(b.distance));
+            foreach (var hit in hits)
+            {
+                var foe = foes[hit.index];
+                foe.health -= damage;
+                foes[hit.index] = foe;
+                float3 at = from + direction * hit.distance;
+                struck?.Add(new Strike { at = at, foe = hit.index });
+                if (!pierce) return at;
+            }
+            return end;
         }
 
         // Whether a step from a point passes through a sphere.

@@ -7,7 +7,7 @@ namespace Infinigame.Core
     // What a mission can leave the player with.
     public enum Gear
     {
-        Pistol, Jetpack, Shotgun, Bike, Rifle, Ship, Orbiter, Shield, Missiles, Plating, Lance, Mender, Sniper, Armour, Bulkheads, Nukes, Warp, Launcher,
+        Suit, Thrusters, Beams, Stealth, Capacitor, Ship, Orbiter, Shield, Missiles, Plating, Lance, Mender, Rail, Armour, Bulkheads, Nukes, GateParts, BackMissiles,
     }
 
     // One step of the game: where it is, who holds it and what is there to be won.
@@ -21,10 +21,7 @@ namespace Infinigame.Core
         public Gear[] wins;
     }
 
-    // The game is a string of missions. The player begins buried, with nothing and no memory, and
-    // everything they come to carry or fly is taken from the raiders: each mission is a place of
-    // theirs to clear, and what it wins opens the way to the next, from a first pistol to the
-    // nuclear torpedoes that are the only thing their citadel in the asteroid belt cannot shrug off.
+    // Stable gear bit positions keep equipment compatible with older saves.
     public static class Campaign
     {
         public const int Buried = 0, Stranger = 1, Tower = 5, Citadel = 14, Won = 15;
@@ -34,77 +31,77 @@ namespace Infinigame.Core
             new Mission
             {
                 name = "Buried", world = "Earth", task = "CLICK TO DIG YOURSELF OUT", wins = new Gear[0],
-                brief = "Earth in your mouth, a weight on your chest, and no idea how you came to be under either.",
+                brief = "Weight above you. No memory, only the sound of a machine calling through the soil.",
             },
             new Mission
             {
-                name = "The stranger", world = "Earth", task = "SOMEONE HAS LIT A FIRE NEAR BY  ·  GO AND TALK TO THEM", wins = new[] { Gear.Pistol },
-                brief = "Up out of the ground like a turnip, and not a thing in your head, I'd wager. Take this pistol. The raiders shot something down here days ago, and they shoot at whatever walks.",
+                name = "The recovery machine", world = "Earth", task = "A ROBOT IS CALLING  ·  FIND ITS WORKSHOP", wins = new[] { Gear.Suit },
+                brief = "I am a recovery robot. I found you after the crash. Let me wake your armour. There are things in your recovery record I cannot yet explain.",
             },
             new Mission
             {
-                name = "The outpost", world = "Earth", task = "CLEAR THE RAIDERS' OUTPOST", guards = FoeKind.Drone, count = 4, wins = new[] { Gear.Jetpack },
-                brief = "They have an outpost a short walk from here, with drones to mind it. They keep a lifting pack there that would suit you better than it suits them.",
+                name = "The outpost", world = "Earth", task = "SILENCE THE OUTPOST MIND", guards = FoeKind.Drone, count = 4, wins = new[] { Gear.Thrusters },
+                brief = "A controlling mind lives inside that outpost. Its shield will stop anything fired from outside. Go through the door, break it or find the terminal. Its thruster assembly belongs on your suit.",
             },
             new Mission
             {
-                name = "The depot", world = "Earth", task = "CLEAR THE RAIDERS' DEPOT", guards = FoeKind.Drone, count = 6, wins = new[] { Gear.Shotgun, Gear.Bike },
-                brief = "Further on is the depot they supply it from. There is a bike in there quicker than any legs, and a shotgun for whoever gets close enough to ask.",
+                name = "The depot", world = "Earth", task = "SILENCE THE DEPOT MIND", guards = FoeKind.Drone, count = 6, wins = new[] { Gear.Beams, Gear.Stealth },
+                brief = "The depot holds gauntlet emitters and a cloak. Your suit has three slots and six units of power. Take a style to the workshop, not every piece at once.",
             },
             new Mission
             {
-                name = "The hangar", world = "Earth", task = "TAKE THE HANGAR  ·  YOUR SHIP IS INSIDE", guards = FoeKind.Drone, count = 8, wins = new[] { Gear.Rifle, Gear.Launcher, Gear.Ship },
-                brief = "What they shot down was a ship, and I think it was yours. They dragged it to a hangar a long ride from here. Its guards carry rifles, and keep a launcher for whatever flies over. Help yourself to all three.",
+                name = "The hangar", world = "Earth", task = "TAKE THE HANGAR  ·  YOUR SHIP IS INSIDE", guards = FoeKind.Drone, count = 8, wins = new[] { Gear.Capacitor, Gear.BackMissiles, Gear.Ship },
+                brief = "That ship was yours. I knew its call sign before I found the wreck. The mind in the hangar has its power cell and your shoulder missiles.",
             },
             new Mission
             {
-                name = "The gun tower", world = "Earth", task = "SHOOT DOWN THE TOWER'S RAIDERS", guards = FoeKind.Raider, count = 3, wins = new[] { Gear.Orbiter },
-                brief = "She flies, but they took the heart out of her engines: she will not climb out of the air. It went to their gun tower on the far side of the world. Go and take it back.",
+                name = "The gun tower", world = "Earth", task = "ENTER THE TOWER AND SILENCE ITS MIND", guards = FoeKind.Raider, count = 3, wins = new[] { Gear.Orbiter },
+                brief = "The orbital drive is inside the tower. The ship can carry you there, but its guns cannot cross the shield. Your suit can.",
             },
             new Mission
             {
-                name = "Luna", world = "Luna", task = "CLEAR THE RAIDERS FROM LUNA", guards = FoeKind.Raider, count = 4, wins = new[] { Gear.Shield },
-                brief = "Now you can reach the moon, and no further: out past it the sun's radiation would cook you in your seat. The raiders on Luna fly shielded. Take a shield from them.",
+                name = "Luna", world = "Luna", task = "SILENCE THE MIND ON LUNA", guards = FoeKind.Raider, count = 4, wins = new[] { Gear.Shield },
+                brief = "The moon holds a shield for the ship. Your suit already survives vacuum and radiation, but its thrusters cannot carry you between worlds.",
             },
             new Mission
             {
-                name = "Mars", world = "Mars", task = "CLEAR THE RAIDERS FROM MARS", guards = FoeKind.Raider, count = 4, wins = new[] { Gear.Missiles },
-                brief = "The whole system is open to you now, and they hold all of it. Start with Mars. They arm their ships there, and their missiles find their own way to a target.",
+                name = "Mars", world = "Mars", task = "SILENCE THE MIND ON MARS", guards = FoeKind.Raider, count = 4, wins = new[] { Gear.Missiles },
+                brief = "They are not separate raiders. Every hull is a body of the same presence. They copy the weapons they capture. Take the seekers and expect them to learn.",
             },
             new Mission
             {
-                name = "Venus", world = "Venus", task = "CLEAR THE RAIDERS FROM VENUS", guards = FoeKind.Raider, count = 5, wins = new[] { Gear.Plating },
-                brief = "Venus next. Nothing lives under that cloud, but their ships there are plated against the heat, and plate is plate wherever it is shot at.",
+                name = "Venus", world = "Venus", task = "SILENCE THE MIND ON VENUS", guards = FoeKind.Raider, count = 5, wins = new[] { Gear.Plating },
+                brief = "You can walk safely in this heat. The ship needs the plating kept inside this base. I recognise the design of your armour. I helped build it.",
             },
             new Mission
             {
-                name = "Mercury", world = "Mercury", task = "CLEAR THE RAIDERS FROM MERCURY", guards = FoeKind.Raider, count = 5, wins = new[] { Gear.Lance },
-                brief = "On Mercury they are building a lance: one shot of it goes through a ship like a nail. Better it were on yours.",
+                name = "Mercury", world = "Mercury", task = "SILENCE THE MIND ON MERCURY", guards = FoeKind.Raider, count = 5, wins = new[] { Gear.Lance },
+                brief = "The lance burns continuously while you hold the trigger. Do not mistake a quiet doorway for a safe one. Their bodies listen as well as watch.",
             },
             new Mission
             {
-                name = "Jupiter", world = "Ganymede", task = "CLEAR THE RAIDERS FROM GANYMEDE", guards = FoeKind.Raider, count = 6, wins = new[] { Gear.Mender },
-                brief = "Out past the belt, and past their citadel: leave that be, nothing you carry will scratch it. On Ganymede, by Jupiter, they have a thing that mends a hull as it flies.",
+                name = "Jupiter", world = "Ganymede", task = "SILENCE THE MIND ON GANYMEDE", guards = FoeKind.Raider, count = 6, wins = new[] { Gear.Mender },
+                brief = "This mind keeps a repair system for the ship. The robots can copy it at a workshop. Feed them ore, ice and salvage and they will build more of themselves.",
             },
             new Mission
             {
-                name = "Saturn", world = "Titan", task = "CLEAR THE RAIDERS FROM TITAN", guards = FoeKind.Raider, count = 6, wins = new[] { Gear.Sniper, Gear.Armour },
-                brief = "Titan, under Saturn's rings. Their marksmen train there, in armour. A long rifle and a hard shell would both sit well on you.",
+                name = "Saturn", world = "Titan", task = "SILENCE THE MIND ON TITAN", guards = FoeKind.Raider, count = 6, wins = new[] { Gear.Rail, Gear.Armour },
+                brief = "The rail gauntlet pierces one body and the next behind it. Its long recharge leaves you open. Heavy plate draws from the same reserve as your beams and thrusters.",
             },
             new Mission
             {
-                name = "Uranus", world = "Titania", task = "CLEAR THE RAIDERS FROM TITANIA", guards = FoeKind.Raider, count = 7, wins = new[] { Gear.Bulkheads },
-                brief = "Titania, round the world that lies on its side. They brace their biggest ships there. Take the bracing: you will want it where you are going.",
+                name = "Uranus", world = "Titania", task = "SILENCE THE MIND ON TITANIA", guards = FoeKind.Raider, count = 7, wins = new[] { Gear.Bulkheads },
+                brief = "Bulkheads for the ship. The presence keeps spreading while we work. Defend the colonies: their robots will have to build something much larger than either of us.",
             },
             new Mission
             {
-                name = "Neptune", world = "Triton", task = "CLEAR THE RAIDERS FROM TRITON", guards = FoeKind.Raider, count = 8, wins = new[] { Gear.Nukes },
-                brief = "Last and furthest, Triton. That is where they keep the torpedoes that crack worlds. Mind where you point them: they do to a planet what they do to anything else.",
+                name = "Neptune", world = "Triton", task = "SILENCE THE MIND ON TRITON", guards = FoeKind.Raider, count = 8, wins = new[] { Gear.Nukes },
+                brief = "These torpedoes break ships and ground. They still cannot cross a base shield. The final mind lies too deep for even these. We will need a moon.",
             },
             new Mission
             {
-                name = "The citadel", world = "", task = "DESTROY THE CITADEL  ·  ONLY NUCLEAR TORPEDOES WILL MARK IT", guards = FoeKind.Base, count = 1, wins = new[] { Gear.Warp },
-                brief = "There is nothing left to take from them but the citadel itself, in the belt. Torpedoes, and plenty of them. Then perhaps you will remember who you are.",
+                name = "The citadel", world = "", task = "ENTER THE CITADEL BY SHIP  ·  DESTROY THE SHIELD CORE  ·  ESCAPE", guards = FoeKind.Base, count = 1, wins = new[] { Gear.GateParts },
+                brief = "Fly into the citadel through its open tunnel, follow the turns and destroy the shield core. Then get out. I helped create you to end this presence. The radiation is its prison, and the gate we are repairing could release it.",
             },
         };
 
@@ -115,9 +112,10 @@ namespace Infinigame.Core
 
         public static string Name(Gear gear) => gear switch
         {
+            Gear.Suit => "POWERED ARMOUR", Gear.Thrusters => "SUIT THRUSTERS", Gear.Beams => "GAUNTLET BEAMS", Gear.Stealth => "A CLOAK", Gear.Capacitor => "A CAPACITOR",
             Gear.Orbiter => "AN ORBITAL DRIVE", Gear.Shield => "A RADIATION SHIELD", Gear.Missiles => "SEEKER MISSILES", Gear.Plating => "HEAT PLATING", Gear.Mender => "A HULL MENDER",
-            Gear.Sniper => "A SNIPER RIFLE", Gear.Armour => "ARMOUR", Gear.Bulkheads => "BULKHEADS", Gear.Nukes => "NUCLEAR TORPEDOES", Gear.Warp => "A WARP DRIVE",
-            Gear.Ship => "YOUR SHIP", Gear.Rifle => "A RIFLE", Gear.Launcher => "A MISSILE LAUNCHER", _ => $"A {gear.ToString().ToUpperInvariant()}",
+            Gear.Rail => "A RAIL GAUNTLET", Gear.Armour => "HEAVY PLATE", Gear.Bulkheads => "BULKHEADS", Gear.Nukes => "NUCLEAR TORPEDOES", Gear.GateParts => "GATE PARTS",
+            Gear.Ship => "YOUR SHIP", Gear.BackMissiles => "BACK MISSILES", _ => gear.ToString().ToUpperInvariant(),
         };
 
         // What a mission wins, for the news of it: "A, B AND C".
@@ -127,9 +125,22 @@ namespace Infinigame.Core
             return names.Length < 2 ? string.Concat(names) : $"{string.Join(", ", names.Take(names.Length - 1))} AND {names[names.Length - 1]}";
         }
 
+        public static int FinalMoon(SolarSystemDescriptor system)
+        {
+            int moon = Array.FindIndex(system.bodies, body => body.name == "Phobos");
+            return moon >= 0 ? moon : Enumerable.Range(1, system.bodies.Length - 1).Last(i => system.bodies[i].kind == BodyKind.Rock
+                && system.bodies[i].orbit.parent > 0 && system.bodies[system.bodies[i].orbit.parent].kind == BodyKind.Rock && system.bodies[i].orbit.parent != SolarSystemDescriptor.Home);
+        }
+
         // The body a mission is on. The citadel is its own.
-        public static int World(SolarSystemDescriptor system, int stage) =>
-            Array.FindIndex(system.bodies, body => stage == Citadel ? body.kind == BodyKind.Station : body.name == Missions[stage].world);
+        public static int World(SolarSystemDescriptor system, int stage)
+        {
+            if (stage == Citadel) return Array.FindIndex(system.bodies, body => body.kind == BodyKind.Station);
+            if (!system.generated) return Array.FindIndex(system.bodies, body => body.name == Missions[stage].world);
+            if (stage <= Tower) return SolarSystemDescriptor.Home;
+            var worlds = Enumerable.Range(1, system.bodies.Length - 1).Where(i => system.bodies[i].kind == BodyKind.Rock && i != SolarSystemDescriptor.Home).ToArray();
+            return worlds[(stage - Tower - 1) % worlds.Length];
+        }
 
         // The spot on that body's ground where the mission is. On the home world they lead away
         // from where the player wakes, each further than the last and the last round the far side.

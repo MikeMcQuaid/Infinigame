@@ -1,0 +1,7 @@
+#!/bin/bash
+# Export an iPhone and iPad Xcode project. Signing belongs to the owner's Xcode account.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+script/bootstrap
+mkdir -p Logs
+script/unity -batchmode -quit -buildTarget iOS -executeMethod Infinigame.Editor.Platforms.IOS -logFile Logs/build-ios.log
