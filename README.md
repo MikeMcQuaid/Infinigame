@@ -39,7 +39,7 @@ These follow [scripts to rule them all](https://github.com/github/scripts-to-rul
 
 `Infinigame.app` in the repository root is a link to the latest build, to open from the Finder. Opened that way it does not rebuild itself or write the logs that `script/play` asks for.
 
-`ARCHITECTURE.md` says how the code fits together and `AGENTS.md` what to know before changing it.
+`ARCHITECTURE.md` says how the code fits together, `AGENTS.md` what to know before changing it and `IDEAS.md` what may come next.
 
 ## Setup
 

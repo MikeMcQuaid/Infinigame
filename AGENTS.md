@@ -1,6 +1,6 @@
 # Working on Infinigame
 
-Read `ARCHITECTURE.md` first for how the code fits together, and `README.md` for what the game is. This file is the short list of things that are easy to get wrong.
+Read `ARCHITECTURE.md` first for how the code fits together, and `README.md` for what the game is. This file is the short list of things that are easy to get wrong. `IDEAS.md` lists what the owner may want later: build none of it until asked.
 
 ## Commands
 
@@ -25,7 +25,7 @@ New tooling goes in `script/`, following [scripts to rule them all](https://gith
 - **The interface is held to a shipped-game standard.** No debug text on screen. The HUD says little until there is something to say.
 - **No key is ever built into the game**, and the game never shows a sign-in form. Players bring their own key or sign in with the makers' own tools and pages. See `Oracle.cs`.
 - **Tests never spend anyone's money.** PlayMode tests must not reach a real model, browser or speech engine. Set-up swaps `Oracle.Ask`, `Oracle.Tools`, `Oracle.Hosts`, `Oracle.Browse`, `Game.Clipboard` and `Speech.Tool` for stand-ins: keep it that way when adding a new road out of the game.
-- **Take feel, never content.** The game borrows mechanics and mood from other games, films and books. It does not use their names, characters, designs, music or levels.
+- **Take feel, never content.** The game borrows mechanics and mood from other games, films and books. It does not use their names, characters, designs, music or levels, and the repository never names them: not in code, documents, interface text or commit messages.
 - **Game audio is muted in batch mode**, so tests are silent.
 
 ## Conventions

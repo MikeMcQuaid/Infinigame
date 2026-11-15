@@ -1,6 +1,6 @@
 # Architecture
 
-Infinigame is a Unity 6.6 (URP) project in which almost nothing is authored in the editor. There is one scene holding one object, `Game`. Everything else is built from code when the game starts: worlds, models, textures, the interface, sound and music. This file says how the pieces fit. `README.md` says what the game is and how to play it; `AGENTS.md` says how to work on it.
+Infinigame is a Unity 6.6 (URP) project in which almost nothing is authored in the editor. There is one scene holding one object, `Game`. Everything else is built from code when the game starts: worlds, models, textures, the interface, sound and music. This file says how the pieces fit. `README.md` says what the game is and how to play it, `AGENTS.md` says how to work on it, and `IDEAS.md` holds what may be built later, with notes on where each idea would fit.
 
 ## The two halves
 
