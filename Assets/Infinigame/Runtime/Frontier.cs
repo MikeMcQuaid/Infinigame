@@ -13,8 +13,8 @@ namespace Infinigame
         [NonSerialized] public Game game;
         public bool Collapsing => game.Fall.destroyed;
         public float Whiteout => Collapsing ? math.saturate((collapse - 24) / 4) : arrival;
-        float saved, deployed, collapse, arrival, transfer;
-        int shownWorld = -1, shownDogs = -1, shownShips = -1;
+        float saved, deployed, collapse, arrival, transfer, turret;
+        int shownWorld = -1;
         Task<SolarSystemDescriptor> next;
         Transform hole;
         SolarSystemDescriptor worlds;
@@ -52,13 +52,13 @@ namespace Infinigame
             buildings.Clear();
             foreach (var unit in units) if (unit.model != null) Destroy(unit.model.gameObject);
             units.Clear();
-            shownWorld = shownDogs = shownShips = -1;
+            shownWorld = -1;
             foreach (var colony in game.Colonies)
             {
                 var front = State(colony.world);
                 if (!front.factory) continue;
                 var model = Models.Building(front.shipyard ? Building.ShipFactory : Building.Factory);
-                model.name = front.shipyard ? "Ship and dog factory" : "Dog factory";
+                model.name = front.shipyard ? "Robodog shipyard" : "Robodog factory";
                 model.SetParent(game.System.Bodies[colony.world].transform, false);
                 model.localPosition = colony.site;
                 model.localRotation = Quaternion.FromToRotation(Vector3.up, math.normalizesafe(colony.site));
@@ -81,23 +81,22 @@ namespace Infinigame
         public string FactoryHint(int choice)
         {
             var front = Local;
-            return choice == 0 ? $"DOG FACTORY · {front.kills}/{War.RequiredKills(front)} ALIENS DEFEATED\nReplicating laser dogs hunt the remaining {math.ceil(front.aliens):0} bodies. Production stops when this world is clear."
-                : choice == 1 ? "SHIP FACTORY · REQUIRES A DOG FACTORY ON A MOON\nYour dogs assemble ships. They defend this planet and its immediate neighbours, never the whole system."
-                : "MOON ENGINES · REQUIRES THE CITADEL CORE DESTROYED AND 16 ROBOT DOGS\nThe impact will collapse the buried mind into a singularity. This entire system will be consumed.";
+            return choice == 0 ? $"ROBODOG FACTORY · {front.kills}/{War.RequiredKills(front)} ALIENS DEFEATED\nReplicating laser robodogs hunt the remaining {math.ceil(front.aliens):0} bodies. Production stops when this world is clear."
+                : choice == 1 ? "SHIPYARD UPGRADE · REQUIRES GROUND VICTORY\nYour robots assemble ships. They defend this planet and its immediate neighbours, never the whole system."
+                : "MOON ENGINES · REQUIRES CITADEL CORE DESTROYED AND LOCAL SPACE VICTORY\nThe impact will collapse the buried mind into a singularity. This entire system will be consumed.";
         }
         public void BuildFactory(int choice)
         {
             var front = Local;
             if (choice == 2)
             {
-                if (game.Stage >= Campaign.Won && front.factory && front.dogs >= 16 && !game.Fall.active) Launch();
-                else game.Notify("DESTROY THE CITADEL CORE AND GROW 16 DOGS AT THIS FACTORY");
+                if (game.Stage >= Campaign.Won && front.shipyard && front.aliens <= 0 && front.alienShips <= 0 && !game.Fall.active) Launch();
+                else game.Notify("DESTROY THE CITADEL CORE AND CLEAR GROUND AND SPACE WITH THIS SHIPYARD");
                 return;
             }
             var body = game.System.ReferenceBody;
-            bool orbital = body.kind == BodyKind.Rock && body.orbit.parent > 0;
-            if (choice == 1 && !orbital) { game.Notify("ESTABLISH A DOG FACTORY ON A MOON FIRST"); return; }
-            if (!War.Build(front, choice == 1)) { game.Notify(choice == 0 ? $"CLEAR A FOOTHOLD · {front.kills}/{War.RequiredKills(front)} KILLS" : "A DOG FACTORY IS REQUIRED, OR THIS FACTORY ALREADY EXISTS"); return; }
+            if (body.kind != BodyKind.Rock) { game.Notify("A ROCKY WORLD IS REQUIRED"); return; }
+            if (!War.Build(front, choice == 1)) { game.Notify(choice == 0 ? $"CLEAR A FOOTHOLD · {front.kills}/{War.RequiredKills(front)} KILLS" : "UPGRADE A FACTORY AFTER ITS ROBOTS CLEAR EVERY ALIEN ON THIS WORLD"); return; }
             if (!game.Colonies.Any(colony => colony.world == front.world))
             {
                 float3 ahead = math.normalizesafe(game.Player.Position + game.Player.walker.forward * 12);
@@ -107,13 +106,17 @@ namespace Infinigame
             }
             front.established = true;
             Settle();
-            game.Hermit.Remark(choice == 0 ? "Factory seed awake. Each dog helps assemble more dogs. Their dorsal lasers will clear this world, but they need you to break the enemy's advantage." : "Our dogs are assembling autonomous ships. Help them break the living fleet. Their reach stops at the neighbouring planet.");
+            game.Hermit.Remark(choice == 0 ? "Factory seed awake. Each robodog helps assemble more robodogs. Their dorsal lasers will clear this world, but they need you to break the enemy's advantage." : "Our robots are assembling autonomous ships. Help them break the living fleet. Their reach stops at the neighbouring planet.");
             if (game.Stage == 3 && choice == 0) game.Advance();
+            DrawUnits(0);
             game.Write();
         }
         public void Launch()
         {
             game.Fall.began = game.System.Clock;
+            var descriptor = game.System.Descriptor;
+            game.Fall.duration = math.max(4, math.distance(descriptor.OrbitalPosition(game.Fall.moon, game.System.Clock), descriptor.OrbitalPosition(game.Fall.world, game.System.Clock)) / Core.Autopilot.Speed);
+            game.Player.flying = true;
             game.Fall.active = true;
             Settle();
             game.Hermit.Remark("The moon engines are burning. The buried mind will collapse. Stay with me when the light goes out.");
@@ -130,7 +133,7 @@ namespace Infinigame
         }
         public void Collect(List<Scannable> things)
         {
-            foreach (var unit in units) things.Add(new Scannable { name = unit.ship ? "Foundry autonomous combat ship" : "Foundry laser dog", foot = unit.position, height = unit.ship ? 8 : 2, girth = unit.ship ? 10 : 1.2f });
+            foreach (var unit in units) things.Add(new Scannable { name = unit.ship ? "Foundry autonomous combat ship" : "Foundry laser robodog", foot = unit.position, height = unit.ship ? 8 : 2, girth = unit.ship ? 10 : 1.2f });
             foreach (var colony in game.Colonies.Where(item => item.world == game.System.Reference))
                 things.Add(new Scannable { name = "Foundry replication factory", foot = colony.site, height = 7, girth = 8 });
         }
@@ -156,7 +159,7 @@ namespace Infinigame
             {
                 var front = State(i);
                 War.Step(front, dt);
-                game.System.Descriptor.bodies[i].blight = math.saturate(front.aliens / 600);
+                game.System.Descriptor.bodies[i].blight = game.System.Descriptor.bodies[i].SeaRadius > 0 ? math.saturate(front.aliens / 600) : 0;
             }
             // Only player-established factories send support. Recipients never relay it further.
             if ((transfer += dt) > 30)
@@ -195,6 +198,26 @@ namespace Infinigame
                 game.Battle.Foes.RemoveAll(foe => !foe.friendly && foe.kind != FoeKind.Raider && foe.kind != FoeKind.Base);
             }
             DrawUnits(dt);
+            if ((turret -= dt) <= 0)
+            {
+                turret = 2.5f;
+                foreach (var colony in game.Colonies.Where(item => item.world == game.System.Reference))
+                {
+                    float3 from = colony.site + math.normalizesafe(colony.site) * 4.5f;
+                    var target = game.Battle.Foes.Where(foe => !foe.friendly && foe.health > 0 && math.distance(foe.position, from) < 350 && game.Outpost.Visible(from, foe.position)).OrderBy(foe => math.distancesq(from, foe.position)).FirstOrDefault();
+                    if (target.health <= 0 || game.Outpost.Shield.Blocks(from, target.position - from, out _)) continue;
+                    game.Battle.Bolts.Add(new Bolt { position = from, velocity = math.normalizesafe(target.position - from) * 90, damage = 40, blast = 6, homing = 3, life = 6 });
+                }
+            }
+            if (game.Fall.active && !game.Fall.destroyed)
+            {
+                float3 moon = game.System.ToReference(game.Fall.moon);
+                float radius = game.System.Descriptor.bodies[game.Fall.moon].radius;
+                game.Player.ship.position = moon + new float3(0, radius * 2 + 100, -radius * 2 - 100);
+                game.Player.ship.velocity = float3.zero;
+                game.Player.ship.rotation = quaternion.LookRotationSafe(moon - game.Player.ship.position, new float3(0, 1, 0));
+                game.Player.ship.landed = false;
+            }
             if (game.Fall.Finished(game.System.Clock))
             {
                 game.Fall.destroyed = true;
@@ -208,26 +231,33 @@ namespace Infinigame
         {
             var front = Local;
             int dogs = math.min(10, (int)front.dogs), ships = math.min(3, (int)front.ships);
-            if (shownWorld != game.System.Reference || shownDogs != dogs || shownShips != ships)
+            if (shownWorld != game.System.Reference)
             {
                 foreach (var unit in units) Destroy(unit.model.gameObject);
                 units.Clear();
-                shownWorld = game.System.Reference; shownDogs = dogs; shownShips = ships;
-                float3 home = game.Colonies.FirstOrDefault(colony => colony.world == shownWorld)?.site ?? game.Player.Position;
-                for (int i = 0; i < dogs + ships; i++)
+                shownWorld = game.System.Reference;
+            }
+            for (int i = units.Count - 1; i >= 0; i--)
+                if (units[i].health <= 0 || units.Count(unit => unit.ship == units[i].ship) > (units[i].ship ? ships : dogs))
+                { Destroy(units[i].model.gameObject); units.RemoveAt(i); }
+            float3 home = game.Colonies.FirstOrDefault(colony => colony.world == shownWorld)?.site ?? game.Player.Position;
+            // Add only the new unit. Existing meshes, animation and positions remain intact.
+            for (int kind = 0; kind < 2; kind++)
+                for (int i = units.Count(unit => unit.ship == (kind == 1)); i < (kind == 1 ? ships : dogs); i++)
                 {
-                    bool ship = i >= dogs;
+                    bool ship = kind == 1;
                     var model = ship ? Models.Ship() : Models.Robot();
                     if (!ship) model.gameObject.AddComponent<MachineMotion>().quadruped = true;
                     var beam = new GameObject("Dorsal laser").AddComponent<LineRenderer>();
                     beam.transform.SetParent(model, false); beam.positionCount = 2; beam.startWidth = beam.endWidth = ship ? 0.18f : 0.06f;
                     beam.sharedMaterial = Shapes.Material("Glow", new Color(0.2f, 2, 3)); beam.enabled = false;
-                    units.Add(new Unit { model = model, beam = beam, ship = ship, position = home + new float3(i * 3, 0, 8) });
+                    units.Add(new Unit { model = model, beam = beam, ship = ship, position = home + (float3)(Quaternion.FromToRotation(Vector3.up, math.normalizesafe(home)) * new Vector3(i * 2, 0, 10)) });
                 }
-            }
             foreach (var unit in units)
             {
-                float3 up = math.normalizesafe(unit.position), target = unit.position;
+                float3 up = math.normalizesafe(unit.position);
+                float angle = Time.time * 0.14f + units.IndexOf(unit) * 2.4f;
+                float3 target = home + (float3)(Quaternion.FromToRotation(Vector3.up, up) * new Vector3(math.cos(angle) * 22, 0, math.sin(angle) * 22));
                 int enemy = -1; float nearest = unit.ship ? 2500 : 250;
                 for (int i = 0; i < game.Battle.Foes.Count; i++)
                 {
@@ -236,16 +266,16 @@ namespace Infinigame
                     enemy = i; nearest = distance; target = foe.position;
                 }
                 float3 forward = math.normalizesafe(Walker.Project(target - unit.position, up), math.cross(up, new float3(1, 0, 0)));
-                if (enemy >= 0 && nearest > (unit.ship ? 80 : 12)) unit.position += forward * dt * (unit.ship ? 100 : 9);
+                if (enemy < 0 || nearest > (unit.ship ? 80 : 12)) unit.position += forward * dt * (unit.ship ? 100 : 9);
                 up = math.normalizesafe(unit.position);
                 unit.position = up * (game.System.ReferenceBody.GroundRadius(up) + (unit.ship ? 130 : 0));
                 unit.model.SetPositionAndRotation(unit.position - game.System.Anchor, quaternion.LookRotationSafe(forward, up));
-                if (!unit.ship) unit.model.GetComponent<MachineMotion>().speed = enemy >= 0 ? 9 : 0;
-                unit.beam.enabled = enemy >= 0 && nearest < (unit.ship ? 650 : 50) && game.Outpost.Visible(unit.position + up * 1.4f, target);
+                if (!unit.ship) unit.model.GetComponent<MachineMotion>().speed = enemy >= 0 ? 9 : 3;
+                unit.beam.enabled = enemy >= 0 && nearest < (unit.ship ? 650 : 50) && game.Outpost.Visible(unit.position + up * 1.4f, target) && !game.Outpost.Shield.Blocks(unit.position + up * 1.4f, target - unit.position - up * 1.4f, out _);
                 if (unit.beam.enabled)
                 {
                     unit.beam.SetPosition(0, unit.position + up * 1.4f - game.System.Anchor); unit.beam.SetPosition(1, target - game.System.Anchor);
-                    var foe = game.Battle.Foes[enemy]; foe.health -= dt * (unit.ship ? 22 : 12); foe.recoil = 0.2f; game.Battle.Foes[enemy] = foe;
+                    var foe = game.Battle.Foes[enemy]; Combat.Hurt(ref foe, dt * (unit.ship ? 22 : 12)); foe.recoil = 0.2f; game.Battle.Foes[enemy] = foe;
                 }
                 for (int i = game.Battle.Bolts.Count - 1; i >= 0; i--)
                 {
@@ -256,8 +286,8 @@ namespace Infinigame
                 if (unit.health <= 0)
                 {
                     if (unit.ship) front.ships = math.max(0, front.ships - 1); else front.dogs = math.max(0, front.dogs - 1);
-                    game.Effects.Explode(unit.position, float3.zero, unit.ship ? 8 : 1);
-                    shownDogs = -1;
+                    game.Corpses.AddModel(unit.model, unit.position, float3.zero, unit.ship);
+                    unit.model.gameObject.SetActive(false);
                 }
             }
         }

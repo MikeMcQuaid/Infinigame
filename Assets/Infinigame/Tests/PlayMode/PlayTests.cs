@@ -76,6 +76,7 @@ namespace Infinigame.Tests
             // the game opens on its title page: play the slot it offers, from the ground beside the ship
             Assert.IsTrue(game.Title);
             yield return Press(new Controls { confirm = true });
+            if (game.Confirming) { yield return Press(new Controls { down = true }); yield return Press(new Controls { confirm = true }); }
             Player.Spawn();
             yield return null;
         }
@@ -178,10 +179,10 @@ namespace Infinigame.Tests
 
             // up from the first item wraps round to the last, which is quitting
             yield return Press(new Controls { up = true });
-            Assert.AreEqual("Quit to desktop", Game.Menu[game.Selected]);
+            Assert.AreEqual("Quit to desktop", game.Items[game.Selected]);
             yield return Press(new Controls { confirm = true });
             Assert.IsTrue(game.Confirming, "quitting asks first");
-            Assert.AreEqual("Keep playing", Game.Confirm[game.Selected]);
+            Assert.AreEqual("Cancel", game.Items[game.Selected]);
             yield return Press(new Controls { menu = true });
             Assert.IsFalse(game.Confirming);
             Assert.IsTrue(game.Paused);
@@ -293,7 +294,7 @@ namespace Infinigame.Tests
         IEnumerator Choose(string item)
         {
             yield return Press(new Controls { menu = true });
-            for (int i = 0; i < System.Array.IndexOf(Game.Menu, item); i++) yield return Press(new Controls { down = true });
+            for (int i = 0; i < System.Array.IndexOf(game.Items, item); i++) yield return Press(new Controls { down = true });
             Assert.AreEqual(item, game.Items[game.Selected]);
             yield return Press(new Controls { confirm = true });
         }
@@ -306,6 +307,10 @@ namespace Infinigame.Tests
             Player.health = 40f;
             Assert.IsTrue(Player.Has(Gear.Ship));
             yield return Choose("New game");
+            Assert.AreEqual(seed, game.Seed);
+            Assert.IsTrue(game.Confirming);
+            yield return Press(new Controls { down = true });
+            yield return Press(new Controls { confirm = true });
             Assert.AreNotEqual(seed, game.Seed);
             Assert.IsTrue(before == null, "the old planet is destroyed");
             Assert.AreEqual(SolarSystemDescriptor.Generate(game.Seed).bodies[Home].surfaceGravity, Body.surfaceGravity, "terrain and gravity are rebuilt together");
@@ -321,7 +326,7 @@ namespace Infinigame.Tests
         {
             game.Jump(Campaign.Buried);
             // long enough to have dropped to the bottom of the hole
-            yield return Seconds(7.5f);
+            yield return Seconds(Game.BootDuration + 0.5f);
             Assert.IsTrue(game.Buried);
             StringAssert.Contains("PUNCH", game.Objective);
             var ground = Solar.Bodies[Home].Descriptor;
@@ -1583,7 +1588,7 @@ namespace Infinigame.Tests
             yield return Choose("Quit to title");
             Assert.IsTrue(game.Title);
             Assert.IsTrue(game.Paused);
-            Assert.AreEqual(Game.Slots + 2, game.Items.Length, "three slots, the settings and the way out");
+            Assert.AreEqual(Game.Slots + 3, game.Items.Length, "three slots, one delete action, settings and the way out");
             Assert.AreEqual("SLOT 1   ·   THE FIRST FACTORY", game.Items[0]);
             Assert.AreEqual("SLOT 2   ·   NEW GAME", game.Items[1]);
             Assert.AreEqual(0, game.Selected, "the slot played last is the one offered");
@@ -1591,6 +1596,9 @@ namespace Infinigame.Tests
             yield return Press(new Controls { menu = true });
             Assert.IsTrue(game.Title);
             Assert.IsTrue(game.Paused);
+            yield return Press(new Controls { down = true });
+            yield return Press(new Controls { confirm = true });
+            Assert.IsTrue(game.Confirming);
             yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual(1, game.Slot);
@@ -1617,6 +1625,8 @@ namespace Infinigame.Tests
             yield return Press(new Controls { down = true });
             yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
+            yield return Press(new Controls { down = true });
+            yield return Press(new Controls { confirm = true });
             Assert.AreEqual(2, game.Slot);
             yield return SceneManager.LoadSceneAsync("Main");
             game = Object.FindAnyObjectByType<Game>();
@@ -1631,36 +1641,24 @@ namespace Infinigame.Tests
         public IEnumerator TheCheatsPageJumpsFromMissionToMission()
         {
             game.Jump(2);
+            yield return Choose("Quit to title");
+            Assert.IsFalse(game.Items.Contains(Game.Cheats));
+            yield return Press(new Controls { typed = "idgaf" });
+            Assert.IsTrue(game.Items.Contains(Game.Cheats));
+            yield return Press(new Controls { confirm = true });
             yield return Choose(Game.Cheats);
-            Assert.AreEqual(Game.Cheats, game.Page);
-            CollectionAssert.AreEqual(new[] { "Skip this mission", "Back a mission", "Take every weapon and all gear", "Mend suit and hull", "Next system", "Back" }, game.Items);
+            yield return Press(new Controls { confirm = true });
+            Assert.AreEqual("Missions", game.Page);
+            yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual(3, game.Stage);
-            Assert.IsTrue(Player.Has(Gear.Thrusters), "with what the skipped mission wins");
-            Assert.IsFalse(game.Paused);
+            Assert.IsTrue(Player.Powered);
             yield return Choose(Game.Cheats);
             yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
-            yield return Choose(Game.Cheats);
-            yield return Press(new Controls { down = true });
-            yield return Press(new Controls { confirm = true });
-            Assert.AreEqual(1, game.Stage);
-            Assert.AreEqual(1 << (int)Gear.Suit, Player.kit, "and without what the later ones do");
-            Player.health = 12f;
-            yield return Choose(Game.Cheats);
-            for (int i = 0; i < 3; i++) yield return Press(new Controls { down = true });
-            yield return Press(new Controls { confirm = true });
-            Assert.AreEqual(Player.MaxHealth, Player.health);
-
-            // everything can be had at once, wherever the game has got to: all but the warp drive, which ends it
-            yield return Choose(Game.Cheats);
-            yield return Press(new Controls { down = true });
-            yield return Press(new Controls { down = true });
-            StringAssert.Contains("TORPEDOES", game.Hint);
-            yield return Press(new Controls { confirm = true });
-            Assert.AreEqual(1, game.Stage, "the mission in hand is still in hand");
-            Assert.IsTrue(Player.Has(Gear.Nukes) && Player.Has(Gear.Ship) && Campaign.Has(Player.kit, Gear.BackMissiles) && !Player.Has(Gear.GateParts));
-            Assert.IsTrue(Player.Armed);
+            Assert.AreEqual(Campaign.Won, game.Stage);
+            Assert.IsTrue(game.Frontier.Local.shipyard);
+            Assert.AreEqual(0, game.Frontier.Local.alienShips);
         }
 
         [UnityTest]
@@ -2125,7 +2123,7 @@ namespace Infinigame.Tests
             // the game as it begins: under the ground, then out to the stranger's fire
             yield return Press(new Controls { confirm = true });
             game.Jump(Campaign.Buried);
-            yield return Seconds(7.5f);
+            yield return Seconds(Game.BootDuration + 0.5f);
             for (int click = 0; click < 3; click++)
             {
                 input.fire = true;

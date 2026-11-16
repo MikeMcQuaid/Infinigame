@@ -97,6 +97,10 @@ namespace Infinigame
             rotation = station ? quaternion.identity : quaternion.LookRotationSafe(Walker.Project(new float3(0.2f, 0.9f, 0.4f), site), site);
 
             Rooms = station ? Interior.Citadel() : Interior.Burrow();
+            if (!station && stage > 2)
+                Rooms.walls = Rooms.walls.Concat(Enumerable.Range(0, 3).Select(i => new Wall(new float3(i % 2 == 0 ? -2.5f : 2.5f, Interior.TunnelFloor(-10 + i * 16) + 1.5f, -10 + i * 16), new float3(2, 1.5f, 0.65f)))).ToArray();
+            if (stage == 2)
+                Rooms.walls = Rooms.walls.Concat(new[] { new Wall(new float3(0, 1.5f, -23), new float3(5, 3, 1)) }).ToArray();
             if (!station) game.System.Bodies[World].SealBurrow(new Burrow { origin = Position, rotation = rotation });
             if (!station)
                 for (int i = 0; i < 16; i++)
@@ -140,7 +144,7 @@ namespace Infinigame
             shimmer = new Material(Resources.Load<Shader>("Shield"));
             shell = Shapes.Part(fort, "Shield", Shapes.Sphere(station ? 310 : 45, 24), shimmer, Vector3.zero, Vector3.one, false).transform;
             Prize = Place(station ? Rooms.entrance : Rooms.core + new float3(0, 0.5f, -3));
-            crate = Shapes.Part(fort, "Prize", Shapes.Sphere(0.7f, 12), lit, Local(Prize), Vector3.one, false).transform;
+            crate = Models.Equipment(stage == 2); crate.name = "Prize"; crate.SetParent(fort, false); crate.localPosition = Local(Prize);
             crate.gameObject.SetActive(false);
         }
 
@@ -211,6 +215,7 @@ namespace Infinigame
                 crate.gameObject.SetActive(true);
                 if (game.Stage == Campaign.Citadel)
                 {
+                    if (math.ceil(Escape) != math.ceil(Escape - Time.deltaTime)) game.Sounds.Alarm();
                     Escape -= Time.deltaTime;
                     if (math.distance(game.Player.Position, Position) > 320f)
                     {
@@ -247,14 +252,15 @@ namespace Infinigame
             if (kind != FoeKind.Mind || World != game.System.Reference || Fallen) return;
             Left = 0;
             Open = true;
-            Escape = 45;
+            Escape = 25;
+            game.Frontier.Local.mindDead = true;
             game.Presence.Liberate(World);
             for (int i = 0; i < game.Battle.Foes.Count; i++)
             {
-                var foe = game.Battle.Foes[i]; foe.scattered = true; game.Battle.Foes[i] = foe;
+                var foe = game.Battle.Foes[i]; foe.scattered = true; foe.shield = 0; foe.clever = false; game.Battle.Foes[i] = foe;
             }
-            game.Notify(game.Stage == Campaign.Citadel ? "CORE DESTROYED  ·  45 SECONDS TO ESCAPE" : "THE MIND IS SILENT  ·  ITS BODIES SCATTER");
-            game.Hermit.Remark(game.Stage == Campaign.Citadel ? "That shield held the final mind safe. Get us out. We have forty-five seconds." : "One voice has stopped. The others no longer know where to look.");
+            game.Notify(game.Stage == Campaign.Citadel ? "CORE DESTROYED  ·  25 SECONDS TO ESCAPE" : "MIND SILENT · COORDINATION, COPIED WEAPONS AND SHIELDS OFFLINE");
+            game.Hermit.Remark(game.Stage == Campaign.Citadel ? "That shield held the final mind safe. Get us out. We have twenty-five seconds." : "The mind is silent. This world has lost coordinated tactics, copied weapons and shields. Its remaining bodies are confused; our robots still need to finish the war.");
             game.Sounds.Chime();
         }
     }

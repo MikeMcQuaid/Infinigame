@@ -26,6 +26,7 @@ namespace Infinigame.Editor
                 Run("/usr/bin/xcrun", "clang++", "-dynamiclib", "-fobjc-arc", "-arch", "arm64", "-arch", "x86_64", "-mmacosx-version-min=10.15", "-framework", "Foundation", "-framework", "AVFoundation", "-framework", "Speech", "Assets/Plugins/iOS/InfinigameVoice.mm", "-o", library);
                 foreach (string key in new[] { "NSMicrophoneUsageDescription", "NSSpeechRecognitionUsageDescription" })
                     Run("/usr/bin/defaults", "write", Path.GetFullPath(Path.Combine(path, "Contents/Info.plist")), key, "-string", "Speak to your robot companion using local dictation.");
+                Run("/bin/chmod", "644", Path.Combine(path, "Contents/Info.plist"));
                 Run("/usr/bin/codesign", "--force", "--deep", "--sign", "-", path);
             }
 #if UNITY_IOS
@@ -36,6 +37,7 @@ namespace Infinigame.Editor
                 plist.root.SetString("NSSpeechRecognitionUsageDescription", "Turn your voice into text locally for your robot companion.");
                 plist.WriteToFile(plistPath);
                 string projectPath = PBXProject.GetPBXProjectPath(path); var project = new PBXProject(); project.ReadFromFile(projectPath);
+                project.AddFrameworkToProject(project.GetUnityFrameworkTargetGuid(), "SafariServices.framework", false);
                 project.AddFrameworkToProject(project.GetUnityFrameworkTargetGuid(), "Speech.framework", false);
                 project.AddFrameworkToProject(project.GetUnityFrameworkTargetGuid(), "AVFoundation.framework", false);
                 project.WriteToFile(projectPath);

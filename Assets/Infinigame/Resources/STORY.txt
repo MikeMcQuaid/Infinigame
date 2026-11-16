@@ -12,7 +12,7 @@ The Presence is a distributed alien intelligence. Mobile castes roam occupied wo
 
 An empty Foundry ship waits in low orbit. The restored suit can reach it. Your companion then joins the cockpit and keeps a radio channel open wherever you travel.
 
-Killing bodies opens a foothold but cannot clear a world. Seed a factory so laser-armed robot dogs can replicate and hunt. On moons, dogs assemble ship factories to contest the living fleet. Production stops when the relevant enemy population is gone. Factories support their own planet and its immediate neighbours; remote worlds need your intervention. Without you the Presence keeps its advantage. Later worlds and systems have larger populations and faster growth.
+Killing bodies opens a foothold but cannot clear a world. Seed a factory so laser-armed robodogs can replicate and hunt. Once a factory conquers its world, upgrade it to a shipyard to contest the living fleet. Production stops when the relevant enemy population is gone. Factories support their own planet and its immediate neighbours; remote worlds need your intervention. Without you the Presence keeps its advantage. Later worlds and systems have larger populations and faster growth.
 
 ## Stage 7
 
@@ -22,7 +22,7 @@ The Presence copies captured technology. Its weapons resemble yours, and the fab
 
 Your companion helped create your armour and reconstruct your memory. It cannot prove whether it rescued you or assembled you. It is loyal to the person you are now.
 
-## Stage 14
+## Stage 11
 
 Your companion helped create this version of you to break the Presence. The citadel's shield core protects a final mind buried too deep for nuclear weapons. Your factories must build moon engines. The impact will collapse the mind into a singularity and consume this system. There is no gate to repair or power.
 

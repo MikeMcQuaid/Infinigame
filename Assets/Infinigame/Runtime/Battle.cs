@@ -42,10 +42,14 @@ namespace Infinigame
         readonly Instances minds = new Instances();
         Material raiderHull, raiderGlow, droneHull, droneGlow, ours, theirs, fire, casing;
         Random rnd = new Random(1);
-        float trigger, raid, pack, ashore, launch;
+        float trigger, raid, pack, ashore, launch, railCharge;
+        bool charging;
+        public float RailCharge => railCharge;
         // charged: a landing charge has gone down for the landing in hand
         bool left, charged;
         LineRenderer ray;
+        readonly List<Transform> shields = new List<Transform>();
+        Material field;
         readonly List<LineRenderer> sweep = new List<LineRenderer>();
         float sweepUntil;
         public bool Beaming => ray != null && ray.enabled && game.Player.Weapon.beam;
@@ -83,9 +87,31 @@ namespace Infinigame
             fire = Fire(new Color(12f, 6f, 2f));
         }
 
+        void LateUpdate()
+        {
+            if (Beaming && !game.Player.flying && !game.Player.ThirdPerson)
+                ray.SetPosition(0, game.GetComponent<Arms>().Muzzle(game.Player.Weapon) - game.System.Anchor);
+        }
+
+        void Start()
+        {
+            for (int caste = 0; caste < 3; caste++)
+            {
+                var parts = new List<CombineInstance> { new CombineInstance { mesh = sentry[caste], transform = Matrix4x4.identity } };
+                for (int limb = 0; limb < Models.LimbCount((MotileCaste)caste); limb++)
+                    parts.Add(new CombineInstance { mesh = leg[caste], transform = Matrix4x4.TRS(Models.LimbRoot((MotileCaste)caste, limb), Quaternion.Euler(0, limb < Models.LimbCount((MotileCaste)caste) / 2 ? 180 : 0, 0), Vector3.one) });
+                var complete = new Mesh { name = "Articulated motile corpse", indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
+                complete.CombineMeshes(parts.ToArray()); deadSentry[caste] = complete;
+                game.Corpses.Prepare(complete);
+            }
+            foreach (var mesh in new[] { raider, drone, mind }) game.Corpses.Prepare(mesh);
+        }
+        readonly Mesh[] deadSentry = new Mesh[3];
+
         // A new system, or a new run: nothing follows you there, its base stands whole, and there is a moment's peace.
         public void Reset()
         {
+            game.Corpses.Clear();
             Foes.Clear();
             Bolts.Clear();
             bursts.Clear();
@@ -121,7 +147,9 @@ namespace Infinigame
         public void Add(FoeKind kind, float3 position, MotileCaste caste = MotileCaste.Stalker)
         {
             var body = game.System.ReferenceBody;
-            Foes.Add(Combat.Spawn(kind, position, game.Player.Position - position, game.Threat, rnd.NextUInt(), 0.6f * body.radius, caste));
+            var foe = Combat.Spawn(kind, position, game.Player.Position - position, game.Threat, rnd.NextUInt(), 0.6f * body.radius, caste);
+            if ((game.Stage > 5 || game.Presence.played > 900) && !game.Frontier.Local.mindDead && foe.seed % 3 == 0) foe.shield = 30 + game.Threat * 5;
+            Foes.Add(foe);
         }
 
         // One frame of fighting, while the world is running.
@@ -139,7 +167,17 @@ namespace Infinigame
             ray.enabled = false;
             foreach (var beam in sweep) beam.enabled = Time.time < sweepUntil;
             var weapon = player.Weapon;
-            if (c.fire && trigger <= 0 && player.Armed && (aloft || !flying) && !player.Autopilot
+            bool fireWeapon = DeviceControls.VR && weapon.melee ? game.GetComponent<Arms>().MotionPunch : c.fire;
+            if (weapon.rail && !flying)
+            {
+                fireWeapon = !c.fire && charging && railCharge >= 0.35f;
+                if (c.fire && trigger <= 0) railCharge = math.min(1, railCharge + frame / 1.2f);
+                weapon.damage *= math.lerp(0.35f, 1, railCharge);
+                charging = c.fire;
+                if (!c.fire && !fireWeapon) railCharge = 0;
+            }
+            else { charging = false; railCharge = 0; }
+            if (fireWeapon && trigger <= 0 && player.Armed && (aloft || !flying) && !player.Autopilot
                 && (flying || Suit.Spend(ref player.energy, weapon.energy * (weapon.beam ? frame : 1))))
             {
                 var view = Camera.main.transform;
@@ -168,6 +206,16 @@ namespace Infinigame
                     muzzle = (float3)(hand + aim * Vector3.forward * 0.12f) + system.Anchor;
                     forward = aim * Vector3.forward;
                 }
+                if (!flying && !player.ThirdPerson) muzzle = game.GetComponent<Arms>().Muzzle(weapon);
+                if (DeviceControls.VR && weapon.melee)
+                { muzzle = game.GetComponent<Arms>().PunchOrigin; forward = game.GetComponent<Arms>().PunchDirection; }
+                int learnedWeapon = flying ? 5 + Array.FindIndex(Combat.Guns, gun => gun.name == weapon.name) : player.Arm;
+                float demolition = weapon.damage;
+                if (flying || player.Powered)
+                {
+                    weapon.damage *= War.Resistance(game.Frontier.Local, learnedWeapon);
+                    War.Learn(game.Frontier.Local, learnedWeapon, weapon.beam ? frame * 2 : 1);
+                }
                 if (weapon.sweep)
                 {
                     sweepUntil = Time.time + 0.1f;
@@ -189,7 +237,7 @@ namespace Infinigame
                 }
                 else if (weapon.beam || weapon.rail || weapon.melee)
                 {
-                    float reach = weapon.melee ? 4.5f : weapon.rail ? 2000 : flying ? 3000 : 250;
+                    float reach = weapon.melee ? DeviceControls.VR ? 1.3f : 4.5f : weapon.rail ? 2000 : flying ? 3000 : 250;
                     float3 end = muzzle + forward * reach;
                     if (!game.Outpost.Visible(muzzle, end))
                     {
@@ -201,14 +249,15 @@ namespace Infinigame
                         }
                         reach = near;
                         if (!game.Outpost.Shield.Blocks(muzzle, forward * (reach + 0.02f), out _))
-                            game.Outpost.Breach(muzzle + forward * (reach + 0.01f), weapon.damage * (weapon.beam ? frame : 1));
+                            game.Outpost.Breach(muzzle + forward * (reach + 0.01f), demolition * (weapon.beam ? frame : 1));
                     }
+                    game.Corpses.Strike(muzzle, forward * reach, weapon.damage);
                     end = Combat.Ray(Foes, body, muzzle, forward, reach, weapon.damage * (weapon.beam ? frame : 1), weapon.rail, game.Outpost.Shield, struck);
                     if (weapon.melee)
                     {
                         if (player.Powered)
                         {
-                            player.walker.velocity += forward * 26 + up * 4;
+                            player.walker.velocity = Walker.MoveTowards(player.walker.velocity, forward * math.clamp(math.length(body.GravityAt(player.Position)) * 1.2f, 3, 11) + up * 1.5f, 12);
                             player.walker.grounded = false;
                             player.walker.position += up * 0.08f;
                             game.Effects.Hit(end, -forward, 2);
@@ -216,9 +265,9 @@ namespace Infinigame
                         for (int i = 0; i < Foes.Count; i++)
                         {
                             var foe = Foes[i];
-                            if (math.distance(foe.position, end) < foe.size + 1) { foe.velocity += forward * (player.Powered ? 45 : 8); Foes[i] = foe; }
+                            if (!foe.friendly && math.distance(foe.position, end) < foe.size + 1) { foe.velocity += forward * (player.Powered ? 45 : 8); Foes[i] = foe; }
                         }
-                        if (player.Powered && math.length(end) < body.GroundRadius(math.normalizesafe(end)) + 1) game.Dig(end, 3);
+                        if (math.length(end) < body.GroundRadius(math.normalizesafe(end)) + 1) game.Dig(end, player.Powered ? 3 : 1.4f);
                     }
                     else
                     {
@@ -254,6 +303,8 @@ namespace Infinigame
                 for (int i = 0; i < Foes.Count; i++)
                 {
                     var foe = Foes[i];
+                    foe.clever = !game.Frontier.Local.mindDead && (game.Stage > 2 || game.Presence.played > 600);
+                    if (game.Frontier.Local.mindDead) foe.shield = 0;
                     bool hunting = !foe.friendly && !foe.scattered;
                     float3 quarry = game.Frontier.Target(foe.position, self);
                     foe.recoil = math.max(0, foe.recoil - dt * 4);
@@ -276,10 +327,43 @@ namespace Infinigame
                     if (hunting || foe.scattered)
                     {
                         bool fired = Combat.Hunt(ref foe, body, quarry, player.Velocity, game.Threat, dt, out var shot);
-                        if (foe.kind == FoeKind.Sentry) foe.position = game.Outpost.Resolve(before, foe.position, 0.9f, out _);
+                        if (foe.kind == FoeKind.Sentry)
+                        {
+                            foe.position = game.Outpost.Resolve(before, foe.position, 0.9f, out bool blocked);
+                            if (blocked && foe.clever)
+                            {
+                                float3 side = math.cross(up, math.normalizesafe(quarry - before)) * (foe.seed % 2 == 0 ? 1 : -1);
+                                foe.position = game.Outpost.Resolve(before, before + side * dt * 5, 0.9f, out _);
+                            }
+                            if (foe.clever && foe.caste == MotileCaste.Breacher && !body.Dry(self) && (foe.burrowing >= 5 || math.distance(self, foe.position) > 15 && math.distance(self, foe.position) < 75))
+                            {
+                                foe.burrowing += dt;
+                                if (foe.burrowing > 5 && foe.burrowing <= 5 + dt)
+                                {
+                                    game.Notify("SUBSURFACE MOVEMENT · KEEP MOVING");
+                                    foe.burrowOrigin = foe.position;
+                                    foe.burrowTarget = self - player.walker.forward * 7;
+                                    game.Dig(foe.position, 1.5f);
+                                }
+                                if (foe.burrowing >= 5)
+                                {
+                                    fired = false;
+                                    float progress = math.saturate((foe.burrowing - 5) / 2);
+                                    float3 under = math.normalizesafe(math.lerp(foe.burrowOrigin, foe.burrowTarget, progress));
+                                    foe.position = under * (body.GroundRadius(under) + 0.9f - 3 * math.sin(progress * math.PI));
+                                }
+                                if (foe.burrowing > 7)
+                                {
+                                    float3 emerge = math.normalizesafe(foe.burrowTarget);
+                                    foe.position = emerge * (body.GroundRadius(emerge) + 0.9f);
+                                    game.Dig(foe.position, 2); game.Effects.Hit(foe.position, emerge, 3);
+                                    foe.burrowing = -12;
+                                }
+                            }
+                        }
                         if (fired && hunting && game.Outpost.Visible(foe.position, quarry))
                         {
-                            if (foe.kind == FoeKind.Raider)
+                            if (foe.kind == FoeKind.Raider && !game.Frontier.Local.mindDead)
                             {
                                 var copied = Combat.CapturedWeapon(player.kit, foe.seed);
                                 shot.velocity = math.normalizesafe(shot.velocity) * math.max(420, copied.speed);
@@ -288,6 +372,7 @@ namespace Infinigame
                                 shot.damage = math.max(shot.damage, copied.damage * 0.12f);
                                 shot.life = math.max(3, copied.life);
                             }
+                            foe.shield = 0; // A personal field must drop before its owner can fire out.
                             foe.attack = 1;
                             Bolts.Add(shot);
                             game.Sounds.Shot(foe.kind == FoeKind.Raider ? 6 : foe.kind == FoeKind.Base ? 8 : 7,
@@ -332,6 +417,7 @@ namespace Infinigame
             foreach (var strike in struck)
             {
                 if (strike.shield) { game.Outpost.Flash(); continue; }
+                game.Corpses.Strike(strike.at, float3.zero, strike.blast * 20, math.max(0.7f, strike.blast));
                 float3 where = math.normalizesafe(strike.at, up);
                 // a ship's guns, its own or a raider's, tear far bigger holes than anything carried
                 float hole = strike.blast * (player.flying ? 2.5f : 1f);
@@ -341,7 +427,7 @@ namespace Infinigame
                 {
                     effects.Mushroom(strike.at, where, 1.6f * strike.blast);
                     game.Sounds.Nuke();
-                    player.Hurt(200f * math.saturate(1f - math.distance(strike.at, self) / (4f * strike.blast)), "Caught in the blast of a nuclear torpedo");
+                    if (strike.hostile) player.Hurt(200f * math.saturate(1f - math.distance(strike.at, self) / (4f * strike.blast)), "Caught in the blast of a nuclear torpedo");
                 }
                 else if (strike.foe >= 0)
                 {
@@ -366,7 +452,8 @@ namespace Infinigame
                 float away = math.distance(foe.position, self);
                 if (foe.health <= 0f)
                 {
-                    game.Effects.Flesh(foe.position, up, math.min(foe.size * 2, 8), foe.velocity);
+                    Mesh corpse = foe.kind == FoeKind.Raider ? raider : foe.kind == FoeKind.Sentry ? deadSentry[(int)foe.caste] : foe.kind == FoeKind.Mind ? mind : drone;
+                    game.Corpses.Add(corpse, foe.kind == FoeKind.Raider ? raiderHull : droneHull, foe.position, Quaternion.LookRotation(foe.forward, up), foe.velocity, foe.kind == FoeKind.Raider ? 0.8f : 0.25f);
                     War.Kill(game.Frontier.Local, foe.kind == FoeKind.Raider);
                     game.Sounds.Boom(math.saturate(1f - away / 2500f), foe.kind != FoeKind.Drone);
                     game.Award(foe.kind);
@@ -445,12 +532,20 @@ namespace Infinigame
         {
             float3 anchor = game.System.Anchor;
             float beat = Time.time;
+            int shieldCount = 0;
             foreach (var list in new[] { raiders, drones, flashes, missiles, minds, bolts[0], bolts[1] }) list.Clear();
             foreach (var list in sentries) list.Clear();
             foreach (var list in legs) list.Clear();
             foreach (var foe in Foes)
             {
+                if (game.Player.InSpace && foe.kind != FoeKind.Raider && foe.kind != FoeKind.Base && game.System.ReferenceBody.kind != BodyKind.Station) continue;
                 float3 up = game.System.ReferenceBody.kind == BodyKind.Station ? new float3(0, 1, 0) : math.normalizesafe(foe.position, new float3(0, 1, 0));
+                if (foe.shield > 0)
+                {
+                    if (field == null) field = new Material(Resources.Load<Shader>("Shield"));
+                    if (shieldCount == shields.Count) shields.Add(Shapes.Part(transform, "Personal field", ball, field, Vector3.zero, Vector3.one, false).transform);
+                    var shell = shields[shieldCount++]; shell.gameObject.SetActive(true); shell.position = foe.position - anchor; shell.localScale = Vector3.one * (foe.size * 2.5f);
+                }
                 // the more it has been hit, the more of it is holes
                 float battered = 1f - foe.health / Combat.Health(foe.kind, game.Threat, foe.caste);
                 if (foe.kind == FoeKind.Raider) raiders.Add(Matrix4x4.TRS(foe.position - anchor, Quaternion.LookRotation(foe.forward, up), Vector3.one), battered, foe.seed);
@@ -473,6 +568,7 @@ namespace Infinigame
                     }
                 }
             }
+            for (int i = shieldCount; i < shields.Count; i++) shields[i].gameObject.SetActive(false);
             foreach (var bolt in Bolts)
             {
                 var facing = Quaternion.LookRotation(bolt.velocity);

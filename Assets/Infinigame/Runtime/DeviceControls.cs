@@ -79,13 +79,13 @@ namespace Infinigame
                 (trigger, grip, menu, primary, secondary, leftPrimary, leftSecondary, stick) = (fire, use, pause, b, next, a, map, travel);
                 return c;
             }
-            if (game.Hermit.Talking && !game.Hermit.Thinking)
+            if (game.Title && keyboard != null || game.Hermit.Talking && !game.Hermit.Thinking)
             {
                 if (keyboard == null) keyboard = TouchScreenKeyboard.Open(game.Hermit.Draft, TouchScreenKeyboardType.Default, false, false, false, false, "Talk to the robot", 160);
                 if (keyboard != null)
                 {
-                    c.replaceText = keyboard.text;
-                    if (keyboard.status == TouchScreenKeyboard.Status.Done) { c.confirm = true; keyboard = null; }
+                    if (game.Title) c.typed = keyboard.text; else c.replaceText = keyboard.text;
+                    if (keyboard.status == TouchScreenKeyboard.Status.Done) { c.confirm = !game.Title; keyboard = null; }
                 }
             }
             else if (keyboard != null) { keyboard.active = false; keyboard = null; }
@@ -111,6 +111,8 @@ namespace Infinigame
         void OnGUI()
         {
             if (!Application.isMobilePlatform || Application.isBatchMode) return;
+            if (game.Title && GUI.Button(new Rect(Screen.safeArea.xMin + 16, Screen.height - Screen.safeArea.yMax + 16, 140, 44), "Enter code"))
+                keyboard = TouchScreenKeyboard.Open("", TouchScreenKeyboardType.Default, false, false, false, false, "Title code", 12);
             float width = Screen.safeArea.width / 7, height = Screen.safeArea.height * 0.1f, bottom = Screen.height - Screen.safeArea.yMin - height;
             string[] labels = { game.Paused ? "Choose" : "Fire", "Lift", "Use", "Scan", "Weapon", "Map", "Menu" };
             for (int i = 0; i < labels.Length; i++)

@@ -74,7 +74,7 @@ namespace Infinigame.Tests
         public void TheLaterMissionsAreOnTheOtherWorldsInTurn()
         {
             var system = World.Solar;
-            string[] worlds = { "Luna", "Mars", "Venus", "Mercury", "Mercury", "Ganymede", "Titan", "Titania", "Triton" };
+            string[] worlds = { "Luna", "Mars", "Venus", "Mercury", "Titan", "Triton" };
             for (int i = 0; i < worlds.Length; i++)
             {
                 int stage = Campaign.Tower + i, world = Campaign.World(system, stage);

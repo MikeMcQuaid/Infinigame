@@ -1,0 +1,31 @@
+#!/bin/bash
+# Shared progress reporting for Unity's otherwise silent batch exporter.
+set -euo pipefail
+build_target=$1
+build_method=$2
+build_log=$3
+script/bootstrap
+case "$build_target" in
+  StandaloneOSX) burst=Library/Bee/artifacts/MacStandalonePlayerBuildProgram/AsyncPluginsFromLinker ;;
+  Win64) burst=Library/Bee/artifacts/WinPlayerBuildProgram/AsyncPluginsFromLinker ;;
+  iOS) burst=Library/Bee/artifacts/iOS/AsyncPluginsFromLinker ;;
+esac
+# A sandbox build must not make a later normal build reuse the missing-Burst result.
+[ ! -f "$burst/no_plugins_were_generated.txt" ] || rm -rf "$burst" "${burst}Symbols"
+mkdir -p Logs
+: > "$build_log"
+echo "Building $build_target. Full log: $PWD/$build_log"
+script/unity -batchmode -quit -buildTarget "$build_target" -executeMethod "$build_method" -logFile "$build_log" &
+build_pid=$!
+trap 'kill "$build_pid" 2>/dev/null || true' INT TERM
+while kill -0 "$build_pid" 2>/dev/null; do
+  tail -n 1 "$build_log"
+  sleep 10
+done
+if ! wait "$build_pid"; then
+  tail -n 80 "$build_log"
+  exit 1
+fi
+if [ ! -r /Volumes ]; then
+  echo 'Built without Burst in this sandbox. Rebuild from your normal Mac account for optimised terrain and texture generation before performance testing.'
+fi

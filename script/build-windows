@@ -1,7 +1,9 @@
 #!/bin/bash
-# Build for a Windows PC with SteamVR selected as its OpenXR runtime.
+# Build and package the Windows desktop and SteamVR player.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-script/bootstrap
-mkdir -p Logs
-script/unity -batchmode -quit -buildTarget Win64 -executeMethod Infinigame.Editor.Platforms.Windows -logFile Logs/build-windows.log
+script/lib/build-target Win64 Infinigame.Editor.Platforms.Windows Logs/build-windows.log
+/usr/bin/ditto -c -k --keepParent Build/Windows Build/Infinigame-Windows.zip
+echo "Built: $PWD/Build/Windows/Infinigame.exe"
+echo "Copy $PWD/Build/Infinigame-Windows.zip to Windows, extract it and run Windows/Infinigame.exe. Keep the whole folder together."
+echo "For VR: install SteamVR, set it as the OpenXR runtime in SteamVR Settings > OpenXR, connect your headset and launch the game."

@@ -70,27 +70,27 @@ namespace Infinigame.Core
         }
         public static Interior Citadel()
         {
-            return new Interior
+            var cells = new HashSet<int2>();
+            int2[] turns = { new int2(0, 0), new int2(0, 2), new int2(2, 2), new int2(2, 4), new int2(0, 4), new int2(0, 6), new int2(2, 6), new int2(2, 8) };
+            for (int i = 1; i < turns.Length; i++)
             {
-                entrance = new float3(0, 0, -260), core = new float3(160, 0, 150), console = new float3(160, 0, 150),
-                walls = new[]
+                int2 at = turns[i - 1], step = (int2)math.sign(turns[i] - at);
+                cells.Add(at);
+                while (!at.Equals(turns[i])) { at += step; cells.Add(at); }
+            }
+            var walls = new List<Wall>();
+            foreach (var cell in cells)
+            {
+                float3 centre = new float3(cell.x * 58, 0, -260 + cell.y * 58);
+                walls.Add(new Wall(centre + new float3(0, 30, 0), new float3(29, 1, 29)));
+                walls.Add(new Wall(centre - new float3(0, 30, 0), new float3(29, 1, 29)));
+                foreach (var side in new[] { new int2(-1, 0), new int2(1, 0), new int2(0, -1), new int2(0, 1) })
                 {
-                    // The boundary of three joined corridors, with just one entrance.
-                    new Wall(new float3(-31, 0, -135), new float3(1, 30, 125)),
-                    new Wall(new float3(31, 0, -165), new float3(1, 30, 95)),
-                    new Wall(new float3(80, 0, -71), new float3(50, 30, 1)),
-                    new Wall(new float3(50, 0, -9), new float3(80, 30, 1)),
-                    new Wall(new float3(129, 0, 85), new float3(1, 30, 95)),
-                    new Wall(new float3(191, 0, 55), new float3(1, 30, 125)),
-                    new Wall(new float3(160, 0, 181), new float3(30, 30, 1)),
-                    new Wall(new float3(0, 31, -165), new float3(30, 1, 95)),
-                    new Wall(new float3(0, -31, -165), new float3(30, 1, 95)),
-                    new Wall(new float3(80, 31, -40), new float3(110, 1, 30)),
-                    new Wall(new float3(80, -31, -40), new float3(110, 1, 30)),
-                    new Wall(new float3(160, 31, 85), new float3(30, 1, 95)),
-                    new Wall(new float3(160, -31, 85), new float3(30, 1, 95)),
-                },
-            };
+                    if (cells.Contains(cell + side) || cell.Equals(int2.zero) && side.y == -1) continue;
+                    walls.Add(new Wall(centre + new float3(side.x * 29, 0, side.y * 29), new float3(side.x != 0 ? 1 : 29, 30, side.y != 0 ? 1 : 29)));
+                }
+            }
+            return new Interior { entrance = new float3(0, 0, -290), core = new float3(116, 0, 204), console = new float3(116, 0, 204), walls = walls.ToArray() };
         }
         public float3 Move(float3 from, float3 velocity, float radius, float dt, bool open, out bool hit, float stepHeight = 0)
         {
@@ -168,10 +168,14 @@ namespace Infinigame.Core
         public bool Blocks(float3 from, float3 step, out float3 at)
         {
             at = from + step;
-            if (!active || math.distancesq(from, centre) < radius * radius || !Combat.Crosses(from, step, centre, radius)) return false;
-            float3 direction = math.normalizesafe(step), offset = from - centre;
+            if (!active || math.lengthsq(step) < 1e-10f) return false;
+            float3 direction = math.normalize(step), offset = from - centre;
             float b = math.dot(offset, direction), d = b * b - math.lengthsq(offset) + radius * radius;
-            at = from + direction * math.max(0f, -b - math.sqrt(math.max(0f, d)));
+            if (d < 0) return false;
+            float near = -b - math.sqrt(d), far = -b + math.sqrt(d);
+            float distance = near > 0.001f ? near : far;
+            if (distance < 0.001f || distance > math.length(step)) return false;
+            at = from + direction * distance;
             return true;
         }
     }

@@ -13,6 +13,7 @@ namespace Infinigame.Core
         // view, clear of any rings and inside the world's own influence. A star is kept at arm's
         // length, where its heat is bearable.
         public static float Standoff(BodyDescriptor body) => body.kind == BodyKind.Sun ? 4.2f * body.radius
+            : body.kind == BodyKind.Station ? math.max(600, body.radius * 2.2f)
             : math.min(math.max(2.2f * body.radius, 1.12f * body.ringOuter), 0.9f * body.soiRadius);
 
         // How close the autopilot will pass a world that is merely in the way: clear of its

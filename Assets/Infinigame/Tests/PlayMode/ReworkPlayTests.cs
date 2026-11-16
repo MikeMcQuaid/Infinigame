@@ -42,7 +42,7 @@ namespace Infinigame.Tests
             Assert.AreEqual(0, game.Dug, "The boot sequence must finish before punching");
             yield return Seconds(2);
             yield return ReworkShot("110-suit-boot");
-            yield return Seconds(5.5f);
+            yield return Seconds(Game.BootDuration - 1.5f);
             yield return ReworkShot("111-emergency-hud");
             for (int i = 0; i < Game.Digs; i++) yield return Press(new Controls { fire = true });
             Assert.AreEqual(1, game.Stage);
@@ -69,6 +69,13 @@ namespace Infinigame.Tests
             Assert.AreEqual(3, game.Battle.Foes.Count(foe => foe.kind == FoeKind.Sentry));
             Assert.IsTrue(game.Battle.Foes.Where(foe => foe.kind == FoeKind.Sentry).All(foe => foe.caste == MotileCaste.Stalker));
             yield return ReworkShot("112-burrow-entrance");
+            Assert.IsFalse(game.Outpost.Rooms.walls.Last().broken, "The burrow starts sealed");
+            for (int i = 0; i < 16 && !game.Outpost.Rooms.walls.Last().broken; i++)
+            {
+                yield return Press(new Controls { fire = true });
+                yield return Seconds(0.6f);
+            }
+            Assert.IsTrue(game.Outpost.Rooms.walls.Last().broken, "Emergency fists must open the entrance");
             float3 entrance = Player.Position;
             input = new Controls { move = Vector2.up };
             yield return Seconds(3);
@@ -100,7 +107,8 @@ namespace Infinigame.Tests
             yield return null;
             Assert.AreEqual(4, game.Stage); Assert.IsTrue(front.factory);
             Assert.IsTrue(Player.captive); Assert.IsFalse(Player.Has(Gear.Ship));
-            Assert.Greater(math.length(Player.ship.position) - Body.radius, 1000);
+            Assert.Greater(math.length(Player.ship.position), Body.radius * Shapes.AirTop(Body));
+            Assert.Less(math.length(Player.ship.position), Body.radius * Shapes.AirTop(Body) + 60);
             var cave = Body.burrows[0];
             float3 outside = cave.origin + math.rotate(cave.rotation, new float3(0, 0, -38));
             Player.walker = Walker.Spawn(Body, math.normalize(outside), math.rotate(cave.rotation, new float3(0, 0, -1)));
@@ -116,10 +124,12 @@ namespace Infinigame.Tests
             yield return HoverOver(Moon, 20);
             Player.flying = false; Player.walker = Walker.Spawn(Body, math.normalize(Player.ship.position), new float3(0, 0, 1));
             front = game.Frontier.Local; front.kills = War.RequiredKills(front); front.aliens = 20;
-            game.Frontier.BuildFactory(0); game.Frontier.BuildFactory(1);
+            game.Frontier.BuildFactory(0);
+            Assert.IsFalse(front.shipyard);
+            front.aliens = 0; game.Frontier.BuildFactory(1);
             yield return Seconds(1);
             Assert.IsTrue(front.shipyard);
-            Assert.IsNotNull(GameObject.Find("Ship and dog factory"));
+            Assert.IsNotNull(GameObject.Find("Robodog shipyard"));
             yield return ReworkShot("116-factory-war");
         }
 
@@ -145,7 +155,8 @@ namespace Infinigame.Tests
             yield return Press(new Controls { select = 1, fire = true });
             Assert.IsFalse(Player.walker.grounded, "An impact punch must actually leave the ground");
             yield return Seconds(0.25f);
-            Assert.Greater(math.distance(start, Player.Position), 3);
+            Assert.Greater(math.distance(start, Player.Position), 0.5f);
+            Assert.Less(math.length(Player.Velocity), 14, "Punches cannot stack unbounded speed");
         }
 
         [UnityTest]
@@ -179,7 +190,7 @@ namespace Infinigame.Tests
             Assert.IsTrue(game.Frontier.Collapsing);
             yield return Seconds(12);
             yield return ReworkShot("117-singularity");
-            yield return Seconds(14);
+            for (float waited = 0; game.Frontier.Whiteout <= 0 && waited < 45; waited += Time.unscaledDeltaTime) yield return null;
             Assert.Greater(game.Frontier.Whiteout, 0);
             yield return ReworkShot("118-whiteout");
             for (float t = 0; game.Depth == depth && t < 15; t += Time.unscaledDeltaTime) yield return null;

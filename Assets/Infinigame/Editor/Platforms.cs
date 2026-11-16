@@ -13,8 +13,20 @@ using UnityEngine.XR.OpenXR.Features.Interactions;
 
 namespace Infinigame.Editor
 {
+    [InitializeOnLoad]
     public static class Platforms
     {
+        static Platforms()
+        {
+#if INFINIGAME_XR
+            EditorApplication.delayCall += () =>
+            {
+                if (Application.platform == RuntimePlatform.WindowsEditor && !Application.isBatchMode && EditorUserBuildSettings.activeBuildTarget == BuildTarget.StandaloneWindows64) return;
+                var settings = XRGeneralSettingsPerBuildTarget.XRGeneralSettingsForBuildTarget(BuildTargetGroup.Standalone);
+                if (settings != null) settings.InitManagerOnStart = false;
+            };
+#endif
+        }
         public static void Windows()
         {
 #if INFINIGAME_XR
@@ -42,22 +54,42 @@ namespace Infinigame.Editor
             EditorUtility.SetDirty(settings);
             EditorUtility.SetDirty(xr);
             AssetDatabase.SaveAssets();
-            Build("Build/Windows/Infinigame.exe", BuildTarget.StandaloneWindows64);
+            PlayerSettings.SetScriptingBackend(UnityEditor.Build.NamedBuildTarget.Standalone, ScriptingImplementation.Mono2x);
+            try { Build("Build/Windows/Infinigame.exe", BuildTarget.StandaloneWindows64); }
+            finally { settings.SettingsForBuildTarget(BuildTargetGroup.Standalone).InitManagerOnStart = false; EditorUtility.SetDirty(settings); AssetDatabase.SaveAssets(); }
 #else
             throw new InvalidOperationException("Resolve the official OpenXR packages before building Windows.");
+#endif
+        }
+        public static void SteamDeck()
+        {
+            PlayerSettings.SetScriptingBackend(UnityEditor.Build.NamedBuildTarget.Standalone, ScriptingImplementation.Mono2x);
+#if INFINIGAME_XR
+            var settings = XRGeneralSettingsPerBuildTarget.XRGeneralSettingsForBuildTarget(BuildTargetGroup.Standalone);
+            bool automatic = settings != null && settings.InitManagerOnStart;
+            if (settings != null) settings.InitManagerOnStart = false;
+            try { Build("Build/SteamDeck/Infinigame.exe", BuildTarget.StandaloneWindows64); }
+            finally { if (settings != null) settings.InitManagerOnStart = automatic; }
+#else
+            Build("Build/SteamDeck/Infinigame.exe", BuildTarget.StandaloneWindows64);
 #endif
         }
         public static void IOS()
         {
             PlayerSettings.iOS.targetDevice = iOSTargetDevice.iPhoneAndiPad;
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
-            PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.iOS, "games.infinigame.player");
-            Build("Build/iOS", BuildTarget.iOS);
+            PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.iOS, "com.mikemcquaid.infinigame");
+            string previousTeam = PlayerSettings.iOS.appleDeveloperTeamID;
+            string team = Environment.GetEnvironmentVariable("INFINIGAME_APPLE_TEAM");
+            if (!string.IsNullOrEmpty(team)) PlayerSettings.iOS.appleDeveloperTeamID = team;
+            PlayerSettings.iOS.appleEnableAutomaticSigning = true;
+            try { Build("Build/iOS", BuildTarget.iOS); }
+            finally { PlayerSettings.iOS.appleDeveloperTeamID = previousTeam; }
         }
         static void Build(string path, BuildTarget target)
         {
             var report = BuildPipeline.BuildPlayer(new[] { "Assets/Scenes/Main.unity" }, path, target, BuildOptions.None);
-            if (report.summary.result != BuildResult.Succeeded) EditorApplication.Exit(1);
+            if (report.summary.result != BuildResult.Succeeded) throw new InvalidOperationException($"{target} build failed: {report.summary.result}");
         }
     }
 }

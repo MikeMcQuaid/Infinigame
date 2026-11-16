@@ -26,7 +26,7 @@ namespace Infinigame
         void LateUpdate()
         {
             if (globe == null) return;
-            bool visible = !game.Paused && !game.Dead && !game.Hermit.Talking && !game.Player.SystemView && !game.Buried && !game.Frontier.Collapsing;
+            bool visible = !game.Paused && !game.ShowControls && !game.Dead && !game.Hermit.Talking && !game.Player.SystemView && !game.Buried && !game.Frontier.Collapsing;
             globe.gameObject.SetActive(visible);
             int used = 0;
             var camera = Camera.main;
@@ -46,7 +46,7 @@ namespace Infinigame
             }
             if (visible)
             {
-                foreach (var foe in game.Battle.Foes) if (foe.health > 0 && !foe.friendly) Contact(foe.position, false);
+                foreach (var foe in game.Battle.Foes) if (game.Player.Powered && foe.health > 0 && !foe.friendly && (foe.kind == FoeKind.Raider) == game.Player.InSpace && math.distance(foe.position, game.Player.Position) < (game.Player.InSpace ? 2500 : 80)) Contact(foe.position, false);
                 if (game.Goal is float3 position) Contact(position, true);
             }
             for (int i = used; i < contacts.Count; i++) contacts[i].gameObject.SetActive(false);

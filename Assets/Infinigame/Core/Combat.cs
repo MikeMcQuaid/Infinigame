@@ -15,14 +15,15 @@ namespace Infinigame.Core
     {
         public FoeKind kind;
         public MotileCaste caste;
-        public float3 position, velocity, forward;
+        public float3 position, velocity, forward, burrowOrigin, burrowTarget;
         // how big a target it is, as the radius of a ball
         public float health, cooldown, size;
         // A raider fires in bursts, and breaks away after each pass before turning back.
         public int burst;
         public bool away, scattered, friendly;
         public Alert alert;
-        public float suspicion, recoil, attack;
+        public float suspicion, recoil, attack, shield, burrowing;
+        public bool clever;
         public bool patrol;
         public uint seed, random;
     }
@@ -61,7 +62,7 @@ namespace Infinigame.Core
         public float blast;
         // ground: it struck the ground or the sea. level: it was a landing charge. Otherwise it
         // struck something's hull, a foe's when foe says which.
-        public bool ground, level, shield;
+        public bool ground, level, shield, hostile;
         public int foe;
     }
 
@@ -93,6 +94,12 @@ namespace Infinigame.Core
             new Weapon { name = "Rail gauntlet", speed = 10000, damage = 140, period = 2.4f, life = 0.2f, voice = 5, rail = true, energy = 40, needs = Gear.Rail },
             new Weapon { name = "Hemisphere lasers", damage = 18, period = 0.12f, sweep = true, energy = 3, voice = 0, needs = Gear.Nova },
         };
+
+        public static void Hurt(ref Foe foe, float damage)
+        {
+            float absorbed = math.min(foe.shield, damage);
+            foe.shield -= absorbed; foe.health -= damage - absorbed;
+        }
 
         public static float3 SweepDirection(int index, int count, float3 up)
         {
@@ -201,6 +208,9 @@ namespace Infinigame.Core
                 float stand = stalker ? 1.7f : breacher ? 4 : spitter ? 28 : 12;
                 float3 desired = toward * math.clamp((gap - stand) * 1.2f, -3, breacher ? 5 : spitter ? 7 : 10)
                     + round * ((stalker ? 0.8f : breacher ? 0.5f : 3.5f) * (1 - math.smoothstep(stand + 2, stand + 13, gap)));
+                if (foe.clever && gap > stand + 5 && gap < 70)
+                    desired = desired * (foe.seed % 3 == 0 ? 0.35f : 0.7f) + round * (stalker ? 6 : breacher ? 2.5f : 5);
+                if (foe.clever && spitter && foe.cooldown > 1.5f) desired -= toward * 3;
                 foe.velocity = Walker.MoveTowards(Walker.Project(foe.velocity, up), desired, 14f * dt);
                 foe.position += foe.velocity * dt;
                 up = math.normalize(foe.position);
@@ -256,8 +266,11 @@ namespace Infinigame.Core
                     // a missile swings towards the nearest foe ahead of it
                     float speed = math.length(bolt.velocity), nearest = float.MaxValue;
                     float3 heading = bolt.velocity / speed, chase = heading;
+                    if (bolt.hostile) chase = math.normalizesafe(player + playerVelocity * (math.distance(player, bolt.position) / speed) - bolt.position, heading);
                     foreach (var foe in foes)
                     {
+                        if (bolt.hostile) break;
+                        if (foe.friendly || foe.health <= 0) continue;
                         float3 to = foe.position - bolt.position;
                         float away = math.length(to);
                         if (away >= nearest || math.dot(to, heading) < 0.3f * away) continue;
@@ -267,7 +280,7 @@ namespace Infinigame.Core
                     bolt.velocity = Turn(heading, chase, bolt.homing * dt) * speed;
                 }
                 float3 step = bolt.velocity * dt, at = bolt.position + step;
-                bool hit = !bolt.hostile && shield.Blocks(bolt.position, step, out at), blocked = hit, ground = false;
+                bool hit = shield.Blocks(bolt.position, step, out at), blocked = hit, ground = false;
                 int struckFoe = -1;
                 if (!hit && bolt.hostile)
                 {
@@ -277,26 +290,27 @@ namespace Infinigame.Core
                     for (int f = 0; f < foes.Count && !hit; f++)
                     {
                         var foe = foes[f];
+                        if (foe.friendly || foe.health <= 0) continue;
                         if (!(hit = Crosses(bolt.position, step - foe.velocity * dt, foe.position, foe.size))) continue;
                         struckFoe = f;
                         // nothing short of a nuclear blast marks the citadel
-                        if (foe.kind != FoeKind.Base || bolt.blast >= Nuclear) { foe.health -= bolt.damage; foe.recoil = 1; }
+                        if (foe.kind != FoeKind.Base || bolt.blast >= Nuclear) { Hurt(ref foe, bolt.damage); foe.recoil = 1; }
                         foes[f] = foe;
                         // it ends on the near side of what it hit
                         at = foe.position - math.normalizesafe(step) * math.min(foe.size, math.distance(bolt.position, foe.position));
                     }
                 // the ground stops what misses
                 if (!hit) hit = ground = math.length(at) < Ship.Surface(body, math.normalize(at));
-                if (hit) struck?.Add(new Strike { at = at, blast = bolt.blast, ground = ground, level = bolt.level, foe = struckFoe, shield = blocked });
+                if (hit) struck?.Add(new Strike { at = at, blast = bolt.blast, ground = ground, level = bolt.level, foe = struckFoe, shield = blocked, hostile = bolt.hostile });
                 if (hit && !blocked && !bolt.hostile && bolt.blast >= 5f)
                     // a big enough bang catches whatever else is near, less the further off it is
                     for (int f = 0; f < foes.Count; f++)
                     {
                         var foe = foes[f];
-                        if (shield.Blocks(at, foe.position - at, out _)) continue;
+                        if (foe.friendly || foe.health <= 0 || shield.Blocks(at, foe.position - at, out _)) continue;
                         float near = math.distance(foe.position, at) - foe.size;
                         if (near <= 0f || near >= bolt.blast || (foe.kind == FoeKind.Base && bolt.blast < Nuclear)) continue;
-                        foe.health -= bolt.damage * (1f - near / bolt.blast);
+                        Hurt(ref foe, bolt.damage * (1f - near / bolt.blast));
                         foes[f] = foe;
                     }
                 if (hit || (bolt.life -= dt) <= 0f)
@@ -353,7 +367,7 @@ namespace Infinigame.Core
             foreach (var hit in hits)
             {
                 var foe = foes[hit.index];
-                foe.health -= damage;
+                Hurt(ref foe, damage);
                 if (damage > 0) foe.recoil = 1;
                 foes[hit.index] = foe;
                 float3 at = from + direction * hit.distance;

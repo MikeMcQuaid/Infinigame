@@ -44,7 +44,10 @@ namespace Infinigame
         Cockpit cockpit;
         // how far the last shots have thrown the aim up, in degrees
         float pitch, punch;
-        bool chase, submerged;
+        bool chase, submerged, recall, detected;
+        float standing = 1;
+        Transform exhaust;
+        public bool InSpace => math.length(Position) > Body.radius * Shapes.AirTop(Body);
         // which of its weapons the ship has live, and which the player has in hand
         int gun, arm;
         readonly List<float4> worlds = new List<float4>();
@@ -155,6 +158,7 @@ namespace Infinigame
         // Stand on a gentle patch of the reference body with the ship parked a few steps ahead.
         public void Spawn()
         {
+            recall = detected = false;
             float3 direction = system.Reference == SolarSystemDescriptor.Home ? Campaign.Site(system.Descriptor, game.Stage >= 2 && game.Stage <= 4 ? game.Stage - 1 : 0) : Body.FindLanding(system.Descriptor.seed + 1u);
             float3 facing = math.normalize(math.cross(direction, new float3(0.2f, 0.9f, 0.4f)));
             walker = Walker.Spawn(Body, direction, facing);
@@ -212,7 +216,13 @@ namespace Infinigame
                 Destination = -1;
                 return "AUTOPILOT OFF";
             }
-            if (!flying) return "THE AUTOPILOT IS IN THE SHIP";
+            if (!flying)
+            {
+                if (!Has(Gear.Ship) && !captive) return "NO SHIP LINK";
+                recall = true;
+                game.Hermit.Remark(InSpace ? "Your suit transponder is detected. The ship is matching your velocity. Hold position, then board when it reaches you." : "Ship recall accepted. Clearing the terrain and landing beside you.");
+                return "SHIP INBOUND · HOLD POSITION · F TO BOARD";
+            }
             if (!Has(Gear.Orbiter)) return "THE AUTOPILOT NEEDS AN ORBITAL DRIVE";
             float nearest = math.cos(math.radians(14f));
             for (int i = 0; i < system.Bodies.Length; i++)
@@ -220,7 +230,7 @@ namespace Infinigame
                 float3 to = system.Bodies[i].transform.position - view.transform.position;
                 float facing = math.dot(math.normalize(to), view.transform.forward);
                 // only what has a marker to face, not the one you are already beside, and nowhere the radiation would kill
-                if (!system.Charted(i) || facing < nearest || math.length(to) < Core.Autopilot.Standoff(system.Descriptor.bodies[i]) * 1.1f
+                if (!system.Charted(i) || system.Descriptor.bodies[i].kind == BodyKind.Station && game.Stage < Campaign.Citadel || facing < nearest || math.length(to) < Core.Autopilot.Standoff(system.Descriptor.bodies[i]) * 1.1f
                     || (!Has(Gear.Shield) && system.Descriptor.Planet(i) != SolarSystemDescriptor.Home)) continue;
                 nearest = facing;
                 Destination = i;
@@ -228,6 +238,17 @@ namespace Infinigame
             if (!Autopilot) return "FACE A WORLD'S MARKER TO FLY THERE";
             landing = false;
             return $"AUTOPILOT  ·  {system.Descriptor.bodies[Destination].name.ToUpperInvariant()}";
+        }
+
+        public string TravelTo(int world)
+        {
+            if (!flying) return Travel();
+            if (!Has(Gear.Orbiter)) return "ORBITAL DRIVE REQUIRED";
+            if (world < 0 || world >= system.Bodies.Length || !system.Charted(world)
+                || system.Descriptor.bodies[world].kind == BodyKind.Station && game.Stage < Campaign.Citadel) return "DESTINATION NOT CHARTED";
+            if (!Has(Gear.Shield) && system.Descriptor.Planet(world) != SolarSystemDescriptor.Home) return "RADIATION SHIELD REQUIRED";
+            Destination = world; landing = false;
+            return $"AUTOPILOT · {system.Descriptor.bodies[world].name.ToUpperInvariant()} · RELEASE TAB TO DEPART";
         }
 
         // One frame, driven by the game so that menus and conversations can hold the player still.
@@ -264,9 +285,9 @@ namespace Infinigame
             if (c.interact) Interact();
 
             // simulate in steps of at most 1/60 s so a slow frame cannot tunnel or overshoot
-            float frame = Mathf.Clamp(Time.deltaTime, 1e-4f, 0.1f);
-            int steps = Mathf.Max(1, Mathf.CeilToInt(frame * 60f));
-            float dt = frame / steps;
+            float frame = Time.timeScale == 0 ? 0 : Mathf.Clamp(Time.deltaTime, 1e-4f, 0.1f);
+            int steps = frame > 0 ? Mathf.Max(1, Mathf.CeilToInt(frame * 60f)) : 0;
+            float dt = frame / math.max(1, steps);
             energy = math.min(Suit.Capacity + (Has(Gear.Capacitor) ? 50 : 0), energy + (Powered ? Suit.Recharge : 0) * frame);
             if (cloaked && !Suit.Spend(ref energy, 18 * frame)) cloaked = false;
             float3 before = Position;
@@ -298,7 +319,7 @@ namespace Infinigame
                     var input = new ShipInput
                     {
                         thrust = thrust, boost = c.sprint, land = landing,
-                        turn = new float3(math.clamp(math.radians(c.look) / frame, -MaxTurnRate, MaxTurnRate).yx, c.roll * RollRate),
+                        turn = new float3(math.clamp(math.radians(c.look) / math.max(frame, 1e-4f), -MaxTurnRate, MaxTurnRate).yx, c.roll * RollRate),
                     };
                     for (int i = 0; i < steps; i++) Ship.Step(ref ship, input, Body, assist, dt);
                     // until it has the drive to leave the air, the engines give out where the air thins
@@ -317,7 +338,7 @@ namespace Infinigame
                 // a hard enough landing leaves its mark on the ground
                 if (crash > 0f) system.Bodies[system.Reference].Dig(ship.position, math.clamp(0.08f * ship.impact, 2f, 12f));
                 // the autopilot threads the rocks of a belt or a ring itself
-                if (!Autopilot && Rings.Hit(Body, ship.position, Combat.ShipRadius, system.Clock, rocks, out float3 normal, out float3 moving))
+                if (frame > 0 && !Autopilot && Rings.Hit(Body, ship.position, Combat.ShipRadius, system.Clock, rocks, out float3 normal, out float3 moving))
                 {
                     // a rock in the rings: bounce off it, and pay for how hard
                     float into = math.dot(ship.velocity - moving, normal);
@@ -338,7 +359,7 @@ namespace Infinigame
                     walker.fuel = energy > 0 ? Walker.JetpackFuel : 0;
                     Walker.Step(ref walker, new WalkerInput
                     {
-                        move = c.move, yaw = i == 0 ? math.radians(c.look.x) : 0f, jump = c.jump, sprint = c.sprint, bare = !Has(Gear.Thrusters) || energy < 15 * dt, riding = false, pitch = math.radians(pitch),
+                        move = c.move, yaw = i == 0 ? math.radians(c.look.x) : 0f, jump = c.jump, sprint = c.sprint, space = InSpace, lift = c.lift, bare = !Has(Gear.Thrusters) || energy < 15 * dt, riding = false, pitch = math.radians(pitch),
                     }, Body, dt);
                     if (Has(Gear.Thrusters) && !walker.grounded && (c.jump || math.lengthsq(c.move) > 0)) Suit.Spend(ref energy, 15 * dt);
                     float3 up = math.normalizesafe(walker.position);
@@ -348,8 +369,24 @@ namespace Infinigame
                         walker.position = up * ceiling;
                         walker.velocity -= up * math.max(0, math.dot(walker.velocity, up));
                     }
-                    // an empty ship brings itself down
-                    if (!captive) Ship.Step(ref ship, new ShipInput { land = true }, Body, true, dt);
+                    if (InSpace && captive && !detected) { detected = true; Travel(); }
+                    if (recall)
+                    {
+                        float3 destination = walker.position + walker.forward * (InSpace ? 4 : 13) + up * (InSpace ? 0 : 4);
+                        float3 delta = destination - ship.position;
+                        float distance = math.length(delta);
+                        float3 desired = math.normalizesafe(delta) * math.min(100, distance * 0.7f) + (InSpace ? walker.velocity : float3.zero);
+                        float3 shipUp = math.normalizesafe(ship.position);
+                        float floor = Body.GroundRadius(shipUp) + 8;
+                        if (!InSpace && distance > 24 && math.length(ship.position) < floor + 25) desired += shipUp * 30;
+                        ship.velocity = Walker.MoveTowards(ship.velocity, desired, 35 * dt);
+                        ship.position += ship.velocity * dt;
+                        shipUp = math.normalizesafe(ship.position);
+                        ship.position = shipUp * math.max(math.length(ship.position), Body.GroundRadius(shipUp) + 4);
+                        ship.rotation = math.slerp(ship.rotation, quaternion.LookRotationSafe(walker.forward, up), math.saturate(dt * 2));
+                        ship.landed = !InSpace && distance < 5;
+                    }
+                    else if (!captive) Ship.Step(ref ship, new ShipInput { land = true }, Body, true, dt);
                 }
                 // the bike's wheels take half of a landing
                 Hurt(Combat.Fall(walker.impact * (riding ? 0.5f : 1f)), $"Fell to the ground on {Body.name}");
@@ -362,7 +399,7 @@ namespace Infinigame
                 // a suit mends itself once left alone a while
                 if (Time.time - HurtAt > 6f) health = math.min(MaxHealth, health + 4f * frame);
             }
-            if (game != null && game.Outpost != null)
+            if (frame > 0 && game != null && game.Outpost != null)
             {
                 float3 up = math.normalizesafe(Position);
                 float3 offset = flying ? float3.zero : up * Combat.PersonRadius;
@@ -370,7 +407,7 @@ namespace Infinigame
                 if (hit)
                 {
                     if (flying) { ship.position = resolved; Hurt(Combat.Graze(math.length(ship.velocity), hull), "Struck a tunnel wall"); ship.velocity *= 0.3f; }
-                    else { walker.position = resolved; walker.velocity = (resolved - before) / frame; walker.grounded = true; }
+                    else { walker.position = resolved; walker.velocity = (resolved - before) / math.max(frame, 1e-4f); walker.grounded = true; }
                 }
             }
             walker.impact = ship.impact = 0f;
@@ -380,6 +417,12 @@ namespace Infinigame
                 : Body.kind == BodyKind.Gas ? $"Cooked in the depths of {Body.name}" : $"Roasted on {Body.name}");
             // out past the moon the sun's radiation gets into a ship with no shield against it
             Irradiated = (flying || !Has(Gear.Suit)) && !Has(Gear.Shield) && system.Descriptor.Planet(system.Reference) != SolarSystemDescriptor.Home;
+            if (game.Stage < Campaign.Citadel || !Has(Gear.Nukes))
+            {
+                float3 citadel = system.ToReference(system.Station);
+                if (math.distance(Position, citadel) < system.Descriptor.bodies[system.Station].radius + 900)
+                    Hurt(180 * frame, "Destroyed by the citadel exclusion field: final mission equipment required");
+            }
             if (Irradiated) Hurt(Combat.Radiation * frame, "Cooked by radiation out beyond Luna");
             // a ship on the ground is patched up, and one with a mender aboard mends as it flies once it is left alone
             if (!Dead && (ship.landed || (Has(Gear.Mender) && Time.time - HurtAt > 6f))) hull = math.min(MaxHull, hull + (ship.landed ? 3f : 2f) * frame);
@@ -398,12 +441,18 @@ namespace Infinigame
 
             // everything is drawn relative to the scene's origin, which out in space rides with the player
             model.SetPositionAndRotation(ship.position - system.Anchor, ship.rotation);
-            traveller.gameObject.SetActive(ThirdPerson && !SystemView && !game.Title && !Dead);
+            traveller.gameObject.SetActive(!flying && !game.Buried && !SystemView && !game.Title && !Dead);
             if (traveller.gameObject.activeSelf)
             {
                 traveller.SetPositionAndRotation(walker.position - system.Anchor, quaternion.LookRotationSafe(walker.forward, math.normalizesafe(walker.position)));
+                foreach (string part in new[] { "Torso/Head", "Torso/Left arm", "Torso/Right arm" })
+                    if (traveller.Find(part) is Transform limb) limb.gameObject.SetActive(ThirdPerson);
                 foreach (var plate in armour) plate.SetActive(Has(Gear.Suit));
                 pack.gameObject.SetActive(Has(Gear.Thrusters));
+                if (exhaust == null)
+                    exhaust = Shapes.Part(pack, "Jet exhaust", Shapes.Sphere(1, 16), Shapes.Material("Glow", new Color(0.15f, 2, 5)), new Vector3(0, -0.6f, 0), new Vector3(0.2f, 0.8f, 0.2f), false).transform;
+                exhaust.gameObject.SetActive(Powered && !walker.grounded && (c.jump || c.move.sqrMagnitude > 0));
+                if (exhaust.gameObject.activeSelf) exhaust.localScale = new Vector3(0.17f, 0.65f + 0.1f * math.sin(Time.time * 36), 0.17f);
                 motion.strike = Weapon.melee ? math.saturate(1 - (Time.time - game.Battle.Fired) / 0.35f) : 0;
                 motion.recoil = math.saturate(1 - (Time.time - HurtAt) / 0.4f);
                 motion.speed = walker.grounded ? math.length(Velocity) : 0;
@@ -416,7 +465,7 @@ namespace Infinigame
                 // every instrument in front of the pilot shows what the ship is really doing
                 float3 up = math.normalize(ship.position), nose = math.rotate(ship.rotation, new float3(0, 0, 1));
                 float3 wing = math.rotate(ship.rotation, new float3(1, 0, 0)), roof = math.rotate(ship.rotation, new float3(0, 1, 0));
-                float2 look = math.clamp(math.radians(c.look) / frame, -MaxTurnRate, MaxTurnRate) / MaxTurnRate;
+                float2 look = math.clamp(math.radians(c.look) / math.max(frame, 1e-4f), -MaxTurnRate, MaxTurnRate) / MaxTurnRate;
                 int fitted = 0;
                 for (int i = 0; i < Combat.Guns.Length; i++)
                     if (Has(Combat.Guns[i].needs))
@@ -457,7 +506,9 @@ namespace Infinigame
             {
                 float3 up = math.normalize(walker.position);
                 Quaternion looking = Quaternion.LookRotation(walker.forward, up) * Quaternion.Euler(-pitch - punch, 0f, 0f);
-                float3 eye = walker.position + up * Walker.EyeHeight, camera = eye;
+                standing = game.Buried ? 0 : math.min(1, standing + frame * 0.7f);
+                if (!DeviceControls.VR) looking *= Quaternion.Euler(-65 * (1 - standing), 0, 12 * (1 - standing));
+                float3 eye = walker.position + up * (DeviceControls.VR ? Walker.EyeHeight : math.lerp(0.45f, Walker.EyeHeight, standing)), camera = eye;
                 if (ThirdPerson)
                 {
                     float3 desired = eye + (float3)(looking * new Vector3(0.55f, 0.55f, -4.8f));
@@ -496,7 +547,7 @@ namespace Infinigame
 
         void Interact()
         {
-            if (!flying && NearShip) { if (captive) game.Advance(); (flying, riding) = (true, false); }
+            if (!flying && NearShip) { if (captive) game.Advance(); recall = false; (flying, riding) = (true, false); }
             else if (flying && ship.landed)
             {
                 float3 forward = math.rotate(ship.rotation, new float3(0, 0, 1));

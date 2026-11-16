@@ -139,9 +139,9 @@ namespace Infinigame
         // "Cockpit" is what the seated pilot sees and carries the Cockpit that works its instruments,
         // with "SpeedScreen", "RangeScreen" and "HeatScreen" at the middle of its three screens
         // and "Copilot" at the base of the passenger's seat.
-        public static Transform Ship()
+        public static Transform Ship() => Machine("Ship", BuildShip);
+        static void BuildShip(Transform root)
         {
-            var root = new GameObject("Ship").transform;
             Transform exterior = Child(root, "Exterior"), cockpit = Child(root, "Cockpit");
 
             // One mesh to a material. The nose and the cabin's fittings are kept apart from the rest
@@ -704,7 +704,6 @@ namespace Infinigame
                 Add(cockpit, part.name, part.mesh, part.material, part.shadows);
             }
             cockpit.gameObject.AddComponent<Cockpit>();
-            return root;
         }
 
         // A chain hanging between two points: oval links, each turned a quarter from the last.
@@ -1096,8 +1095,26 @@ namespace Infinigame
                         metal.Rod(new Vector3(side * 2, 2.7f, -1), new Vector3(side * 0.8f, 2.2f, 0), 0.13f, Curves);
                         glow.Ball(new Vector3(side * 0.8f, 2.2f, 0), 0.18f, Curves);
                     }
+                    metal.Box(new Vector3(0, 3.8f, 0), new Vector3(2.4f, 0.7f, 1.4f), 0.12f);
+                    for (int i = 0; i < 6; i++)
+                        metal.Rod(new Vector3(-0.85f + i % 3 * 0.85f, 3.65f + i / 3 * 0.45f, -0.6f), new Vector3(-0.85f + i % 3 * 0.85f, 3.65f + i / 3 * 0.45f, 1.1f), 0.18f, Curves);
                     if (kind == Core.Building.ShipFactory)
-                        for (int i = 0; i < 3; i++) metal.Rod(new Vector3(-8, 0.2f, 6 + i * 2), new Vector3(8, 0.2f, 6 + i * 2), 0.2f, Curves);
+                    {
+                        var hull = Ship(); hull.name = "Ship under construction"; hull.SetParent(root, false); hull.localPosition = new Vector3(0, 6, 14); hull.localScale = Vector3.one * 0.7f;
+                        hull.Find("Cockpit").gameObject.SetActive(false);
+                        for (int i = 0; i < 3; i++)
+                        {
+                            float z = 5 + i * 8;
+                            metal.Rod(new Vector3(-9, 0.2f, z), new Vector3(9, 0.2f, z), 0.35f, Curves);
+                            foreach (float side in new[] { -1f, 1f })
+                            {
+                                metal.Box(new Vector3(side * 9, 7, z), new Vector3(0.8f, 14, 0.8f), 0.08f);
+                                metal.Rod(new Vector3(side * 9, 13, z), new Vector3(side * 3, 7, z), 0.14f, Curves);
+                            }
+                            metal.Box(new Vector3(0, 14, z), new Vector3(19, 0.8f, 0.8f), 0.08f);
+                            glow.Box(new Vector3(0, 13.5f, z), new Vector3(17, 0.1f, 0.15f));
+                        }
+                    }
                 }
                 if (kind == Core.Building.Workshop)
                 {
@@ -1126,6 +1143,20 @@ namespace Infinigame
             Add(root, "Power", glow, Shapes.Material("Glow", new Color(0.2f, 2, 3)), false);
             return root;
         }
+
+        public static Transform Equipment(bool battery) => Machine(battery ? "Reactor battery" : "Equipment case", root =>
+        {
+            var casing = new MeshKit(); var cells = new MeshKit(); var power = new MeshKit();
+            casing.Box(new Vector3(0, 0.4f, 0), new Vector3(0.85f, 0.9f, 0.55f), 0.08f);
+            for (int i = 0; i < (battery ? 3 : 2); i++)
+            {
+                float x = -0.26f + i * 0.26f;
+                cells.Rod(new Vector3(x, 0.07f, -0.31f), new Vector3(x, 0.7f, -0.31f), 0.085f, 32);
+                power.Rod(new Vector3(x, 0.18f, -0.4f), new Vector3(x, 0.6f, -0.4f), 0.02f, 16);
+            }
+            casing.Rod(new Vector3(-0.23f, 0.95f, 0), new Vector3(0.23f, 0.95f, 0), 0.045f, 24);
+            Add(root, "Protective housing", casing, Ceramic); Add(root, "Cells and connectors", cells, Alloy); Add(root, "Charge strips", power, Optics, false);
+        });
 
         public static Transform Gate()
         {

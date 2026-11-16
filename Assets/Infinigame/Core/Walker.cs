@@ -8,6 +8,8 @@ namespace Infinigame.Core
         public float2 move; // x strafe, y forward
         public float yaw; // radians to turn this step, positive to the right
         public bool jump, sprint; // holding jump in the air fires the jetpack
+        public bool space;
+        public float lift;
         public bool bare; // with nothing on their back, so that holding jump in the air does nothing
         public bool riding; // on the bike: far faster, and it goes only where it points
         public float pitch; // radians the player is looking above the level, for where the pack pushes once well off the ground
@@ -57,6 +59,17 @@ namespace Infinigame.Core
             float3 level = Project(s.velocity, up);
             float r = math.length(s.position);
             bool jumped = false;
+            if (input.space && !input.bare && !input.riding)
+            {
+                float3 aim = s.forward * math.cos(input.pitch) + up * math.sin(input.pitch);
+                float3 wish = aim * move.y + math.cross(up, s.forward) * move.x + up * (input.jump ? 1 : input.lift);
+                wish /= math.max(1, math.length(wish));
+                s.velocity = MoveTowards(s.velocity, wish * (input.sprint ? 65 : 28), 22 * dt);
+                s.position += s.velocity * dt;
+                s.grounded = false; s.swimming = false;
+                s.height = math.length(s.position) - body.GroundRadius(math.normalize(s.position));
+                return;
+            }
 
             s.swimming = body.SeaRadius > 0 && r + EyeHeight < body.SeaRadius && !body.Dry(s.position);
             if (s.grounded)

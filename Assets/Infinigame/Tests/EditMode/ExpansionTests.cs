@@ -102,17 +102,23 @@ namespace Infinigame.Tests
             var rooms = Interior.Citadel();
             Assert.IsFalse(rooms.Visible(new float3(160, 0, 400), rooms.core, true));
             Assert.IsFalse(rooms.Visible(rooms.entrance, rooms.core, true));
-            Assert.IsTrue(rooms.Visible(rooms.entrance, new float3(0, 0, -40), true));
-            Assert.IsTrue(rooms.Visible(new float3(0, 0, -40), new float3(160, 0, -40), true));
-            Assert.IsTrue(rooms.Visible(new float3(160, 0, -40), rooms.core, true));
+            var route = new[] { rooms.entrance, new float3(0, 0, -144), new float3(116, 0, -144), new float3(116, 0, -28), new float3(0, 0, -28), new float3(0, 0, 88), new float3(116, 0, 88), rooms.core };
+            Assert.GreaterOrEqual(route.Length - 2, 6);
+            for (int i = 1; i < route.Length; i++)
+            {
+                Assert.IsTrue(rooms.Visible(route[i - 1], route[i], true), $"corridor {i}");
+                float3 at = rooms.Move(route[i - 1], route[i] - route[i - 1], 4, 1, true, out bool hit);
+                Assert.IsFalse(hit, $"ship fits through corridor {i}");
+                Assert.Less(math.distance(at, route[i]), 0.01f);
+            }
         }
 
         [Test]
-        public void ShieldStopsShotsFromOutsideButNotFromWithin()
+        public void ShieldStopsShotsInBothDirections()
         {
             var shield = new Shield { centre = new float3(0, 100, 0), radius = 30f, active = true };
             Assert.IsTrue(shield.Blocks(new float3(0, 100, -50), new float3(0, 0, 100), out _));
-            Assert.IsFalse(shield.Blocks(shield.centre, new float3(0, 0, 100), out _));
+            Assert.IsTrue(shield.Blocks(shield.centre, new float3(0, 0, 100), out _));
             var foes = new List<Foe> { Combat.Spawn(FoeKind.Mind, shield.centre, new float3(0, 0, -1), 1, 1) };
             var bolts = new List<Bolt> { Combat.Fire(new float3(0, 100, -50), new float3(0, 0, 1), float3.zero, 1000, 800, false, 60) };
             var struck = new List<Strike>();

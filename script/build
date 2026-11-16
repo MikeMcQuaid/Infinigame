@@ -1,24 +1,17 @@
 #!/bin/bash
 # script/build: build the macOS app to Build/Infinigame.app. Unity's own account of it goes to
-# Logs/build.log; only what went wrong is shown here.
+# Logs/build.log; progress and installation instructions are printed here.
 # Needs a Unity licence (script/setup) and the project closed in the editor.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-script/bootstrap
-# Burst's compiled code is cached between builds. A build made where Burst cannot run (script/unity
-# says where) caches a note that there was none, and later builds believe the note: throw it away.
-burst=Library/Bee/artifacts/MacStandalonePlayerBuildProgram/AsyncPluginsFromLinker
-[ ! -f $burst/no_plugins_were_generated.txt ] || rm -rf $burst ${burst}Symbols
+# macOS defaults can leave the generated plist writable only by the previous builder.
+plist=Build/Infinigame.app/Contents/Info.plist
+if [ -f "$plist" ] && [ ! -w "$plist" ]; then rm "$plist"; fi
 
-echo "==> Building Build/Infinigame.app (Logs/build.log)"
-mkdir -p Logs
-if ! script/unity -batchmode -quit -buildTarget StandaloneOSX -executeMethod Infinigame.Editor.EditorTools.BuildMac -logFile Logs/build.log; then
-  grep -E "error CS[0-9]+|^Error|[Ee]xception:|Build Finished, Result: Failure|another Unity instance" Logs/build.log | sort -u | head -30 >&2
-  echo "==> The build failed. The whole story is in Logs/build.log" >&2
-  exit 1
-fi
-echo "==> Built Build/Infinigame.app"
+script/lib/build-target StandaloneOSX Infinigame.Editor.EditorTools.BuildMac Logs/build.log
+echo "==> Built $PWD/Build/Infinigame.app"
+echo "Run ./script/play for gameplay with performance logs, or open Build/Infinigame.app in Finder."
 # without Burst the game still runs, but terrain and textures are made several times more slowly
 if [ -r /Volumes ] && [ -z "$(find Build/Infinigame.app -name "lib_burst_generated*" -print -quit)" ]; then
   echo "==> Warning: the app has no Burst-compiled code. Delete Library/Bee and run script/build again." >&2

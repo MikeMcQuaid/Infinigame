@@ -64,6 +64,8 @@ The game can start each tool's own sign-in from the settings page. It never show
 
 `Effects.cs` draws everything that burns, bursts, smokes or steams: explosions, hits on a hull, steam off water, mushroom clouds and factory lights. It is built from three kinds of thing, each drawn in one instanced call: puffs (`Resources/Puff.shader`), sparks (`Spark.shader`) and tumbling wreckage. `Battle` decides which effect a strike calls for. Raiders and drones are drawn with `Hull.shader`, which takes how battered each one is through `Instances.Add` and eats glowing holes in it to match.
 
+`Corpses.cs` caches mesh sections and retains a bounded number of articulated remains. `Core/Ragdoll.cs` steps their joints against the same ground function as living bodies; runtime interior collision keeps them inside tunnels. Further hits separate sections, including spacecraft wreckage.
+
 ## Interface, sound and speech
 
 - `Hud.cs` builds one uGUI canvas in front of the camera, from code. It reads state and never changes it. Markers for worlds, foes and mission goals are placed each frame by `Mark`, which hides what a world is in the way of, keeps names from overlapping and holds a guide mark at the edge of the screen when its place is out of view.
@@ -74,13 +76,13 @@ The game can start each tool's own sign-in from the settings page. It never show
 
 ## Saving
 
-A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, the mission stage, the gear bit set, fitted modules, colony resources, presence clock, moonfall, gate state, journal, talk and breached outpost walls. Worlds are never saved, since the seed remakes them. Settings that belong to the device (detail, music, speech) are `PlayerPrefs`. What the player has given the oracle is a separate file that never travels with a save.
+A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, the mission stage, the gear bit set, fitted modules, colony resources, presence clock, moonfall, gate state, journal, talk and breached outpost walls. Worlds are never saved, since the seed remakes them. Save version 2 migrates the earlier fifteen-stage campaign into twelve stages without moving equipment bit positions. War fronts also retain weapon exposure and whether their controlling mind is dead. Settings that belong to the device (detail, music, speech) are `PlayerPrefs`. What the player has given the oracle is a separate file that never travels with a save.
 
 ## Tests and tooling
 
 - `script/test` compiles every assembly with the editor's bundled compiler and runs the EditMode tests on its Mono, with no Unity process and no licence.
 - `script/test --unity` runs EditMode and PlayMode tests inside Unity. The PlayMode tests load the real scene and drive it through `Controls`, with every road out of the game (models, browser, speech) swapped for a stand-in in set-up. One of them, `CapturesScreenshots`, tours the game and writes pictures to `Logs/Screenshots`, which is how visual work is checked on a machine with no display.
-- `FrameLog.cs` writes the frame rate and what the player was doing to `Logs/frames.log` when the game is started by `script/play`.
+- `FrameLog.cs` writes frame timing, activity, memory, build and HDR state to `Logs/frames.log` when the game is started by `script/play`. `script/performance` summarises the latest real play session, excluding menus.
 
 ## Where to put things
 

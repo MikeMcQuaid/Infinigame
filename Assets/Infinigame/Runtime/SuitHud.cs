@@ -20,6 +20,7 @@ namespace Infinigame
             var text = new GameObject(name, typeof(RectTransform), typeof(Text)).GetComponent<Text>();
             text.transform.SetParent(parent, false);
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"); text.fontSize = font;
+            text.gameObject.AddComponent<Shadow>().effectColor = new Color(0, 0, 0, 0.9f);
             text.color = new Color(0.4f, 0.9f, 0.95f); text.raycastTarget = false;
             var rect = text.rectTransform; rect.anchorMin = rect.anchorMax = anchor; rect.pivot = anchor; rect.anchoredPosition = position; rect.sizeDelta = size;
             return text;
@@ -44,6 +45,7 @@ namespace Infinigame
                 Bar(glass.transform, anchor, new Vector2(sign * 32, 0), new Vector2(3, 530), new Color(0.2f, 0.8f, 0.9f, 0.5f));
                 for (int i = 0; i < 19; i++) Bar(glass.transform, anchor, new Vector2(sign * 32, -250 + i * 28), new Vector2(i % 3 == 0 ? 22 : 10, 2), new Color(0.25f, 0.7f, 0.8f, 0.55f));
             }
+            Bar(glass.transform, new Vector2(0, 1), new Vector2(46, -25), new Vector2(525, 126), new Color(0.01f, 0.02f, 0.03f, 0.88f));
             telemetry = Label(glass.transform, "Telemetry", new Vector2(0, 1), new Vector2(60, -38), new Vector2(500, 130), 19);
             systems = Label(glass.transform, "Weapon bus", new Vector2(0, 0.5f), new Vector2(64, 0), new Vector2(340, 180), 17);
             radio = Label(glass.transform, "Radio", new Vector2(1, 0), new Vector2(-65, 45), new Vector2(380, 95), 17); radio.alignment = TextAnchor.LowerRight;
@@ -73,25 +75,27 @@ namespace Infinigame
             }
             float age = game.Boot;
             if (age < 0.5f) spoke = false;
-            if (game.Buried && age > 0.8f && !spoke)
+            if (game.Buried && age > 3.5f && !spoke)
             {
                 spoke = true;
                 game.Speech.Say("You are not dead. You are not dead. Fight. Emergency power. Punch your way out.");
             }
-            for (int i = 0; i < bootTicks.Length; i++) bootTicks[i].enabled = game.Buried && age > 2 + i * 0.12f && age < 6.8f;
-            glass.alpha = game.Player.flying || game.Frontier.Collapsing ? 0 : math.saturate((age - 3) / 3);
-            blackout.color = game.Frontier.Whiteout > 0 ? new Color(1, 1, 1, game.Frontier.Whiteout) : new Color(0, 0, 0, age < 4 ? 1 : math.saturate((7 - age) / 3));
-            sweep.enabled = game.Buried && age >= 2 && age < 7;
+            for (int i = 0; i < bootTicks.Length; i++) bootTicks[i].enabled = game.Buried && age > 5 + i * 0.18f && age < 11.8f;
+            glass.alpha = game.Player.flying || game.Frontier.Collapsing ? 0 : math.saturate((age - 8) / 4);
+            blackout.color = game.Frontier.Whiteout > 0 ? new Color(1, 1, 1, game.Frontier.Whiteout) : new Color(0, 0, 0, age < 8 ? 1 : math.saturate((12 - age) / 4));
+            sweep.enabled = game.Buried && age >= 5 && age < 12;
             sweep.rectTransform.anchoredPosition = new Vector2(0, 400 - (age % 2) * 400);
-            boot.enabled = game.Buried && age < 7;
-            boot.text = age < 0.8f ? "" : age < 2 ? "YOU ARE NOT DEAD." : age < 3.5f ? "YOU ARE NOT DEAD.\n\nFIGHT." : age < 5 ? "NEURAL LINK RESTORED\nVISOR ONLINE  ·  ACTUATORS ONLINE\nREACTOR CRITICAL" : "EMERGENCY FISTS READY\n\nPUNCH YOUR WAY OUT\n\nTHRUSTERS AND WEAPON BUS OFFLINE";
-            telemetry.enabled = systems.enabled = radio.enabled = reactor.enabled = !game.Paused && !game.Hermit.Talking;
+            boot.enabled = game.Buried && age < 12;
+            boot.text = age < 3.5f ? "" : age < 5 ? "YOU ARE NOT DEAD." : age < 6.5f ? "YOU ARE NOT DEAD.\n\nFIGHT." : age < 9 ? "NEURAL LINK RESTORED\nVISOR ONLINE  ·  ACTUATORS ONLINE\nREACTOR CRITICAL" : "EMERGENCY FISTS READY\n\nPUNCH YOUR WAY OUT\n\nTHRUSTERS AND WEAPON BUS OFFLINE";
+            telemetry.enabled = systems.enabled = radio.enabled = reactor.enabled = !game.Paused && !game.Hermit.Talking && !game.Player.SystemView && !game.ShowControls;
             telemetry.text = $"FOUNDRY // SEALED ARMOUR\nINTEGRITY {100 * math.saturate(game.Player.health / game.Player.MaxHealth):0}%    REACTOR {100 * game.Player.energy / (Suit.Capacity + (game.Player.Has(Gear.Capacitor) ? 50 : 0)):0}%\nALT {game.Player.Altitude:0} m    SPEED {math.length(game.Player.Velocity):0} m/s";
+            if (game.Player.InSpace && (game.Player.Has(Gear.Ship) || game.Player.captive)) telemetry.text += $"\nSHIP {math.distance(game.Player.Position, game.Player.ship.position):0} m   RELATIVE SPEED {math.length(game.Player.Velocity - game.Player.ship.velocity):0} m/s";
             reactor.rectTransform.sizeDelta = new Vector2(300 * math.saturate(game.Player.energy / (Suit.Capacity + (game.Player.Has(Gear.Capacitor) ? 50 : 0))), 4);
             reactor.color = game.Player.Powered ? Color.cyan : new Color(1, 0.65f, 0.1f);
-            systems.text = game.Player.Powered ? "WEAPON BUS ONLINE\n1  IMPACT DRIVE\n2  HAND BEAMS\n3  SHOULDER MISSILES\n4  RAIL GAUNTLET\n5  HEMISPHERE LASERS" : "CRITICAL POWER\n1  EMERGENCY FISTS\n\nTHRUSTERS  OFFLINE\nWEAPON BUS  OFFLINE";
-            var front = game.Frontier.Local;
-            radio.text = $"{game.Hermit.Name?.ToUpperInvariant()} // RADIO LINK\nRETURN  TALK    Y  VOICE\nALIENS {math.ceil(front.aliens):0}    DOGS {math.floor(front.dogs):0}";
+            systems.text = game.Outpost.Escape > 0 && game.Stage == Campaign.Citadel ? $"ESCAPE  {math.ceil(game.Outpost.Escape):0}s\nCORE COLLAPSE IMMINENT"
+                : game.Player.Weapon.rail ? $"RAIL CHARGE {game.Battle.RailCharge:0%}\nHOLD FIRE · RELEASE TO SHOOT" : "";
+            radio.text = "";
+
         }
         void OnDestroy() { if (canvas != null) Destroy(canvas.gameObject); }
     }

@@ -17,7 +17,7 @@ namespace Infinigame
         static readonly Color Ink = new Color(0.9f, 0.94f, 1f, 0.92f), Dim = new Color(0.9f, 0.94f, 1f, 0.5f), Faint = new Color(0.9f, 0.94f, 1f, 0.18f);
         static readonly Color Accent = new Color(0.42f, 0.86f, 0.98f, 0.95f), Glass = new Color(0.02f, 0.035f, 0.06f, 0.74f), Shade = new Color(0f, 0.01f, 0.02f, 0.8f);
         // a faint plate behind text that sits straight on the world, so it reads over snow and sand
-        static readonly Color Plate = new Color(0.02f, 0.035f, 0.06f, 0.5f);
+        static readonly Color Plate = new Color(0.02f, 0.035f, 0.06f, 0.88f);
         static readonly Color Harm = new Color(1f, 0.25f, 0.2f, 0.95f);
         const float Typing = 70f, CardStays = 16f, BannerStays = 6f, NewsStays = 4.5f, BriefStays = 10f, Edge = 64f;
 
@@ -26,12 +26,12 @@ namespace Infinigame
             ("ON FOOT", new[]
             {
                 "W A S D|Run", "Mouse|Look", "Space|Jump, hold for thrusters", "W  aloft|Fly where you look", "Shift|Sprint", "F|Talk, take, board the ship", "Click|Fire", "R|Toggle fitted cloak",
-                "1 2 3 4 5|Fists, beam, missiles, rail, hemisphere", "B|Factory uplink", "Right click|Scan what you face", "V|First or third person",
+                "1 2 3 4 5|Fist / beam / missile / rail / sweep", "B|Factory uplink", "Right click|Scan what you face", "V|First or third person",
             }),
             ("IN THE SHIP", new[]
             {
                 "W A S D|Thrust and strafe", "Mouse|Steer", "Space  Ctrl|Climb, descend", "Shift|Boost", "Q  E|Roll", "F|Land, then leave",
-                "Click|Fire", "1 2 3 4 5|Blasters, missiles, beam, rail, nuclear", "T|Autopilot to what you face", "Z|Flight assist", "V|Cockpit or chase view", "Right click|Scan the world ahead",
+                "Click|Fire", "1 2 3 4 5|Blaster / missile / beam / rail / nuke", "T|Autopilot / recall on foot", "Z|Flight assist", "V|Cockpit or chase view", "Right click|Scan the world ahead",
             }),
             ("ANYWHERE", new[]
             {
@@ -65,6 +65,8 @@ namespace Infinigame
         // the radar's contacts: a blip each, on a stalk that shows how far above or below it is
         Image[] blips, stalks;
         Text[] chartColumns;
+        Text escapeText;
+        CanvasGroup escape;
         Text chartFoot;
         RectTransform promptCap, statusPlate, promptPlate, captionPlate;
         Marker[] markers;
@@ -144,7 +146,7 @@ namespace Infinigame
 
             // The system map's table: every world at a glance.
             chart = Group(root, topLeft, new Vector2(56f, -150f), new Vector2(1120f, 420f));
-            Stretch(Fill(chart.transform, centre, Vector2.zero, Vector2.zero, Plate, panel));
+            Stretch(Fill(chart.transform, centre, Vector2.zero, Vector2.zero, new Color(0.02f, 0.035f, 0.06f, 1), panel));
             float[] columns = { 24f, 190f, 340f, 440f, 540f, 650f, 750f, 850f, 920f, 1000f };
             chartColumns = new Text[columns.Length];
             for (int i = 0; i < columns.Length; i++)
@@ -215,15 +217,22 @@ namespace Infinigame
             draft = Label(talk.transform, Vector2.zero, new Vector2(38f, 20f), new Vector2(760f, 30f), 20, TextAnchor.MiddleLeft, Ink);
             talkKeys = Label(talk.transform, new Vector2(1f, 0f), new Vector2(-38f, 26f), new Vector2(900f, 16f), 12, TextAnchor.LowerRight, Dim);
 
+            escape = Group(root, new Vector2(0.5f, 1), new Vector2(0, -105), new Vector2(650, 70));
+            Stretch(Fill(escape.transform, centre, Vector2.zero, Vector2.zero, Plate, panel));
+            escapeText = Label(escape.transform, centre, Vector2.zero, new Vector2(620, 50), 30, TextAnchor.MiddleCenter, Harm);
+            escape.alpha = 0;
             controls = Group(root, centre, new Vector2(0f, 10f), new Vector2(1240f, 520f));
             Stretch(Fill(controls.transform, centre, Vector2.zero, Vector2.zero, Glass, panel));
             for (int column = 0; column < Help.Length; column++)
             {
                 float x = 48f + 400f * column;
                 Label(controls.transform, topLeft, new Vector2(x, -36f), new Vector2(340f, 18f), 13, TextAnchor.UpperLeft, Accent, Help[column].heading);
-                var keys = Label(controls.transform, topLeft, new Vector2(x, -74f), new Vector2(120f, 400f), 16, TextAnchor.UpperLeft, Ink, string.Join("\n", Help[column].rows.Select(row => row.Split('|')[0])));
-                var actions = Label(controls.transform, topLeft, new Vector2(x + 132f, -74f), new Vector2(250f, 400f), 16, TextAnchor.UpperLeft, Dim, string.Join("\n", Help[column].rows.Select(row => row.Split('|')[1])));
-                keys.lineSpacing = actions.lineSpacing = 1.5f;
+                for (int row = 0; row < Help[column].rows.Length; row++)
+                {
+                    string[] entry = Help[column].rows[row].Split('|');
+                    Label(controls.transform, topLeft, new Vector2(x, -74 - row * 31), new Vector2(118, 29), 14, TextAnchor.UpperLeft, Ink, entry[0]);
+                    Label(controls.transform, topLeft, new Vector2(x + 124, -74 - row * 31), new Vector2(248, 29), 14, TextAnchor.UpperLeft, Dim, entry[1]);
+                }
             }
             stats = Label(controls.transform, Vector2.zero, new Vector2(48f, 26f), new Vector2(900f, 16f), 12, TextAnchor.LowerLeft, Dim);
 
@@ -235,7 +244,7 @@ namespace Infinigame
             menuSub = Label(menu.transform, centre, new Vector2(0f, 178f), new Vector2(1600f, 26f), 16, TextAnchor.MiddleCenter, Dim);
             menuNote = Label(menu.transform, centre, new Vector2(0f, 124f), new Vector2(1600f, 68f), 16, TextAnchor.MiddleCenter, Dim);
             menuBar = Fill(menu.transform, centre, Vector2.zero, new Vector2(3f, 30f), Accent);
-            menuItems = new Text[12];
+            menuItems = new Text[16];
             for (int i = 0; i < menuItems.Length; i++)
                 menuItems[i] = Label(menu.transform, centre, new Vector2(0f, 64f - 60f * i), new Vector2(900f, 50f), 30, TextAnchor.MiddleCenter, Ink);
             menuKeys = Label(menu.transform, bottom, new Vector2(0f, 64f), new Vector2(1200f, 18f), 12, TextAnchor.LowerCenter, Dim);
@@ -321,7 +330,7 @@ namespace Infinigame
             text.raycastTarget = false;
             text.text = words;
             // a soft shadow keeps pale text readable over snow, sand and cloud
-            text.gameObject.AddComponent<Shadow>().effectColor = new Color(0f, 0f, 0f, 0.45f);
+            text.gameObject.AddComponent<Shadow>().effectColor = new Color(0f, 0f, 0f, 0.9f);
             return text;
         }
 
@@ -408,13 +417,16 @@ namespace Infinigame
             runText.text = game.Objective;
             charge.rectTransform.sizeDelta = new Vector2(game.Outpost.World < 0 ? 0f : 220f * (1f - (float)game.Outpost.Left / math.max(1, game.Mission.count)), 3f);
             Show(run, playing);
+            escapeText.text = $"CORE COLLAPSE · ESCAPE {math.ceil(game.Outpost.Escape):0}s";
+            Show(escape, playing && game.Stage == Campaign.Citadel && game.Outpost.Escape > 0);
+            if (game.Stage == Campaign.Citadel && game.Outpost.Escape > 0) runText.text = $"ESCAPE · {math.ceil(game.Outpost.Escape):0} SECONDS";
 
             Show(radar, playing, 4f);
 
             // the mission in hand in full
             if (briefed != game.Stage) (briefed, briefSince) = (game.Stage, now);
             bool briefing = !game.Buried && game.Stage < Campaign.Won && !game.Paused && !game.Dead && !hermit.Talking
-                && (player.SystemView || now - Mathf.Max(briefSince, game.Began) < BriefStays);
+                && player.SystemView;
             if (briefing)
             {
                 var mission = game.Mission;
@@ -447,7 +459,7 @@ namespace Infinigame
             {
                 captionText.text = $"<color=#6bdcfa>{hermit.Name.ToUpperInvariant()}</color>     {hermit.Line}";
                 captionPlate.sizeDelta = new Vector2(Mathf.Min(captionText.preferredWidth, 1040f) + 48f, captionText.preferredHeight + 22f);
-                caption.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, player.Seated ? 470f : 236f);
+                caption.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, player.Seated ? 470f : 140f);
             }
             Show(caption, hermit.Remarking && playing, 4f);
             newsText.text = game.Notice;
@@ -487,7 +499,7 @@ namespace Infinigame
             }
             // or as play begins there
             bool arriving = now - Mathf.Max(bannerSince, game.Began) < BannerStays;
-            Show(banner, arriving && playing, arriving ? 2f : 0.7f);
+            Show(banner, player.flying &&  arriving && playing, arriving ? 2f : 0.7f);
 
             // the scanner's card: the entry types itself out, then stays a while
             var entry = scanner.Result;
@@ -541,8 +553,8 @@ namespace Infinigame
                 bool paged = !game.Dead && !game.Confirming, voice = game.Standing != null && paged;
                 bool settings = game.Page == Game.Settings && paged, cheats = game.Page == Game.Cheats && paged;
                 string mission = game.Stage >= Campaign.Won ? "THE SYSTEM IS FREE" : game.Mission.name.ToUpperInvariant();
-                menuTitle.text = game.Dead ? Spaced(player.flying ? "Ship lost" : "You died") : game.Confirming ? "Quit to desktop?" : Spaced(game.Page ?? "Infinigame");
-                menuSub.text = game.Dead ? game.Epitaph.ToUpperInvariant() : game.Confirming ? "All you have won, your journal and the mission you are on are already saved."
+                menuTitle.text = game.Dead ? Spaced(player.flying ? "Ship lost" : "You died") : game.Confirming ? game.Confirmation : Spaced(game.Page ?? "Infinigame");
+                menuSub.text = game.Dead ? game.Epitaph.ToUpperInvariant() : game.Confirming ? "Choose Confirm to proceed or Cancel to return."
                     : cheats ? $"THE MISSION IN HAND IS {mission}"
                     : voice ? game.Standing
                     : settings ? "HOW THE GAME LOOKS AND SOUNDS, AND WHO WRITES FOR IT THROUGH YOUR OWN ACCOUNT"
@@ -555,7 +567,9 @@ namespace Infinigame
                     menuItems[i].gameObject.SetActive(i < items.Length);
                     if (i >= items.Length) continue;
                     // a long page is set closer
-                    menuItems[i].rectTransform.anchoredPosition = new Vector2(0f, 64f - (items.Length > 9 ? 42f : items.Length > 7 ? 52f : 60f) * i);
+                    menuItems[i].rectTransform.anchoredPosition = new Vector2(0f, 64f - (items.Length > 11 ? 32f : items.Length > 9 ? 42f : items.Length > 7 ? 52f : 60f) * i);
+                    menuItems[i].fontSize = items.Length > 11 ? 22 : 30;
+                    menuItems[i].rectTransform.sizeDelta = new Vector2(1100, items.Length > 11 ? 30 : 50);
                     menuItems[i].text = items[i];
                     menuItems[i].color = i == game.Selected ? Ink : Dim;
                 }
@@ -567,28 +581,24 @@ namespace Infinigame
             // the system map's table
             if (player.SystemView)
             {
-                var rows = new List<int> { 0 };
-                rows.AddRange(system.Descriptor.Planets);
-                rows.Insert(math.min(5, rows.Count), system.Station);
-                if (system.Gate >= 0) rows.Add(system.Gate);
-                rows.AddRange(Enumerable.Range(1, worlds.Length - 1).Where(i => worlds[i].kind == BodyKind.Sun));
-                string Column(string head, Func<int, BodyDescriptor, string> cell) => head + "\n" + string.Join("\n", rows.Select(row => cell(row, worlds[row])));
-                int here = system.Descriptor.Planet(system.Reference);
-                chartColumns[0].text = Column("WORLD", (row, world) => (row == here ? "›  " : "    ") + world.name.ToUpperInvariant());
-                chartColumns[1].text = Column("WHAT", (row, world) => world.kind == BodyKind.Sun ? "star" : world.destroyed ? "rubble" : world.kind == BodyKind.Gate ? "gate" : world.kind == BodyKind.Station ? "citadel"
-                    : world.kind == BodyKind.Gas ? world.heat < 100f ? "ice giant" : "gas giant" : world.SeaRadius > 0f ? "living world" : world.air > 0f ? "rock, with air" : "airless rock");
-                chartColumns[2].text = Column("RADIUS", (row, world) => Distance(world.radius));
-                chartColumns[3].text = Column("GRAVITY", (row, world) => world.kind == BodyKind.Station ? "none" : $"{world.surfaceGravity / 9.81f:0.0} g");
-                chartColumns[4].text = Column("WARMTH", (row, world) => world.kind == BodyKind.Station ? "" : $"{Climate.Celsius(world.heat):#,0} °C");
-                chartColumns[5].text = Column("DAY", (row, world) => world.spinPeriod == 0 ? "" : Scan.Span(world.spinPeriod));
-                chartColumns[6].text = Column("YEAR", (row, world) => row == 0 ? "" : Scan.Span(world.orbit.period));
-                // as astronomers count it: a world that turns backwards is one tipped right over
-                chartColumns[7].text = Column("TILT", (row, world) => world.spinPeriod == 0 ? "" : $"{(world.spinPeriod < 0 ? 180f - math.degrees(world.tilt) : math.degrees(world.tilt)):0}°");
-                chartColumns[8].text = Column("MOONS", (row, world) => system.Descriptor.Moons(row) is int moons && moons > 0 ? moons.ToString() : "");
-                chartColumns[9].text = Column("FROM YOU", (row, world) => Distance(math.max(0f, Vector3.Distance(player.Position - system.Anchor, system.Bodies[row].transform.position) - world.radius)));
-                chartFoot.text = $"PRESENCE {game.Presence.Reach(system.Reference):0%}  ·  {game.Objective}   ·   FACE A WORLD AND PRESS T TO FLY THERE";
+                var rows = Enumerable.Range(1, worlds.Length - 1).Where(i => system.Charted(i)
+                    && (worlds[i].kind != BodyKind.Station || game.Stage >= Campaign.Citadel)).ToList();
+                int selected = rows.IndexOf(game.MapSelection);
+                if (selected >= 12) rows = rows.Skip(selected - 11).Take(12).ToList(); else rows = rows.Take(12).ToList();
+                string Column(string head, Func<int, string> cell) => head + "\n" + string.Join("\n", rows.Select(cell));
+                chartColumns[0].text = Column("DESTINATION", row => (row == game.MapSelection ? "› " : "  ") + (worlds[row].kind == BodyKind.Station ? "CITADEL" : worlds[row].name.ToUpperInvariant()));
+                chartColumns[1].text = Column("FOOTHOLD", row => game.Frontier.State(row).shipyard ? "SHIPYARD" : game.Frontier.State(row).factory ? "FACTORY" : $"{game.Frontier.State(row).kills}/{War.RequiredKills(game.Frontier.State(row))} kills");
+                chartColumns[2].text = Column("ALIENS", row => $"{math.ceil(game.Frontier.State(row).aliens):0}");
+                chartColumns[3].text = Column("ROBODOGS", row => $"{math.floor(game.Frontier.State(row).dogs):0}");
+                chartColumns[4].text = Column("HOSTILE SHIPS", row => $"{math.ceil(game.Frontier.State(row).alienShips):0}");
+                chartColumns[5].text = Column("OUR SHIPS", row => $"{math.floor(game.Frontier.State(row).ships):0}");
+                chartColumns[6].text = Column("MIND", row => game.Frontier.State(row).mindDead ? "SILENT" : "ACTIVE");
+                chartColumns[7].text = Column("WAR", row => game.Frontier.State(row).aliens <= 0 && game.Frontier.State(row).alienShips <= 0 ? "WON" : "ACTIVE");
+                chartColumns[8].text = "";
+                chartColumns[9].text = Column("DISTANCE", row => Distance(math.max(0f, Vector3.Distance(player.Position - system.Anchor, system.Bodies[row].transform.position) - worlds[row].radius)));
+                chartFoot.text = "PAUSED · UP/DOWN SELECT · T SET AUTOPILOT / RECALL SHIP · RELEASE TAB TO CONTINUE";
             }
-            Show(chart, player.SystemView && !planetView && !game.Paused && !game.Dead, 6f);
+            Show(chart, player.SystemView && !game.Paused && !game.Dead, 6f);
 
             if (game.ShowControls) stats.text = "ESC TO CLOSE";
             Show(controls, game.ShowControls && !game.Paused, 8f);
@@ -603,7 +613,7 @@ namespace Infinigame
             Vector3 eye = view.transform.position, ground = system.Bodies[system.Reference].transform.position, self = player.Position - system.Anchor;
             Vector2 middle = ((RectTransform)canvas.transform).rect.size / 2f;
             // how far off another world is means something only from space: from the ground they are names in the sky
-            bool inSpace = player.flying && (system.Reference == 0 || player.Altitude > Player.Ceiling);
+            bool inSpace = player.InSpace;
             if (!game.Paused && !game.Dead && !hermit.Talking && !game.Buried)
             {
                 // The world the mission is on stands out from the rest: or the planet it circles, from where a moon has no mark of its own.
@@ -611,9 +621,9 @@ namespace Infinigame
                 int goal = outpost.World >= 0 ? outpost.World : -1;
                 if (goal >= 0 && !system.Charted(goal)) goal = system.Descriptor.Planet(goal);
                 for (int i = 0; i < system.Bodies.Length && !planetView; i++)
-                    if ((i != system.Reference || player.SystemView) && system.Charted(i))
+                    if ((inSpace || player.SystemView) && (i != system.Reference || player.SystemView) && system.Charted(i) && (worlds[i].kind != BodyKind.Station || game.Stage >= Campaign.Citadel))
                         // over the map the table has every distance, so the names stand alone and crowd each other less
-                        Mark(system.Bodies[i].transform.position, worlds[i].name.ToUpperInvariant(),
+                        Mark(system.Bodies[i].transform.position, worlds[i].kind == BodyKind.Station ? "ENEMY CITADEL" : worlds[i].name.ToUpperInvariant(),
                             player.SystemView || !inSpace ? "" : worlds[i].kind == BodyKind.Station && game.Battle.Base <= 0f ? "DESTROYED"
                                 : Distance(math.max(0f, Vector3.Distance(self, system.Bodies[i].transform.position) - worlds[i].radius)),
                             worlds[i].kind == BodyKind.Station ? Harm : i == goal ? Accent : Ink, false, i, i == goal && inSpace);
@@ -623,7 +633,7 @@ namespace Infinigame
                     Mark(ground + (Vector3)(outpost.Prize + math.normalizesafe(outpost.Prize) * 3f), Campaign.Name(game.Mission.wins[0]) + (game.Mission.wins.Length > 1 ? " AND MORE" : ""),
                         Distance(math.distance(player.Position, outpost.Prize)), Accent, false, -1, true);
                 else if (charting && outpost.World == system.Reference && game.Stage < Campaign.Citadel)
-                    Mark(ground + (Vector3)(outpost.Position + math.normalize(outpost.Position) * 20f), game.Mission.name.ToUpperInvariant(), Distance(math.distance(player.Position, outpost.Position)), Harm, false, -1, true);
+                    Mark(ground + (Vector3)((game.Goal ?? outpost.Position) + math.normalize(outpost.Position) * 3f), game.Stage == 2 && !outpost.Rooms.walls.Last().broken ? "DIG INTO THE BURROW" : game.Mission.name.ToUpperInvariant(), Distance(math.distance(player.Position, game.Goal ?? outpost.Position)), Accent, false, -1, true);
                 float3 walker = player.walker.position;
                 if (charting && !player.flying && (player.Has(Gear.Ship) || player.captive) && math.distance(walker, player.ship.position) > 25f)
                     Mark(player.ship.position - system.Anchor, player.captive ? "UNMANNED SHIP" : "SHIP", Distance(math.distance(walker, player.ship.position)), Ink, false, -1, true);
@@ -636,7 +646,8 @@ namespace Infinigame
                 foreach (var foe in game.Battle.Foes)
                 {
                     float away = math.distance(foe.position, player.Position);
-                    if (!playing) break;
+                    if (!playing || !player.Powered) break;
+                    if ((foe.kind == FoeKind.Raider) != inSpace || away > (inSpace ? 2500 : 80)) continue;
                     if (!outpost.Visible((float3)eye + system.Anchor, foe.position)) continue;
                     Vector3 at = foe.position - system.Anchor, lead = at + (Vector3)((foe.velocity - player.Velocity) * (away / math.max(1, player.Weapon.speed)));
                     if (foe.kind != FoeKind.Base) Mark(at, foe.kind == FoeKind.Raider ? "RAIDER" : foe.kind == FoeKind.Mind ? "MIND" : foe.kind == FoeKind.Sentry ? foe.caste.ToString().ToUpperInvariant() : "DRONE", Distance(away), Harm, true);
@@ -683,6 +694,8 @@ namespace Infinigame
                 marker.icon.color = marker.name.color = colour;
                 marker.icon.enabled = !boxed;
                 marker.box.enabled = boxed;
+                marker.name.fontSize = guide ? 19 : 13;
+                marker.name.rectTransform.sizeDelta = new Vector2(550, 28);
                 marker.name.text = name;
                 marker.detail.text = detail;
                 // A name that would lie over another steps aside, and one with nowhere left to go gives

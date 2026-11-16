@@ -23,27 +23,23 @@ The provider page shows the route in use, selected model, requests and token cou
 
 ## Voice choices
 
-Text generation and speaking the resulting words are separate. The game currently uses **free local macOS speech**, defaulting to Daniel in British English at natural pitch with the previous modulation removed. Settings > Spoken voices offers System voice, Daniel, Eddy and Text only. An unavailable named voice falls back to the system voice. Windows and iPad show text.
+Text generation and speaking are separate. The game uses free local macOS speech. New preferences default to **Zarvox**, an intentionally synthetic robot voice; an existing saved choice is preserved. Settings > Spoken voices offers Zarvox, Daniel and Eddy in British English, System voice and Text only. An unavailable named voice falls back to the system voice.
 
-For another free voice, download one under macOS Accessibility > Read & Speak, select it as the system voice, then choose System voice in the game. See [Apple's voice settings](https://support.apple.com/en-euro/guide/mac-help/mchlp2290/27/mac/27).
-
-Options for a later voice pass:
-
-| Option | Benefit | Cost and work |
+| Platform | Implemented now | Other local options |
 |---|---|---|
-| Local downloaded Mac voice | Offline, no network latency or usage charges | Already supported; quality depends on the installed voice |
-| Pre-generated ElevenLabs mission lines | Audition a consistent character voice and reuse recordings | Authoring/import work; paid commercial plan for shipped audio. Dynamic replies can remain text |
-| Live ElevenLabs speech | The same voice reads improvised replies | Another key, network call, playback delay and usage bill |
-| OpenAI Realtime speech | Conversational audio | A separate Realtime integration and audio billing; more work than the current text pipeline |
+| macOS | Zarvox, Daniel, Eddy and the system voice | Download a voice in Accessibility > Read & Speak, select it as the system voice and choose System voice in the game. Fred, Ralph and Trinoids are other synthetic character choices where installed. |
+| iPhone/iPad | Text replies, native voice input | Apple's downloaded accessibility voices are a possible future AVSpeechSynthesizer integration. Selecting an OS voice does not currently make the game speak. |
+| Windows/SteamVR | Text replies, OS dictation input | An installed SAPI voice would be a small future integration. Windows Narrator's natural voices are available for Narrator; they are not automatically game voices. |
+| Steam Deck through Proton | Text replies and typed input | Local speech would need a separate Linux/Proton bridge. Nothing downloads a voice model or calls paid speech. |
 
-For a small next step, audition a few pre-generated mission lines before adding live speech. [ElevenLabs currently lists Starter at $6/month with 30,000 credits and a commercial licence](https://elevenlabs.io/pricing), excluding tax; generation allowances vary by model. No paid speech service is enabled in the game.
-
-OpenAI's older `tts-1`, `tts-1-hd` and `gpt-4o-mini-tts` speech models are scheduled to shut down on 6 January 2027. Its recommended replacement uses the Realtime API, so it is not a drop-in change to the old speech endpoint. See [OpenAI's current speech guide](https://developers.openai.com/api/docs/guides/text-to-speech). Voice options checked on 15 November 2026.
+See [Apple's Mac voice settings](https://support.apple.com/en-euro/guide/mac-help/mchlp2290/27/mac/27) and [Microsoft's Narrator voice settings](https://support.microsoft.com/en-us/accessibility/windows/narrator/chapter-7-customizing-narrator). This pass keeps non-Mac output as text rather than adding several speech backends. Pre-recorded lines or a paid service remain optional future choices.
 
 ## Voice input and bounded state
 
 Press Y, Mic on a mobile device or left grip plus right-stick click in VR to start dictation. Press it again to finish. The transcript is sent as a normal companion question. Permission is requested only when you choose to speak. Apple builds require on-device British English recognition; no audio is sent to Apple. If the language model is unavailable, the transcript receives an authored reply. If local dictation is unavailable or permission is denied, type with Return instead. Windows uses its OS speech recogniser and its privacy settings. The Unity editor uses typed input; native voice is enabled in player builds. Tests inject a transcript and never open the microphone.
 
-On each question the game writes `companion-state.json` in Unity's per-user persistent data directory. It contains stage, system depth, location, objective, suit health/power, hull condition, altitude and at most 24 world summaries: alien/dog/ship populations and factory flags. It includes no keys or audio. The current world comes first. Story instructions are capped at 4,000 characters, history at six 240-character lines and the question at 400 characters. Scanner facts are capped at 1,200 characters. No simulation tick calls an LLM.
+On each question the game writes `companion-state.json` in Unity's per-user persistent data directory. It contains stage, system depth, location, objective, suit health/power, hull condition, altitude and at most 24 world summaries: alien/robodog/ship populations and factory flags. It includes no keys or audio. The current world comes first. Story instructions are capped at 4,000 characters, history at six 240-character lines and the question at 400 characters. Scanner facts are capped at 1,200 characters. No simulation tick calls an LLM.
 
 Apple's speech permission and local-only requirements are documented in [speech authorisation](https://developer.apple.com/documentation/Speech/asking-permission-to-use-speech-recognition) and [on-device recognition](https://developer.apple.com/documentation/speech/sfspeechrecognitionrequest/requiresondevicerecognition). Windows input uses Unity's [DictationRecognizer](https://docs.unity.com/en-us/engine/6000.7/script-reference/unityengine/windows/speech/dictationrecognizer). Microphone permissions, language availability and recognition quality still require testing on the target hardware.
+
+The phrases “recall ship”, “pick me up”, “come get me” and “land near me” invoke the same ship recall as T. They are handled locally before any model request, whether typed or dictated. Other questions use the selected model when available, with authored guidance as the fallback. Voice input submits the transcript when you finish recording; Return submits typed text. It is not an always-listening assistant.

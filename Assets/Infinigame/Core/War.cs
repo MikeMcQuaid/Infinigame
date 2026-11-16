@@ -8,7 +8,8 @@ namespace Infinigame.Core
     {
         public int world, rank, depth, kills, shipKills;
         public float aliens, dogs, alienShips, ships;
-        public bool factory, shipyard, established;
+        public bool factory, shipyard, established, mindDead;
+        public float[] exposure = new float[10];
     }
 
     // Populations represent the whole world; nearby units are a bounded sample of that war.
@@ -20,11 +21,18 @@ namespace Infinigame.Core
             aliens = 90 + rank * 35 + (depth - 1) * 100,
             alienShips = 8 + rank * 3 + (depth - 1) * 12,
         };
+        public static float Resistance(Front front, int weapon) => front.mindDead || front.exposure == null || weapon < 0 || weapon >= front.exposure.Length ? 1 : 1 / (1 + math.min(2.3f, front.exposure[weapon] * 0.035f));
+        public static void Learn(Front front, int weapon, float amount)
+        {
+            if (front.mindDead) return;
+            if (front.exposure == null || front.exposure.Length != 10) front.exposure = new float[10];
+            front.exposure[weapon] = math.min(100, front.exposure[weapon] + amount);
+        }
         public static int RequiredKills(Front front) => 4 + front.rank + (front.depth - 1) * 2;
         public static bool CanSpread(int origin, int destination) => math.abs(origin - destination) <= 1;
         public static bool Build(Front front, bool ships)
         {
-            if (ships ? front.shipyard || !front.factory : front.factory || front.kills < RequiredKills(front)) return false;
+            if (ships ? front.shipyard || !front.factory || front.aliens > 0 : front.factory || front.kills < RequiredKills(front)) return false;
             if (ships) { front.shipyard = true; front.ships = math.max(2, front.ships); }
             else { front.factory = true; front.dogs = math.max(8 + front.rank * 4, front.dogs); }
             return true;
