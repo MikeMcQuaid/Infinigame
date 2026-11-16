@@ -87,7 +87,7 @@ assembly Infinigame.Core $sources/Core
 assembly Infinigame.Runtime $sources/Runtime @$out/editor.rsp -r:$out/Infinigame.Core.dll -r:$out/Unity.InputSystem.dll -r:$out/UnityEngine.UI.dll
 assembly Infinigame.Editor $sources/Editor @$out/editor.rsp
 assembly Infinigame.Tests.EditMode $sources/Tests/EditMode -r:$out/Infinigame.Core.dll -r:"$nunit"
-assembly Infinigame.Tests.PlayMode $sources/Tests/PlayMode -r:$out/Infinigame.Core.dll -r:$out/Infinigame.Runtime.dll -r:"$nunit" -r:$out/UnityEngine.TestRunner.dll -r:$out/UnityEngine.UI.dll
+assembly Infinigame.Tests.PlayMode $sources/Tests/PlayMode -r:$out/Infinigame.Core.dll -r:$out/Infinigame.Runtime.dll -r:"$nunit" -r:$out/UnityEngine.TestRunner.dll -r:$out/UnityEngine.UI.dll -r:$out/Unity.InputSystem.dll
 
 echo "==> Running EditMode tests outside Unity"
 MONO_PATH="$mono/lib/mono/unityjit-macos:$mono/lib/mono/unityjit-macos/Facades:$managed:$(dirname "$nunit"):$out" \

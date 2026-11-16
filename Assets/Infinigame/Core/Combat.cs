@@ -20,7 +20,7 @@ namespace Infinigame.Core
         public float health, cooldown, size;
         // A raider fires in bursts, and breaks away after each pass before turning back.
         public int burst;
-        public bool away, scattered, friendly;
+        public bool away, scattered, friendly, stationary, guardian, outerGuard, protectedCore;
         public Alert alert;
         public float suspicion, recoil, attack, shield, burrowing;
         public bool clever;
@@ -35,7 +35,7 @@ namespace Infinigame.Core
         // homing is how fast it can turn towards a foe, in radians a second; blast is how wide a hole it leaves
         public float life, damage, homing, blast;
         // level: a landing charge, which leaves the ground flat where it bursts instead of holed
-        public bool hostile, level;
+        public bool hostile, level, airOnly;
     }
 
     // Something the player fires.
@@ -49,7 +49,7 @@ namespace Infinigame.Core
         // throws the aim up by and a widening of its spread with each shot fired in a hurry.
         public int clip;
         public float reload, kick, bloom;
-        public bool beam, rail, melee, sweep;
+        public bool beam, rail, melee, sweep, airOnly;
         public float energy;
         // what has to have been won before it can be used
         public Gear needs;
@@ -80,9 +80,9 @@ namespace Infinigame.Core
         public static readonly Weapon[] Guns =
         {
             new Weapon { name = "Pulse cannons", speed = 900f, damage = 12f, period = 0.09f, blast = 2.5f, life = 3f, pellets = 1, voice = 0, needs = Gear.Ship },
-            new Weapon { name = "Seeker missiles", speed = 420f, damage = 60f, period = 1.1f, homing = 2.4f, blast = 9f, life = 7f, pellets = 1, voice = 1, needs = Gear.Missiles },
+            new Weapon { name = "Seeker missiles", speed = 420f, damage = 60f, period = 1.1f, homing = 2.4f, blast = 9f, life = 7f, pellets = 2, voice = 1, needs = Gear.Missiles },
             new Weapon { name = "Lance", beam = true, speed = 3500f, damage = 56f, period = 0f, blast = 4f, life = 1.2f, pellets = 1, voice = 2, needs = Gear.Lance },
-            new Weapon { name = "Railgun", damage = 240, period = 2.5f, rail = true, voice = 5, needs = Gear.ShipRail },
+            new Weapon { name = "Railgun", damage = 650, pellets = 2, period = 2.5f, rail = true, voice = 5, needs = Gear.ShipRail },
             new Weapon { name = "Nuclear torpedoes", speed = 260f, damage = 800f, period = 3.5f, blast = 60f, life = 30f, pellets = 1, voice = 10, needs = Gear.Nukes },
         };
 
@@ -90,13 +90,14 @@ namespace Infinigame.Core
         {
             new Weapon { name = "Powered fists", speed = 100, damage = 70, period = 0.45f, blast = 2f, life = 0.04f, pellets = 1, voice = 4, melee = true, needs = Gear.Suit },
             new Weapon { name = "Gauntlet beam", speed = 1000, damage = 42, period = 0, life = 0.25f, voice = 2, beam = true, energy = 24, needs = Gear.Beams },
-            new Weapon { name = "Back missiles", speed = 240, damage = 70, period = 1.2f, homing = 3f, blast = 8f, life = 9, pellets = 1, voice = 1, energy = 15, needs = Gear.BackMissiles },
+            new Weapon { name = "Back missiles", speed = 240, damage = 70, period = 3.4f, airOnly = true, homing = 3f, blast = 8f, life = 9, pellets = 1, voice = 1, energy = 15, needs = Gear.BackMissiles },
             new Weapon { name = "Rail gauntlet", speed = 10000, damage = 140, period = 2.4f, life = 0.2f, voice = 5, rail = true, energy = 40, needs = Gear.Rail },
             new Weapon { name = "Hemisphere lasers", damage = 18, period = 0.12f, sweep = true, energy = 3, voice = 0, needs = Gear.Nova },
         };
 
         public static void Hurt(ref Foe foe, float damage)
         {
+            if (foe.protectedCore) return;
             float absorbed = math.min(foe.shield, damage);
             foe.shield -= absorbed; foe.health -= damage - absorbed;
         }
@@ -160,7 +161,7 @@ namespace Infinigame.Core
                 into.Add(new Bolt
                 {
                     position = from, velocity = inherit + math.normalize(direction + rnd.NextFloat3Direction() * ((weapon.spread + wild) * rnd.NextFloat())) * weapon.speed,
-                    damage = weapon.damage, life = weapon.life, homing = weapon.homing, blast = weapon.blast,
+                    damage = weapon.damage, life = weapon.life, homing = weapon.homing, blast = weapon.blast, airOnly = weapon.airOnly,
                 });
         }
 
@@ -174,7 +175,7 @@ namespace Infinigame.Core
             foe.cooldown -= dt;
 
             if (foe.kind == FoeKind.Mind) return false;
-            if (foe.scattered)
+            if (foe.scattered && !foe.stationary)
             {
                 foe.velocity = math.normalizesafe(foe.kind == FoeKind.Sentry ? Walker.Project(foe.position - target, up) : foe.position - target, foe.forward) * 12f;
                 foe.position += foe.velocity * dt;
@@ -183,15 +184,17 @@ namespace Infinigame.Core
                 else foe.position = over * math.max(math.length(foe.position), Ship.Surface(body, over) + foe.size);
                 return false;
             }
-            if (foe.kind == FoeKind.Base)
+            if (foe.kind == FoeKind.Base || foe.stationary)
             {
+                if (foe.stationary && body.kind == BodyKind.Rock) foe.position = up * (body.GroundRadius(up) + 1);
                 // the station does not move: its guns track whatever is in reach and fire from its hull
                 if (distance > TurretReach || foe.cooldown > 0f) return false;
-                foe.cooldown = 0.45f + rnd.NextFloat(0.3f);
+                foe.cooldown = (foe.stationary ? 1.6f : 0.45f) + rnd.NextFloat(0.3f);
                 float3 muzzle = foe.position + to / distance * foe.size;
                 float flight = math.distance(target, muzzle) / TurretBolt;
                 shot = Fire(muzzle, math.normalize(target + targetVelocity * flight - muzzle + rnd.NextFloat3Direction() * (0.012f * distance)), float3.zero, TurretBolt, Damage(foe.kind, depth), true, 3f);
                 shot.life = 5f;
+                if (foe.stationary) { shot.homing = 0.7f; shot.velocity *= 0.22f; }
                 return true;
             }
 
@@ -270,7 +273,7 @@ namespace Infinigame.Core
                     foreach (var foe in foes)
                     {
                         if (bolt.hostile) break;
-                        if (foe.friendly || foe.health <= 0) continue;
+                        if (foe.friendly || foe.health <= 0 || bolt.airOnly && foe.kind != FoeKind.Raider) continue;
                         float3 to = foe.position - bolt.position;
                         float away = math.length(to);
                         if (away >= nearest || math.dot(to, heading) < 0.3f * away) continue;
@@ -382,6 +385,19 @@ namespace Infinigame.Core
         {
             float along = math.saturate(math.dot(centre - from, step) / math.max(math.lengthsq(step), 1e-9f));
             return math.distancesq(from + step * along, centre) < radius * radius;
+        }
+
+        public static int AssistedTarget(List<Foe> foes, float3 from, float3 forward, float reach)
+        {
+            int target = -1; float closest = math.cos(math.radians(4));
+            for (int i = 0; i < foes.Count; i++)
+            {
+                var foe = foes[i];
+                if (foe.friendly || foe.health <= 0 || foe.protectedCore || math.distance(from, foe.position) > reach) continue;
+                float alignment = math.dot(forward, math.normalizesafe(foe.position - from));
+                if (alignment > closest) { closest = alignment; target = i; }
+            }
+            return target;
         }
 
         // Swings one direction towards another by no more than an angle.

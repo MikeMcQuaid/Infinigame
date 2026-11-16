@@ -19,7 +19,7 @@ namespace Infinigame
         public Vector3 turn;            // pitch, yaw and roll being asked for, each -1 to 1
         public float pitch, bank;       // the ship's attitude against the local horizon, radians
         public bool boost, assist, landing, landed, autopilot, irradiated, firing, warp;   // warp: a warp drive is aboard and could be used
-        public int weapon;              // index into Combat.Guns: cannons, missiles, lance, torpedoes
+        public int weapon;              // index into Combat.Guns: cannons, missiles, lance, railgun, torpedoes
         public int weapons;             // bit i set when Combat.Guns[i] has been won
     }
 
@@ -32,7 +32,7 @@ namespace Infinigame
         // one weapon to the next, in degrees.
         public const float Sweep = 120f, Detent = 40f;
         // The lamps of the ship's weapons, in the order of Combat.Guns.
-        public static readonly string[] Racks = { "1 CANNON", "2 MISSILE", "3 LANCE", "4 TORPEDO" };
+        public static readonly string[] Racks = { "1 CANNON", "2 MISSILE", "3 LANCE", "4 RAIL", "5 NUKE" };
 
         // What the instruments are lettered in, and a lamp that is not lit.
         internal static readonly Color Ink = new Color(0.55f, 0.95f, 1f), Dark = new Color(0.015f, 0.02f, 0.025f);
@@ -48,6 +48,39 @@ namespace Infinigame
         }
 
         readonly Dictionary<string, Part> parts = new Dictionary<string, Part>();
+        static readonly string[] controls = { "1 CANNON", "2 MISSILE", "3 LANCE", "4 RAIL", "5 NUKE", "ASSIST", "AUTO", "LAND", "Selector", "Stick/Trigger", "RangeScreen" };
+
+        public int ScreenControl(Vector2 point, Camera camera)
+        {
+            int chosen = -1; float nearest = Mathf.Pow(Mathf.Max(12, Screen.height * 0.022f), 2);
+            for (int i = 0; i < controls.Length; i++)
+            {
+                Vector3 at = camera.WorldToScreenPoint(At(controls[i]).transform.position);
+                float distance = ((Vector2)at - point).sqrMagnitude;
+                if (at.z > 0 && distance < nearest) { nearest = distance; chosen = i; }
+            }
+            return chosen;
+        }
+        public int TouchControl(Vector3 finger)
+        {
+            int chosen = -1; float nearest = 0.04f;
+            for (int i = 0; i < controls.Length; i++)
+            {
+                float distance = Vector3.Distance(finger, At(controls[i]).transform.position);
+                if (distance < nearest) { nearest = distance; chosen = i; }
+            }
+            return chosen;
+        }
+        public static void Activate(int control, ref Controls input)
+        {
+            if (control >= 0 && control < 5) input.select = control + 1;
+            if (control == 5) input.toggleAssist = true;
+            if (control == 6) input.travel = true;
+            if (control == 7) input.interact = true;
+            if (control == 8) input.cycle = 1;
+            if (control == 9) input.fire = true;
+            if (control == 10) input.systemView = true;
+        }
 
         public void Show(in Readings readings)
         {

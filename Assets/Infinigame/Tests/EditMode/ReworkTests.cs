@@ -38,6 +38,7 @@ namespace Infinigame.Tests
             var front = War.Create(3, 1, 0);
             front.kills = War.RequiredKills(front);
             Assert.IsTrue(War.Build(front, false));
+            front.mindDead = true;
             float initial = front.dogs;
             for (int i = 0; i < 600; i++) War.Step(front, 1);
             Assert.AreEqual(0, front.aliens);

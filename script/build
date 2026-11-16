@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 
 # macOS defaults can leave the generated plist writable only by the previous builder.
 plist=Build/Infinigame.app/Contents/Info.plist
-if [ -f "$plist" ] && [ ! -w "$plist" ]; then rm "$plist"; fi
+if [ -f "$plist" ] && [ ! -w "$plist" ]; then rm -f "$plist"; fi
 
 script/lib/build-target StandaloneOSX Infinigame.Editor.EditorTools.BuildMac Logs/build.log
 echo "==> Built $PWD/Build/Infinigame.app"

@@ -8,7 +8,8 @@ namespace Infinigame.Core
     public class Ruin
     {
         public int stage;
-        public bool open;
+        public bool open, destroyed;
+        public double detonates;
         public List<int> broken = new List<int>();
     }
 

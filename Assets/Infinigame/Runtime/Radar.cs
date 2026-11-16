@@ -13,7 +13,7 @@ namespace Infinigame
         Transform globe;
         readonly List<Transform> contacts = new List<Transform>();
         Mesh marker;
-        Material near, far, goal;
+        Material near, far, goal, air;
         void Start()
         {
             game = FindAnyObjectByType<Game>();
@@ -21,18 +21,19 @@ namespace Infinigame
             marker = Shapes.Sphere(0.045f, 10);
             near = new Material(Resources.Load<Shader>("RadarContact")); near.SetColor("_Colour", new Color(1, 0.25f, 0.12f, 1));
             far = new Material(near); far.SetColor("_Colour", new Color(1, 0.55f, 0.35f, 0.5f)); far.SetFloat("_Hollow", 1);
+            air = new Material(near); air.SetColor("_Colour", new Color(0.85f, 0.45f, 1, 1));
             goal = new Material(near); goal.SetColor("_Colour", new Color(0.2f, 1, 1, 1));
         }
         void LateUpdate()
         {
-            if (globe == null) return;
+            if (globe == null || !game.Ready) return;
             bool visible = !game.Paused && !game.ShowControls && !game.Dead && !game.Hermit.Talking && !game.Player.SystemView && !game.Buried && !game.Frontier.Collapsing;
             globe.gameObject.SetActive(visible);
             int used = 0;
             var camera = Camera.main;
-            transform.SetPositionAndRotation(camera.ViewportToWorldPoint(new Vector3(0.87f, 0.19f, 3)), camera.transform.rotation);
+            transform.SetPositionAndRotation(camera.ViewportToWorldPoint(new Vector3(0.87f, DeviceControls.Touch ? 0.66f : 0.19f, 3)), camera.transform.rotation);
             transform.localScale = Vector3.one * 0.34f;
-            void Contact(float3 position, bool objective)
+            void Contact(float3 position, bool objective, bool airborne = false)
             {
                 float3 local = camera.transform.InverseTransformDirection(position - game.Player.Position);
                 local = math.normalizesafe(local, new float3(0, 0, 1));
@@ -42,17 +43,19 @@ namespace Infinigame
                 var contact = contacts[used++];
                 contact.gameObject.SetActive(true);
                 contact.localPosition = local * 1.05f;
-                contact.GetComponent<MeshRenderer>().sharedMaterial = objective ? goal : local.z > 0 ? far : near;
+                contact.GetComponent<MeshRenderer>().sharedMaterial = objective ? goal : airborne ? air : local.z > 0 ? far : near;
+                contact.localScale = airborne ? new Vector3(1.6f, 0.7f, 1) : Vector3.one;
             }
             if (visible)
             {
-                foreach (var foe in game.Battle.Foes) if (game.Player.Powered && foe.health > 0 && !foe.friendly && (foe.kind == FoeKind.Raider) == game.Player.InSpace && math.distance(foe.position, game.Player.Position) < (game.Player.InSpace ? 2500 : 80)) Contact(foe.position, false);
+                foreach (var foe in game.Battle.Foes) if (foe.health > 0 && !foe.friendly && (!game.Player.InSpace || foe.kind == FoeKind.Raider) && math.distance(foe.position, game.Player.Position) < (game.Player.InSpace ? 2500 : 500)) Contact(foe.position, false, foe.kind == FoeKind.Raider || foe.kind == FoeKind.Drone);
                 if (game.Goal is float3 position) Contact(position, true);
             }
             for (int i = used; i < contacts.Count; i++) contacts[i].gameObject.SetActive(false);
         }
         void OnDestroy()
         {
+            if (air != null) Destroy(air);
             if (near != null) Destroy(near);
             if (far != null) Destroy(far);
             if (goal != null) Destroy(goal);

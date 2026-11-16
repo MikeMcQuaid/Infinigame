@@ -124,7 +124,7 @@ namespace Infinigame
             smoke.SetTexture("_Billows", Billows());
             glare = new Material(Resources.Load<Shader>("Spark")) { enableInstancing = true };
             iron = Shapes.Hull(new Color(0.3f, 0.26f, 0.24f), 0.7f);
-            flesh = Shapes.Solid(Surface.Chitin, new Color(0.15f, 0.65f, 0.45f), true);
+            flesh = Shapes.Solid(Surface.Chitin, new Color(0.38f, 0.035f, 0.6f), true);
             puffLooks = new MaterialPropertyBlock();
             sparkLooks = new MaterialPropertyBlock();
             for (int i = 0; i < glints.Length; i++)
@@ -180,13 +180,26 @@ namespace Infinigame
             });
         }
 
+        readonly List<Transform> stains = new List<Transform>();
+        public void Bleed(float3 position, float size)
+        {
+            var body = game.System.ReferenceBody;
+            if (body.kind != BodyKind.Rock) return;
+            float3 up = math.normalizesafe(position);
+            var pool = Shapes.Part(game.System.Bodies[game.System.Reference].transform, "Violet ichor pool", Shapes.Rock(3), flesh,
+                up * (body.GroundRadius(up) + 0.035f), new Vector3(size, 0.035f, size * 0.7f), false).transform;
+            pool.localRotation = Quaternion.FromToRotation(Vector3.up, up);
+            pool.gameObject.AddComponent<IchorPool>(); stains.Add(pool);
+            while (stains.Count > 48) { if (stains[0] != null) Destroy(stains[0].gameObject); stains.RemoveAt(0); }
+        }
         public void Flesh(float3 position, float3 normal, float size, float3 velocity)
         {
+            if (math.distance(position, game.Player.Position) < 5) game.GetComponent<Arms>().Stain(flesh);
             for (int i = 0; i < 12; i++)
             {
                 float3 spray = math.normalizesafe(normal + rnd.NextFloat3Direction()) * rnd.NextFloat(2, 9);
                 Add(new Puff { position = position, velocity = spray, drift = velocity, life = 0.7f, from = 0.06f * size, to = 0.18f * size,
-                    colour = new float3(0.08f, 0.55f, 0.32f), shade = 0.7f, opacity = 0.8f, drag = 2, seed = rnd.NextFloat() });
+                    colour = new float3(0.4f, 0.025f, 0.7f), shade = 0.7f, opacity = 0.8f, drag = 2, seed = rnd.NextFloat() });
                 if (i < 5 && chunkCount < Most)
                 {
                     Shed(position, velocity + spray, rnd.NextFloat(0.08f, 0.22f) * size, 3);

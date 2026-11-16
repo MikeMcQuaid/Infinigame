@@ -11,11 +11,37 @@ namespace Infinigame
     public class Speech : MonoBehaviour
     {
         public static bool Muted;
+#if UNITY_STANDALONE_WIN
+        public static string Tool = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell/v1.0/powershell.exe");
+#elif UNITY_IOS && !UNITY_EDITOR
+        public static string Tool = "native-ios";
+        [System.Runtime.InteropServices.DllImport("__Internal")] static extern void InfinigameSpeak(string text, bool robot);
+        [System.Runtime.InteropServices.DllImport("__Internal")] static extern bool InfinigameSpeaking();
+        [System.Runtime.InteropServices.DllImport("__Internal")] static extern void InfinigameSilence();
+#else
         public static string Tool = "/usr/bin/say";
+#endif
         public static string Choice = "Daniel (English (UK))";
 
         AudioSource source;
-        int asked;
+        int asked, pending;
+        public bool Speaking
+        {
+            get
+            {
+#if UNITY_IOS && !UNITY_EDITOR
+                if (Tool == "native-ios" && !Application.isBatchMode) return InfinigameSpeaking();
+#endif
+                return pending != 0 || source != null && source.isPlaying;
+            }
+        }
+        public void Silence()
+        {
+            asked++; pending = 0; source.Stop();
+#if UNITY_IOS && !UNITY_EDITOR
+            if (Tool == "native-ios" && !Application.isBatchMode) InfinigameSilence();
+#endif
+        }
 
         void Awake()
         {
@@ -29,8 +55,13 @@ namespace Infinigame
         public async void Say(string words)
         {
             int mine = ++asked;
-            source.Stop();
-            if (Muted || !File.Exists(Tool) || string.IsNullOrWhiteSpace(words)) return;
+            pending = 0; source.Stop();
+            if (Muted || string.IsNullOrWhiteSpace(words)) return;
+#if UNITY_IOS && !UNITY_EDITOR
+            if (Tool == "native-ios" && !Application.isBatchMode) { InfinigameSpeak(words, Choice == "Zarvox"); return; }
+#endif
+            if (!File.Exists(Tool)) return;
+            pending = mine;
             string folder = Path.Combine(Application.temporaryCachePath, "speech");
             string voice = Choice;
             float[] sound = null;
@@ -46,8 +77,22 @@ namespace Infinigame
                     foreach (string chosen in string.IsNullOrEmpty(voice) ? new[] { "" } : new[] { voice, "" })
                     {
                         var start = new ProcessStartInfo { FileName = Tool, UseShellExecute = false, CreateNoWindow = true };
-                        foreach (string argument in new[] { "-r", "185", "-o", spoken, $"--data-format=LEI16@{rate}", "-f", script }) start.ArgumentList.Add(argument);
-                        if (chosen.Length > 0)
+                        if (Tool.EndsWith("powershell.exe", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string command = Path.Combine(folder, $"{mine}.ps1");
+                            File.WriteAllText(command, @"param($TextFile, $WaveFile)
+Add-Type -AssemblyName System.Speech
+$speaker = New-Object System.Speech.Synthesis.SpeechSynthesizer
+$british = $speaker.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -eq 'en-GB' } | Select-Object -First 1
+if ($british) { $speaker.SelectVoice($british.VoiceInfo.Name) }
+$format = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(22050, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
+$speaker.SetOutputToWaveFile($WaveFile, $format)
+$speaker.Speak([System.IO.File]::ReadAllText($TextFile))
+$speaker.Dispose()");
+                            foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", command, script, spoken }) start.ArgumentList.Add(argument);
+                        }
+                        else foreach (string argument in new[] { "-r", "185", "-o", spoken, $"--data-format=LEI16@{rate}", "-f", script }) start.ArgumentList.Add(argument);
+                        if (chosen.Length > 0 && !Tool.EndsWith("powershell.exe", StringComparison.OrdinalIgnoreCase))
                         {
                             start.ArgumentList.Add("-v");
                             start.ArgumentList.Add(chosen);
@@ -69,8 +114,12 @@ namespace Infinigame
             {
                 // no speech on this computer after all
             }
+            if (pending == mine) pending = 0;
             // he may have been given something else to say in the meantime
-            if (mine != asked || sound == null || sound.Length == 0) return;
+            if (this == null || mine != asked || sound == null || sound.Length == 0) return;
+            if (Muted) return;
+            if (voice == "Zarvox" && Tool.EndsWith("powershell.exe", StringComparison.OrdinalIgnoreCase))
+                for (int i = 0; i < sound.Length; i++) sound[i] *= 0.82f + 0.18f * Mathf.Sin(i * 2 * Mathf.PI * 65 / rate);
             Destroy(source.clip);
             source.clip = AudioClip.Create("Speech", sound.Length, 1, rate, false);
             source.clip.SetData(sound, 0);

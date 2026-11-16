@@ -13,6 +13,7 @@ static NSString *words = @"";
 static int state;
 static bool tapped;
 static int generation;
+static AVSpeechSynthesizer *speaker;
 
 static void StopCapture() {
     [engine stop];
@@ -20,9 +21,25 @@ static void StopCapture() {
     [request endAudio];
 }
 extern "C" {
+void InfinigameSpeak(const char *text, bool robot) {
+    if (!speaker) speaker = [[AVSpeechSynthesizer alloc] init];
+    [speaker stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
+    AVSpeechUtterance *line = [AVSpeechUtterance speechUtteranceWithString:[NSString stringWithUTF8String:text]];
+    line.voice = [AVSpeechSynthesisVoice voiceWithLanguage:@"en-GB"];
+    line.pitchMultiplier = robot ? 0.85 : 1.0;
+    line.rate = AVSpeechUtteranceDefaultSpeechRate * 0.92;
+    [speaker speakUtterance:line];
+}
+bool InfinigameSpeaking() { return speaker.isSpeaking; }
+void InfinigameSilence() { [speaker stopSpeakingAtBoundary:AVSpeechBoundaryImmediate]; }
 void InfinigameVoiceStop() {
+    if (state == 1) { generation++; state = -1; return; }
     StopCapture();
-    state = 3;
+    state = 4;
+    int session = generation;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        if (generation == session && state == 4) state = words.length ? 3 : -1;
+    });
 }
 void InfinigameVoiceCancel() {
     generation++;

@@ -2,7 +2,9 @@
 
 Press B while on foot with suit power restored. A robodog factory requires 4 local alien kills, plus one per world difficulty rank and two per additional system depth. Killing the local mind also counts. Tab shows kills required, remaining aliens, robodogs and both fleets.
 
-A factory begins with eight robodogs, plus four per world difficulty rank. The first machines appear immediately and patrol or fight. Each contributes to exponential replication while aliens remain. Their dorsal lasers and the factory's guided missile battery protect the foothold. Production stops once the world's alien population reaches zero. There are no separate turrets, radar towers, mines or workshops to build.
+A factory begins with eight robodogs, plus four per world difficulty rank. One machine emerges immediately through the doorway, then another every three seconds, up to seven nearby robodogs. Their patrol radius widens with the world population. Each contributes to exponential replication while aliens remain. Their dorsal lasers and the factory's rotating multiweapon mount protect the foothold. The mount cycles an impact pulse, beam, guided missiles, rail shot and hemisphere sweep. Production stops once the world's alien population reaches zero. There are no separate turrets, radar towers, mines or workshops to build.
+
+An active mind suppresses robot strength and replication: early patrols can be wiped out. After you kill the mind, an intact factory always rebuilds from zero and eventually wins the ground war, at every difficulty. Remaining aliens no longer replicate. You do not need to keep rebuilding the factory.
 
 A shipyard is an upgrade to that same factory, available only after its robots conquer the whole world. Its gantries assemble autonomous ships, starting with two. They replicate while hostile ships remain. Later fronts can overwhelm a young factory without the player's help.
 
@@ -12,7 +14,7 @@ The content importer uses these identifiers. Costs are zero because access is ea
 
 | Building | Ore | Ice | Salvage | Explanation |
 |---|---|---|---|---|
-| Factory | 0 | 0 | 0 | Clear a foothold, then seed a robodog factory. Its robots replicate and hunt until this world is safe. Its roof battery fires guided missiles. |
+| Factory | 0 | 0 | 0 | Clear a foothold, then seed a robodog factory. Its robots replicate and hunt until this world is safe. Its rotating roof mount uses the suit weapon families. Kill the mind to unlock full robot strength. |
 | ShipFactory | 0 | 0 | 0 | Once the factory has conquered its whole world, upgrade it to a shipyard. Robot ships fight the living fleet and support one neighbouring planet. |
 
 After the citadel shield core falls, a shipyard that has also cleared its local hostile fleet can build moon engines. The moon travels towards the buried mind at interplanetary autopilot speed while your ship follows. Impact starts the singularity ending automatically. The unlocked cheats menu has a Moon engines ready option that supplies both conquests and the upgraded factory; select Build moon engines from its uplink to launch.

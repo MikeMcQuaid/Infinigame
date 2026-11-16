@@ -26,6 +26,8 @@ namespace Infinigame.Core
     {
         public const int Buried = 0, Stranger = 1, Tower = 5, Citadel = 11, Won = 12;
 
+        public static int OuterDefences(int stage) => stage < Tower || stage >= Citadel ? 0 : 2 * (stage - Tower + 1);
+
         public static int MigrateStage(int stage) => new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 8, 8, 9, 9, 10, 11, 12 }[math.clamp(stage, 0, 15)];
 
         public static Mission[] Missions { get; internal set; } = Array.Empty<Mission>();

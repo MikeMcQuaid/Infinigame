@@ -9,6 +9,7 @@ namespace Infinigame
     {
         public bool quadruped, seated, working;
         public float speed, strike, recoil;
+        public int weapon;
         public Transform look, planet;
         public BodyDescriptor ground;
         Transform torso, head;
@@ -67,6 +68,15 @@ namespace Infinigame
                 }
             if (!quadruped && arms != null)
             {
+                if (weapon > 0)
+                {
+                    for (int i = 0; i < arms.Length; i++)
+                    {
+                        float side = i == 0 ? -1 : 1;
+                        arms[i].localRotation = Quaternion.Euler(weapon == 1 ? -75 : weapon == 3 ? -82 : weapon == 4 ? -35 : 25, weapon == 4 ? side * 55 : 0, side * (weapon == 3 ? 30 : weapon == 4 ? 65 : 10));
+                        elbows[i].localRotation = Quaternion.Euler(weapon == 1 ? -15 : weapon == 3 ? -5 : -45, 0, weapon == 3 ? side * 70 : 0);
+                    }
+                }
                 torso.localRotation = Quaternion.Euler(recoil * 16, strike * 18, recoil * 9);
                 arms[1].localRotation *= Quaternion.Euler(-strike * 85, 0, -strike * 12);
                 elbows[1].localRotation *= Quaternion.Euler(strike * 35, 0, 0);

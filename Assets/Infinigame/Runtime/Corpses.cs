@@ -65,7 +65,12 @@ namespace Infinigame
             var sections = pieces[mesh];
             var points = sections.Select(section => at + (float3)(rotation * section.centre)).ToArray();
             var parts = sections.Select(section => Shapes.Part(transform, "Wreck / remains", section.mesh, material, Vector3.zero, Vector3.one).transform).ToArray();
-            foreach (var part in parts) part.rotation = rotation;
+            foreach (var part in parts)
+            {
+                part.rotation = rotation;
+                if (material.HasProperty("_Organic") && material.GetFloat("_Organic") > 0)
+                { var stain = new MaterialPropertyBlock(); stain.SetFloat("_Damage", 0.28f); part.GetComponent<Renderer>().SetPropertyBlock(stain); }
+            }
             bodies.Add(new Body { world = game.System.Reference, joints = new Ragdoll(points, velocity), parts = parts, rotation = rotation, radius = radius });
         }
         public void Strike(float3 from, float3 step, float damage, float radius = 0.7f)

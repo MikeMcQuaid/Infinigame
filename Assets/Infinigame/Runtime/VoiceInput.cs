@@ -14,6 +14,13 @@ namespace Infinigame
         public static Action<VoiceInput> Capture;
         public bool Listening { get; private set; }
         float began;
+        bool held;
+        public string Transcript { get; private set; } = "";
+        public void Hold(bool down)
+        {
+            if (down != held && (down || Listening)) Toggle();
+            held = down;
+        }
 #if UNITY_IOS && !UNITY_EDITOR
         const string Library = "__Internal";
 #else
@@ -30,16 +37,18 @@ namespace Infinigame
 #endif
         public void Toggle()
         {
-            if (game.Title || game.Buried || game.Hermit.Thinking) return;
+            if (game.Title || game.Buried || game.Tutorial.Locked || game.Hermit.Thinking) return;
+            if (!Listening) game.Speech.Silence();
             if (Capture != null) { Capture(this); return; }
             if (Application.isBatchMode) return;
             try
             {
 #if UNITY_STANDALONE_WIN
-                if (Listening) { dictation.Stop(); Listening = false; return; }
+                if (Listening) { dictation.Stop(); Submit(Transcript); return; }
                 dictation?.Dispose();
                 dictation = new DictationRecognizer();
-                dictation.DictationResult += (text, confidence) => Submit(text);
+                dictation.DictationHypothesis += text => Transcript = text;
+                dictation.DictationResult += (text, confidence) => Transcript = text;
                 dictation.DictationError += (error, code) => { Listening = false; game.Notify("VOICE UNAVAILABLE · TYPE WITH RETURN"); };
                 dictation.Start();
 #elif (UNITY_STANDALONE_OSX || UNITY_IOS) && !UNITY_EDITOR
@@ -50,8 +59,7 @@ namespace Infinigame
                 return;
 #endif
 #if UNITY_STANDALONE_WIN || ((UNITY_STANDALONE_OSX || UNITY_IOS) && !UNITY_EDITOR)
-                Listening = true; began = Time.unscaledTime;
-                game.Notify("LISTENING · PRESS Y OR MIC TO FINISH");
+                Listening = true; Transcript = ""; began = Time.unscaledTime;
 #endif
             }
             catch (Exception) { Listening = false; game.Notify("VOICE UNAVAILABLE · CHECK MICROPHONE PERMISSION OR TYPE WITH RETURN"); }
@@ -63,20 +71,18 @@ namespace Infinigame
 #endif
             Listening = false;
             if (string.IsNullOrWhiteSpace(text)) return;
-            game.Hermit.Greet();
             game.Hermit.Say(text);
             game.Notify("YOU: " + text);
         }
         void Update()
         {
-            if (Keyboard.current?.yKey.wasPressedThisFrame == true && (Listening || !game.Hermit.Talking)) Toggle();
 #if (UNITY_STANDALONE_OSX || UNITY_IOS) && !UNITY_EDITOR
             if (!Listening) return;
             int state = InfinigameVoiceState();
-            if (state == 3)
+            if (state >= 2)
             {
-                IntPtr value = InfinigameVoiceText(); string text = Marshal.PtrToStringUTF8(value); InfinigameVoiceFree(value);
-                InfinigameVoiceCancel(); Submit(text);
+                IntPtr value = InfinigameVoiceText(); Transcript = Marshal.PtrToStringUTF8(value); InfinigameVoiceFree(value);
+                if (state == 3) { InfinigameVoiceCancel(); Submit(Transcript); }
             }
             else if (state < 0 || Time.unscaledTime - began > 30)
             {
@@ -102,11 +108,6 @@ namespace Infinigame
             if (Listening) InfinigameVoiceCancel();
 #endif
             Listening = false;
-        }
-        void OnGUI()
-        {
-            if (!Application.isMobilePlatform || game.Title || Application.isBatchMode) return;
-            if (GUI.Button(new Rect(Screen.safeArea.xMax - 90, Screen.height - Screen.safeArea.yMax + 80, 80, 50), Listening ? "Stop mic" : "Mic")) Toggle();
         }
     }
 }

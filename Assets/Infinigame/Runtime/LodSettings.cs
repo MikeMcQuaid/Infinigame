@@ -32,7 +32,15 @@ namespace Infinigame
         };
 
         public static int Tier => Mathf.Clamp(QualitySettings.GetQualityLevel(), 0, Tiers.Length - 1);
-        public static LodSettings Current => Tiers[Tier];
+        public static float Adaptive = 1;
+        public static LodSettings Current
+        {
+            get
+            {
+                var tier = Tiers[Tier];
+                return new LodSettings(tier.quads, tier.splitFactor * Adaptive, tier.finestQuad, Mathf.Max(1, Mathf.RoundToInt(tier.buildsPerFrame * Adaptive)), tier.waterQuads, tier.scatter, tier.pixels);
+            }
+        }
 
         // How far off something this many metres tall is still worth drawing. The view widens with
         // speed, but ranges are worked out for the resting view so they do not breathe with it.

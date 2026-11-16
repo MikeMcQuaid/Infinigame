@@ -6,7 +6,8 @@
         "Infinigame.Runtime",
         "Unity.Mathematics",
         "UnityEngine.TestRunner",
-        "UnityEngine.UI"
+        "UnityEngine.UI",
+        "Unity.InputSystem"
     ],
     "overrideReferences": true,
     "precompiledReferences": [

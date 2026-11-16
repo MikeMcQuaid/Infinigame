@@ -3,9 +3,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 script/lib/build-target Win64 Infinigame.Editor.Platforms.SteamDeck Logs/build-steam-deck.log
-/usr/bin/ditto -c -k --keepParent Build/SteamDeck Build/Infinigame-SteamDeck.zip
+mkdir -p Build/Packages/SteamDeck
+rm -rf Build/Packages/SteamDeck/Infinigame
+/usr/bin/ditto Build/SteamDeck Build/Packages/SteamDeck/Infinigame
+/usr/bin/ditto -c -k --keepParent Build/Packages/SteamDeck/Infinigame Build/Infinigame-SteamDeck.zip
 echo "Built: $PWD/Build/Infinigame-SteamDeck.zip"
 echo "On Deck: Power > Switch to Desktop. Copy and extract this zip into Documents."
-echo "Steam > Games > Add a Non-Steam Game > Browse: choose SteamDeck/Infinigame.exe."
+echo "Steam > Games > Add a Non-Steam Game > Browse: choose Infinigame/Infinigame.exe."
 echo "Properties > Compatibility > Force a compatibility tool: choose Proton Experimental. Return to Gaming Mode and launch."
-echo "Use a keyboard-and-mouse controller layout with trackpad mouse; map Tab, F, B, T, Return and Space to buttons. Start with Mobile detail at 1280x800."
+echo "Use the Gamepad with Mouse Trackpad Steam Input layout. A confirms, RT fires, Y changes weapon, X interacts and View toggles the map. Touch and keyboard also work. Set Steam Properties > General > Game Resolution to Native."

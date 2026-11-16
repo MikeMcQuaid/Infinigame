@@ -38,10 +38,18 @@ namespace Infinigame
         SolarSystem system;
         Camera view;
         Transform model, traveller, pack;
+        Renderer[] bodyRenderers;
+        public void Calibrate() => tracked = false;
+        public void Stain(Material material, int index)
+        {
+            Shapes.Part(traveller.Find(index % 2 == 0 ? "Left leg" : "Right leg"), "Violet blood", Shapes.Rock(2), material,
+                new Vector3((index % 3 - 1) * 0.06f, -0.08f * (index / 3), 0.16f), new Vector3(0.09f, 0.12f, 0.018f), false);
+        }
         MachineMotion motion;
         GameObject[] armour;
         GameObject[] outside;
         Cockpit cockpit;
+        public Cockpit Cockpit => cockpit;
         // how far the last shots have thrown the aim up, in degrees
         float pitch, punch;
         bool chase, submerged, recall, detected;
@@ -148,6 +156,7 @@ namespace Infinigame
             model = Models.Ship();
             traveller = Models.Traveller();
             motion = traveller.gameObject.AddComponent<MachineMotion>();
+            bodyRenderers = traveller.GetComponentsInChildren<Renderer>();
             armour = traveller.GetComponentsInChildren<Transform>().Where(part => part.name == "Armour").Select(part => part.gameObject).ToArray();
             pack = traveller.Find("Torso/Thruster pack");
             // from the pilot's seat the cockpit stands in for the hull round it
@@ -455,6 +464,7 @@ namespace Infinigame
                 if (exhaust.gameObject.activeSelf) exhaust.localScale = new Vector3(0.17f, 0.65f + 0.1f * math.sin(Time.time * 36), 0.17f);
                 motion.strike = Weapon.melee ? math.saturate(1 - (Time.time - game.Battle.Fired) / 0.35f) : 0;
                 motion.recoil = math.saturate(1 - (Time.time - HurtAt) / 0.4f);
+                motion.weapon = Powered ? Arm : 0;
                 motion.speed = walker.grounded ? math.length(Velocity) : 0;
             }
             // until it is won back the ship is not there to be seen
@@ -534,6 +544,23 @@ namespace Infinigame
                 }
                 if (head.TryGetFeatureValue(CommonUsages.deviceRotation, out Quaternion orientation)) view.transform.rotation *= orientation;
             }
+            if (!flying && !ThirdPerson && !SystemView)
+            {
+                if (DeviceControls.VR)
+                {
+                    Vector3 up = math.normalizesafe(walker.position);
+                    Vector3 forward = Vector3.ProjectOnPlane(view.transform.forward, up).normalized;
+                    if (forward.sqrMagnitude < 0.1f) forward = walker.forward;
+                    traveller.SetPositionAndRotation(view.transform.position - up * Walker.EyeHeight - forward * 0.08f, Quaternion.LookRotation(forward, up));
+                }
+                foreach (var part in bodyRenderers)
+                {
+                    bool upper = part.transform.IsChildOf(traveller.Find("Torso"));
+                    part.forceRenderingOff = !DeviceControls.VR && upper || Vector3.Distance(part.bounds.ClosestPoint(view.transform.position), view.transform.position) < 0.18f;
+                }
+            }
+            else foreach (var part in bodyRenderers) part.forceRenderingOff = false;
+            if (!DeviceControls.VR && view.targetTexture == null) view.ResetAspect();
             // speed stretches the view a little, and the map of a world closes in until that world fills it
             if (!DeviceControls.VR) view.fieldOfView = Mathf.Lerp(view.fieldOfView, PlanetView ? 26f : 70f + 25f * math.saturate(math.length(Velocity) / Tuning.ShipSpaceSpeed)
                 + (flying ? 0f : 12f * math.saturate((math.length(Velocity) - Tuning.WalkSpeed) / (Tuning.BikeSpeed - Tuning.WalkSpeed))), 5f * frame);

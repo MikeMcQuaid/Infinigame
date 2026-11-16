@@ -34,6 +34,7 @@ namespace Infinigame.Tests
             Assert.AreEqual(clock, Solar.Clock);
             Assert.AreEqual(at, Player.Position);
             input = default; yield return null;
+            yield return Press(new Controls { systemView = true });
             yield return Press(new Controls { help = true });
             clock = Solar.Clock;
             yield return Seconds(0.2f); Assert.AreEqual(clock, Solar.Clock);

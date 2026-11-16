@@ -91,6 +91,14 @@ namespace Infinigame
             figure.GetComponent<MachineMotion>().seated = seated;
         }
 
+        public void Rescue()
+        {
+            float3 up = math.normalize(game.Player.Position + game.Player.walker.forward * 5);
+            Position = up * game.System.ReferenceBody.GroundRadius(up);
+            camp.localPosition = Position;
+            camp.localRotation = Quaternion.LookRotation(-game.Player.walker.forward, up);
+        }
+
         public void Greet()
         {
             Talking = true;
@@ -101,8 +109,7 @@ namespace Infinigame
             if (Line != Briefing) game.Speech.Say(Briefing);
             Line = Briefing;
             Spoke = Time.unscaledTime;
-            // meeting him is a mission of its own: he wakes the armour
-            if (game.Stage == Campaign.Stranger) game.Advance();
+
         }
 
         // Something he says without being asked, from the seat beside the pilot.
@@ -120,7 +127,7 @@ namespace Infinigame
 
         // Authored replies keep the early story playable without an account.
         string Canned(string asked) => asked.IndexOf("factory", StringComparison.OrdinalIgnoreCase) >= 0 || asked.IndexOf("build", StringComparison.OrdinalIgnoreCase) >= 0
-            ? "Kill enough local aliens to seed a robodog factory with B. Once its robots clear the whole world, upgrade it to a shipyard. Clear local space before building moon engines. Tab shows populations and the kills you still need."
+            ? "Kill enough local aliens to seed a robodog factory. Kill the mind to remove its coordination and unlock our robots' full strength. Even if every patrol dies, the factory will rebuild them and win. Then upgrade it to a shipyard. The map shows populations and prerequisites."
             : asked.IndexOf("world", StringComparison.OrdinalIgnoreCase) >= 0 || asked.IndexOf("presence", StringComparison.OrdinalIgnoreCase) >= 0
             ? "We are the Foundry, independent machines protecting what still lives. The presence grows bodies from a shared mind and consumes everything beyond itself. We must sever those minds and rebuild safe settlements."
             : asked.IndexOf("who", StringComparison.OrdinalIgnoreCase) >= 0 ? $"{Name}. An autonomous recovery machine. I can keep this channel open wherever you go."
@@ -158,6 +165,7 @@ namespace Infinigame
         // alternating lines: the traveller's, then the hermit's.
         public async void Say(string words)
         {
+            unasked = !Talking;
             string command = words.Trim().ToLowerInvariant();
             if (command.Contains("recall ship") || command.Contains("pick me up") || command.Contains("come get me") || command.Contains("land near me"))
             {

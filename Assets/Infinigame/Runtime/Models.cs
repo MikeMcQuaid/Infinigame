@@ -1095,9 +1095,6 @@ namespace Infinigame
                         metal.Rod(new Vector3(side * 2, 2.7f, -1), new Vector3(side * 0.8f, 2.2f, 0), 0.13f, Curves);
                         glow.Ball(new Vector3(side * 0.8f, 2.2f, 0), 0.18f, Curves);
                     }
-                    metal.Box(new Vector3(0, 3.8f, 0), new Vector3(2.4f, 0.7f, 1.4f), 0.12f);
-                    for (int i = 0; i < 6; i++)
-                        metal.Rod(new Vector3(-0.85f + i % 3 * 0.85f, 3.65f + i / 3 * 0.45f, -0.6f), new Vector3(-0.85f + i % 3 * 0.85f, 3.65f + i / 3 * 0.45f, 1.1f), 0.18f, Curves);
                     if (kind == Core.Building.ShipFactory)
                     {
                         var hull = Ship(); hull.name = "Ship under construction"; hull.SetParent(root, false); hull.localPosition = new Vector3(0, 6, 14); hull.localScale = Vector3.one * 0.7f;
@@ -1122,7 +1119,12 @@ namespace Infinigame
                 }
             }
             MeshKit plates = new MeshKit(), cables = new MeshKit();
-            foreach (float side in new[] { -1f, 1f })
+            if (kind == Core.Building.Turret)
+            {
+                plates.Ball(new Vector3(0, 2.4f, -0.25f), new Vector3(0.95f, 0.55f, 0.8f), Curves);
+                cables.Rod(new Vector3(0, 0.5f, -0.6f), new Vector3(0, 2.2f, -0.6f), 0.12f, 24);
+            }
+            else foreach (float side in new[] { -1f, 1f })
             {
                 for (int i = 0; i < 6; i++)
                 {

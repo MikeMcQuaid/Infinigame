@@ -15,18 +15,21 @@ namespace Infinigame.Tests
         {
             yield return null;
             var camera = Camera.main;
-            var target = new RenderTexture(1280, 800, 24);
+            int width = DeviceControls.Touch ? Screen.width : 1280, height = DeviceControls.Touch ? Screen.height : 800;
+            var target = new RenderTexture(width, height, 24);
             camera.targetTexture = target;
             // Overlay canvases do not render into a camera texture, so temporarily attach the visor.
             var visor = GameObject.Find("Suit glass").GetComponent<Canvas>();
             visor.renderMode = RenderMode.ScreenSpaceCamera; visor.worldCamera = camera; visor.planeDistance = camera.nearClipPlane + 0.01f;
+            var touch = GameObject.Find("Touch controls").GetComponent<Canvas>();
+            touch.renderMode = RenderMode.ScreenSpaceCamera; touch.worldCamera = camera; touch.planeDistance = camera.nearClipPlane + 0.005f;
             camera.Render();
             RenderTexture.active = target;
-            var picture = new Texture2D(1280, 800, TextureFormat.RGB24, false);
-            picture.ReadPixels(new Rect(0, 0, 1280, 800), 0, 0);
+            var picture = new Texture2D(width, height, TextureFormat.RGB24, false);
+            picture.ReadPixels(new Rect(0, 0, width, height), 0, 0);
             Directory.CreateDirectory("Logs/Screenshots");
             File.WriteAllBytes("Logs/Screenshots/" + name + ".png", picture.EncodeToPNG());
-            RenderTexture.active = null; camera.targetTexture = null; visor.renderMode = RenderMode.ScreenSpaceOverlay;
+            RenderTexture.active = null; camera.targetTexture = null; visor.renderMode = RenderMode.ScreenSpaceOverlay; touch.renderMode = RenderMode.ScreenSpaceOverlay;
             Object.Destroy(target); Object.Destroy(picture);
         }
 
@@ -48,7 +51,19 @@ namespace Infinigame.Tests
             Assert.AreEqual(1, game.Stage);
             Assert.Less(math.distance(Player.Position, game.Hermit.Position), 25);
             Assert.IsNotNull(GameObject.Find("Recovery companion/Hermit"));
-            yield return Press(new Controls { talk = true });
+            float3 locked = Player.walker.position, facing = Player.walker.forward;
+            yield return Press(new Controls { talk = true, move = Vector2.up, look = new Vector2(80, 20) });
+            Assert.IsFalse(game.Hermit.Talking, "The recovery briefing is inline and cannot be skipped");
+            Assert.Less(math.distance(locked, Player.walker.position), 0.5f);
+            Assert.Less(math.distance(facing, Player.walker.forward), 0.01f);
+            yield return Seconds(10.5f);
+            yield return Press(new Controls { look = new Vector2(60, 0) });
+            yield return Seconds(5.5f);
+            input = new Controls { move = Vector2.up }; yield return Seconds(1); input = default;
+            yield return Until(() => game.Battle.Foes.Exists(foe => foe.kind == FoeKind.Sentry));
+            Assert.AreEqual(1, game.Battle.Foes.Count);
+            var fighter = game.Battle.Foes[0]; fighter.health = 0; game.Battle.Foes[0] = fighter;
+            yield return null; yield return null;
             Assert.AreEqual(2, game.Stage);
             Assert.IsFalse(Player.Powered);
         }

@@ -1,6 +1,6 @@
 # Architecture
 
-Infinigame is a Unity 6.6 (URP) project in which almost nothing is authored in the editor. There is one scene holding one object, `Game`. Everything else is built from code when the game starts: worlds, models, textures, the interface, sound and music. This file says how the pieces fit. `README.md` says what the game is and how to play it, `AGENTS.md` says how to work on it, and `IDEAS.md` holds what may be built later, with notes on where each idea would fit.
+Infinigame is a Unity 6.6 (URP) project in which almost nothing is authored in the editor. There is one scene holding one object, `Game`. A staged loading coroutine shows progress before constructing the runtime. Gameplay components stay disabled until `Game.Ready`. Everything else is built from code when the game starts: worlds, models, textures, the interface, sound and music. This file says how the pieces fit. `README.md` says what the game is and how to play it, `AGENTS.md` says how to work on it, and `IDEAS.md` holds what may be built later, with notes on where each idea would fit.
 
 ## The two halves
 
@@ -70,19 +70,20 @@ The game can start each tool's own sign-in from the settings page. It never show
 
 - `Hud.cs` builds one uGUI canvas in front of the camera, from code. It reads state and never changes it. Markers for worlds, foes and mission goals are placed each frame by `Mark`, which hides what a world is in the way of, keeps names from overlapping and holds a guide mark at the edge of the screen when its place is out of view.
 - `Core/Synth.cs` computes every sound effect as samples, and `Core/Riffs.cs` writes a song for each system. `Sounds.cs` and `Music.cs` play them. Audio files dropped into `Resources/Music` replace the synthesised song. `Playlist` schedules complete tracks with equal-power crossfades; `Music` uses two streaming decks per mood.
-- `Speech.cs` speaks the robot's lines with the existing macOS system voice. Other platforms use text.
+- `Speech.cs` uses local Mac voices, Windows SAPI via PowerShell or iOS AVSpeechSynthesizer. `VoiceInput` handles held microphone input and partial transcripts. Tests substitute both speech and dictation.
 - `Models*.cs`, `MeshKit.cs` and `Shapes.cs` build every mesh and material: the ship and its cockpit, the robot and its factories, raiders, drones and the citadel. `Arms.cs` builds the powered gauntlets.
+- `DeviceControls.cs` merges touch, gamepad, keyboard and tracked controllers. Cockpit hit areas dispatch the same `Controls` intents as buttons. `ForearmConsole.cs` attaches a touchable construction and suit menu to the left tracked hand; interface contact suppresses motion punches.
 - `Cockpit.cs` drives the ship's instruments. `Models.Ship` names every part that moves or lights, `Player.Tick` fills a `Readings` struct with what the ship is doing, and `Cockpit.Show` eases each needle, lamp, switch and the stick to match. Nothing on the dash is decoration.
 
 ## Saving
 
-A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, the mission stage, the gear bit set, fitted modules, colony resources, presence clock, moonfall, gate state, journal, talk and breached outpost walls. Worlds are never saved, since the seed remakes them. Save version 2 migrates the earlier fifteen-stage campaign into twelve stages without moving equipment bit positions. War fronts also retain weapon exposure and whether their controlling mind is dead. Settings that belong to the device (detail, music, speech) are `PlayerPrefs`. What the player has given the oracle is a separate file that never travels with a save.
+A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, the mission stage, the gear bit set, fitted modules, colony resources, presence clock, moonfall, gate state, journal, talk breached outpost walls and armed/destroyed burrow demolition state. Worlds are never saved, since the seed remakes them. Save version 2 migrates the earlier fifteen-stage campaign into twelve stages without moving equipment bit positions. War fronts also retain weapon exposure and whether their controlling mind is dead. Settings that belong to the device (detail, music, speech) are `PlayerPrefs`. What the player has given the oracle is a separate file that never travels with a save.
 
 ## Tests and tooling
 
 - `script/test` compiles every assembly with the editor's bundled compiler and runs the EditMode tests on its Mono, with no Unity process and no licence.
 - `script/test --unity` runs EditMode and PlayMode tests inside Unity. The PlayMode tests load the real scene and drive it through `Controls`, with every road out of the game (models, browser, speech) swapped for a stand-in in set-up. One of them, `CapturesScreenshots`, tours the game and writes pictures to `Logs/Screenshots`, which is how visual work is checked on a machine with no display.
-- `FrameLog.cs` writes frame timing, activity, memory, build and HDR state to `Logs/frames.log` when the game is started by `script/play`. `script/performance` summarises the latest real play session, excluding menus.
+- `FrameLog.cs` records five-second median windows and gradually adjusts terrain LOD and supported dynamic resolution under sustained load. It writes frame timing, activity, memory, build and HDR state to `Logs/frames.log` when the game is started by `script/play`. `script/performance` summarises the latest real play session, excluding menus.
 
 ## Where to put things
 
@@ -110,3 +111,7 @@ A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, 
 Procedural machine models share cached meshes, with separate articulated joints driven by `MachineMotion`. Presence bodies use curved carapaces, sensory organs and rooted neural folds. `MotileCaste` selects stalker, breacher or spitter combat rules within the stable sentry kind; `Outpost` assigns the mix and `Battle` instances each anatomy. `Textures` generates shared metal, ceramic, seal and chitin maps alongside the terrain library. `Models.Surfaces` builds the panelled interior shells. Terrain blast pools use a level surface bounded by the crater, with slow shader flow.
 
 `SuitHud` adds the helmet instruments and seven-second cold start. `VoiceInput` requests native dictation only on a player action, with an injectable test route. `VoiceBuild` compiles the macOS speech bridge and adds permission strings; iOS compiles the same Objective-C++ source. `Hermit` writes a bounded JSON state snapshot before a question. `Frontier` pre-generates the next descriptor and mission sites on a worker task during moonfall.
+
+`DeviceControls` merges direct Input System touch regions with keyboard, mouse, gamepad and Index controls. Its canvas only draws the controls; button state does not depend on IMGUI events. `SuitTutorial` gates the initial control recovery. First-person renderer masking and head-relative VR body placement share `Player`; independent tracked gauntlets remain in `Arms`. The main HUD follows the head and exposes a plane for Index ray selection.
+
+`FactoryDefence` aims each factory's visible mount and fires through the shared combat path. `Scatter` retains tree damage and draws shortened trunk/crown meshes. `Hull.shader` adds violet wounds to organic models, while bounded ichor pools and suit stains keep combat readable without red blood.

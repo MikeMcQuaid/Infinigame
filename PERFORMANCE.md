@@ -2,6 +2,24 @@
 
 Run `script/play`, spend several minutes walking, fighting, expanding a factory and flying between worlds, then quit. Run `script/performance`. The script reads the latest real player session from `Logs/frames.log`, excluding title, pause and map samples. Logs remain local and ignored by Git.
 
+## Latest Mac session, 16 November 2026 at 20:03:23
+
+Apple M5 Max, 2992 × 1878, 120 Hz display with every second refresh targeted, PC detail, **Burst active**, HDR inactive. Medians of five-second windows:
+
+| Activity | Windows | FPS | Window p95, ms | CPU work, ms | GPU, ms | Worst frame, ms |
+|---|---:|---:|---:|---:|---:|---:|
+| On foot | 35 | 59.2 | 17.5 | 14.5 | 6.6 | 36.8 |
+| Flying | 60 | 59.4 | 17.3 | 14.4 | 5.8 | 1633.3 |
+| Autopilot | 2 | 56.9 | 25.2 | 14.3 | 5.9 | 35.6 |
+
+The two largest stalls were near Venus at 133 s and 254 s, about 1.6 s each. A later Luna frame took 533 ms. These logs locate the stalls but do not identify the responsible method. The CPU is much closer to the 16.7 ms frame budget than the GPU, so increasing all mesh budgets would be premature. This session uses a lower resolution than the earlier baseline below; it is not evidence that this new revision is faster.
+
+The live controller uses five-second median frame windows. Sustained CPU pressure reduces terrain subdivision distance and per-frame patch work in small steps; sustained GPU pressure lowers dynamic resolution towards 70%. Fifteen seconds of headroom slowly restores resolution and can increase subdivision distance up to 115% of the selected preset. A single loading spike cannot trigger a reduction. Foliage density and mesh sizes do not change during this adjustment, avoiding mass regeneration. Hardware that does not expose GPU timings keeps full resolution. The map and controls screen show live FPS; logs record adaptive LOD and actual resolution scale. VR keeps compositor-controlled resolution and uses the headset refresh rate for its terrain budget.
+
+Initial suit, machine and world generation now have a visible loading screen between stages. This makes initial work visible; it does not claim to eliminate every synchronous generation stall. Capture a matching real play session after rebuilding with Burst to assess the remaining Venus stalls.
+
+**Burst** is Unity's compiler for the game's terrain and texture jobs, not a play mode, weapon setting or visual effect. [Unity's Burst documentation](https://docs.unity3d.com/Packages/com.unity.burst@1.8/manual/index.html) explains the native-code compilation. Leave it enabled for performance measurements.
+
 ## Mac baseline, 16 November 2026
 
 Session began at 15:43:38, Apple M5 Max, 5120 × 2880 at 60 Hz, PC detail, Burst enabled. These are medians of five-second reporting windows, not a combined per-frame distribution:

@@ -9,6 +9,7 @@ Shader "Infinigame/Hull"
     {
         [MainColor] _BaseColor ("Colour", Color) = (0.36, 0.3, 0.28, 1)
         _BaseMap ("Shell colour and relief", 2D) = "white" {}
+        _Organic ("Organic blood", Range(0, 1)) = 0
         _Metallic ("Metallic", Range(0, 1)) = 0.3
         _Smoothness ("Smoothness", Range(0, 1)) = 0.5
         [HDR] _Glow ("Glow of its own", Color) = (0, 0, 0, 1)
@@ -28,6 +29,7 @@ Shader "Infinigame/Hull"
             half4 _BaseColor;
             half4 _Glow;
             half _Metallic;
+            half _Organic;
             half _Smoothness;
             float _Size;
         CBUFFER_END
@@ -164,12 +166,16 @@ Shader "Infinigame/Hull"
                 // the inside is all soot
                 float soot = outside ? 0.94 * scorch : 0.94;
                 surface.albedo = lerp(_BaseColor.rgb * shell.rgb * input.colour.rgb * 1.35, half3(0.02, 0.018, 0.016), soot);
+                float blood = _Organic * saturate(worn * 3 + scorch) * smoothstep(0.22, 0.55, Noise(input.place.xyz * 7));
+                surface.albedo = lerp(surface.albedo, half3(0.21, 0.015, 0.34), blood);
                 surface.metallic = _Metallic * (1.0 - soot);
                 surface.smoothness = _Smoothness * lerp(0.55, 1.25, grain) * (1.0 - 0.85 * soot);
                 surface.occlusion = lerp(0.65, 1.0, saturate(grain * 2));
                 surface.alpha = 1.0;
                 surface.emission = _Glow.rgb * (1.0 - scorch) + Fire(edge * (0.45 + 0.3 * ember)) * (0.05 / rim)
                     + (outside ? 0.0 : 1.0) * Fire(worn * (0.2 + 0.4 * ember));
+                surface.emission *= 1 - _Organic * saturate(worn * 3);
+                surface.smoothness = lerp(surface.smoothness, 0.8, blood);
                 half4 colour = UniversalFragmentPBR(inputData, surface);
                 return half4(MixFog(colour.rgb, inputData.fogCoord), cover);
             }

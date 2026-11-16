@@ -567,7 +567,7 @@ namespace Infinigame.Tests
             Assert.IsTrue(Combat.Arms[1].beam);
             Assert.Greater(Combat.Arms[2].homing, 0);
             Assert.IsTrue(Combat.Arms[3].rail);
-            Assert.Greater(Combat.Arms[3].period, Combat.Arms[2].period);
+            Assert.Greater(Combat.Arms[2].period, Combat.Arms[3].period);
             Assert.IsTrue(Combat.Arms.All(weapon => weapon.clip == 0));
             Assert.IsTrue(Combat.Arms.Skip(1).All(weapon => weapon.energy > 0));
         }

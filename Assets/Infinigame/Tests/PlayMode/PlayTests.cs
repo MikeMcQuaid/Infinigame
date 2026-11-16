@@ -45,7 +45,7 @@ namespace Infinigame.Tests
             Game.Prefs = "infinigame-test";
             // most tests want the whole game open to them: every mission but the last done, and all that those win
             Game.Start = Campaign.Citadel;
-            foreach (string kept in new[] { "detail", "muted", "silent", "voice" }) PlayerPrefs.DeleteKey($"{Game.Prefs}.{kept}");
+            foreach (string kept in new[] { "detail", "muted", "silent", "voice", "subtitles" }) PlayerPrefs.DeleteKey($"{Game.Prefs}.{kept}");
             foreach (string kept in new[] { "test-save.json", "test-save2.json", "test-save3.json", Oracle.Store }) File.Delete(Path.Combine(Application.persistentDataPath, kept));
             // no test may spend a real player's plan: the oracle answers from a script, and until a
             // test supplies stand-ins there are no tools for it to run
@@ -68,6 +68,7 @@ namespace Infinigame.Tests
             File.Delete(FrameLog.File);
             yield return SceneManager.LoadSceneAsync("Main");
             game = Object.FindAnyObjectByType<Game>();
+            while (!game.Ready) yield return null;
             input = default;
             Player.controls = () => input;
             // foes turn up only where a test puts them
@@ -499,7 +500,8 @@ namespace Infinigame.Tests
             Assert.IsNotNull(Shown("YOU"));
             Assert.IsNotNull(Shown("THE FIRST BURROW"));
             Assert.IsNotNull(Shown("The first burrow"));
-            input.systemView = false;
+            input.systemView = false; yield return null;
+            yield return Press(new Controls { systemView = true });
             yield return null;
 
             // before that, the way to the stranger's fire is marked the same
@@ -838,7 +840,7 @@ namespace Infinigame.Tests
             yield return Until(() => Voice() != null);
             Assert.AreEqual(game.Mission.brief, File.ReadAllText(Speech.Tool + ".words"), "what he says of the mission is read out");
             Assert.AreEqual(2205, Voice().clip.samples);
-            Assert.AreEqual("Daniel (English (UK))", Speech.Choice);
+            Assert.AreEqual("Zarvox", Speech.Choice);
             Assert.AreEqual(1f, Voice().pitch);
             Assert.IsTrue(Voice().ignoreListenerPause);
             // and so is whatever the model answers for him
@@ -1181,10 +1183,10 @@ namespace Infinigame.Tests
             // the settings page says how the player stands with each, and which model it would use
             yield return Choose(Game.Settings);
             yield return Until(() => !game.Items.Any(item => item.Contains("CHECKING")));
-            CollectionAssert.AreEqual(new[] { "CLAUDE   ·   NOT SIGNED IN   ·   HAIKU 5.5   ·   IN USE", "CHATGPT   ·   NOT SIGNED IN   ·   GPT-6 LUNA", "Back" }, game.Items.Skip(5));
+            CollectionAssert.AreEqual(new[] { "CLAUDE   ·   NOT SIGNED IN   ·   HAIKU 5.5   ·   IN USE", "CHATGPT   ·   NOT SIGNED IN   ·   GPT-6 LUNA", "Back" }, game.Items.Skip(6));
 
             // ChatGPT's page: a model and how hard it thinks, then two ways to sign in, both in the player's own browser
-            for (int i = 0; i < 6; i++) yield return Press(new Controls { down = true });
+            for (int i = 0; i < 7; i++) yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual("ChatGPT", game.Page);
             CollectionAssert.AreEqual(new[]
@@ -1235,7 +1237,7 @@ namespace Infinigame.Tests
             // back to the settings, and on to Claude's page, where Claude Code does the signing in
             yield return Press(new Controls { menu = true });
             Assert.AreEqual(Game.Settings, game.Page);
-            Assert.AreEqual(6, game.Selected);
+            Assert.AreEqual(7, game.Selected);
             yield return Press(new Controls { up = true });
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual("Claude", game.Page);
@@ -1277,7 +1279,7 @@ namespace Infinigame.Tests
             int tiers = QualitySettings.names.Length, tier = QualitySettings.GetQualityLevel();
             float look = DesktopControls.Sensitivity;
             yield return Choose(Game.Settings);
-            Assert.AreEqual(8, game.Items.Length, "detail, music, look speed, full screen, spoken voices, the two who can write and the way back");
+            Assert.AreEqual(9, game.Items.Length, "detail, music, look speed, full screen, voice, subtitles, the two who can write and the way back");
             Assert.AreEqual($"DETAIL   ·   {QualitySettings.names[tier].ToUpperInvariant()}", game.Items[0]);
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual((tier + 1) % tiers, QualitySettings.GetQualityLevel());
@@ -1292,10 +1294,10 @@ namespace Infinigame.Tests
             StringAssert.Contains("- AND =", game.Hint);
             yield return Press(new Controls { down = true });
             yield return Press(new Controls { down = true });
-            Assert.AreEqual("SPOKEN VOICES   ·   ON", game.Items[4]);
+            Assert.AreEqual("ROBOT VOICE   ·   ON", game.Items[4]);
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual("Voice", game.Page);
-            for (int i = 0; i < 3; i++) yield return Press(new Controls { down = true });
+            for (int i = 0; i < 4; i++) yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
             Assert.IsTrue(Speech.Muted);
             yield return Press(new Controls { menu = true });
@@ -1304,6 +1306,8 @@ namespace Infinigame.Tests
             (Music.Muted, Speech.Muted) = (false, false);
             QualitySettings.SetQualityLevel(tier);
             yield return SceneManager.LoadSceneAsync("Main");
+            game = Object.FindAnyObjectByType<Game>();
+            while (!game.Ready) yield return null;
             Assert.AreEqual((tier + 1) % tiers, QualitySettings.GetQualityLevel());
             Assert.IsTrue(Music.Muted && Speech.Muted);
         }
@@ -1630,6 +1634,7 @@ namespace Infinigame.Tests
             Assert.AreEqual(2, game.Slot);
             yield return SceneManager.LoadSceneAsync("Main");
             game = Object.FindAnyObjectByType<Game>();
+            while (!game.Ready) yield return null;
             Assert.IsTrue(game.Title);
             Assert.AreEqual(0f, Time.timeScale, "the world waits behind it");
             Assert.AreEqual(2, game.Slot);
@@ -2093,7 +2098,8 @@ namespace Infinigame.Tests
 
             input.systemView = true;
             yield return Shot("51-system-map", 0f, 1.5f);
-            input.systemView = false;
+            input.systemView = false; yield return null;
+            yield return Press(new Controls { systemView = true });
             yield return Press(new Controls { help = true });
             yield return Shot("52-controls", 0f, 1f);
             yield return Press(new Controls { menu = true });
@@ -2150,7 +2156,8 @@ namespace Infinigame.Tests
             yield return Shot("63-the-way-there", 0f, 11f);
             input.systemView = true;
             yield return Shot("64-map-of-the-world", 0f, 2.5f);
-            input.systemView = false;
+            input.systemView = false; yield return null;
+            yield return Press(new Controls { systemView = true });
             Stand(math.normalize(game.Outpost.Position + World(fort) * 42f), -World(fort));
             Player.health = 1e6f;
             yield return Shot("59-the-outpost", -6f, 6f);

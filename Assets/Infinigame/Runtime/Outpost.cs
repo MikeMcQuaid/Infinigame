@@ -15,12 +15,14 @@ namespace Infinigame
         public float3 Position { get; private set; }
         public float3 Prize { get; private set; }
         public int Left { get; private set; }
+        public int OuterLeft => game.Battle.Foes.Count(foe => foe.outerGuard && foe.health > 0);
+        public float Demolition => (float)game.Ruins.Where(ruin => ruin.detonates > 0 && !ruin.destroyed).Select(ruin => math.max(0, ruin.detonates - game.System.Clock)).DefaultIfEmpty(0).Min();
         public bool Fallen => World >= 0 && Left == 0;
         public bool Near => Fallen && game.Stage != Campaign.Citadel && World == game.System.Reference && !game.Player.flying && math.distance(game.Player.Position, Prize) < 6f;
         public string Errand => game.Stage == Campaign.Citadel ? "ESCAPE THROUGH THE TUNNEL ENTRANCE" : $"TAKE {Campaign.Spoils(game.Stage)}";
         public Interior Rooms { get; private set; }
         public bool Open { get; private set; }
-        public Shield Shield => new Shield { centre = Position, radius = game.Stage == Campaign.Citadel ? 310 : 45, active = World == game.System.Reference && !Fallen };
+        public Shield Shield => new Shield { centre = Position, radius = game.Stage == Campaign.Citadel ? 310 : 45, active = World == game.System.Reference && !Fallen && OuterLeft == 0 };
         public bool AtConsole => false;
         public float Escape { get; private set; }
         public float3 Core => Place(Rooms.core);
@@ -37,7 +39,7 @@ namespace Infinigame
         SolarSystemDescriptor system;
         int stage = -1;
         quaternion rotation;
-        Transform fort, crate, door, shell;
+        Transform fort, crate, door, shell, prizeShield;
         Material shimmer;
         bool spawned;
         readonly List<Foe> waiting = new List<Foe>();
@@ -77,6 +79,13 @@ namespace Infinigame
         void Keep()
         {
             if (stage == Campaign.Citadel) { Destroy(fort.gameObject); fort = null; return; }
+            var ruin = game.Ruins.FirstOrDefault(item => item.stage == stage);
+            if (ruin?.destroyed == true)
+            {
+                game.System.Descriptor.bodies[World].burrows.RemoveAll(burrow => math.distance(burrow.origin, Position) < 1);
+                game.System.Bodies[World].Dig(Place(Rooms.core), 45);
+                Destroy(fort.gameObject); fort = null; return;
+            }
             shell.gameObject.SetActive(false);
             crate.gameObject.SetActive(false);
             if (door != null) door.gameObject.SetActive(false);
@@ -100,7 +109,7 @@ namespace Infinigame
             if (!station && stage > 2)
                 Rooms.walls = Rooms.walls.Concat(Enumerable.Range(0, 3).Select(i => new Wall(new float3(i % 2 == 0 ? -2.5f : 2.5f, Interior.TunnelFloor(-10 + i * 16) + 1.5f, -10 + i * 16), new float3(2, 1.5f, 0.65f)))).ToArray();
             if (stage == 2)
-                Rooms.walls = Rooms.walls.Concat(new[] { new Wall(new float3(0, 1.5f, -23), new float3(5, 3, 1)) }).ToArray();
+                Rooms.walls = Rooms.walls.Concat(new[] { new Wall(new float3(0, 1.5f, -23), new float3(5, 3, 1)) { damage = 192 } }).ToArray();
             if (!station) game.System.Bodies[World].SealBurrow(new Burrow { origin = Position, rotation = rotation });
             if (!station)
                 for (int i = 0; i < 16; i++)
@@ -119,12 +128,12 @@ namespace Infinigame
             fort.SetParent(game.System.Bodies[World].transform, false);
             fort.localPosition = Position;
             fort.localRotation = rotation;
-            var lit = Shapes.Material("Glow", new Color(0.3f, 2.5f, 3.5f));
+            var lit = Shapes.Material("Glow", new Color(0.25f, 0.9f, 1.1f));
             foreach (var wall in Rooms.walls)
             {
                 Transform part;
                 if (station) part = Models.RoomPanel(wall.half, wall.door);
-                else part = Shapes.Part(fort, "Grown tunnel rock", Shapes.Rock(6), Shapes.Solid(Surface.Rock, new Color(0.3f, 0.27f, 0.22f), true), Vector3.zero, wall.half * 2.8f).transform;
+                else part = Shapes.Part(fort, "Grown tunnel rock", Shapes.Rock(6), Shapes.Solid(Surface.Chitin, new Color(0.48f, 0.19f, 0.4f), true), Vector3.zero, wall.half * 2.8f).transform;
                 part.SetParent(fort, false);
                 part.localPosition = wall.centre;
                 part.gameObject.SetActive(!wall.broken && !(wall.door && (Open || stage < game.Stage)));
@@ -137,22 +146,33 @@ namespace Infinigame
                 var lamp = new GameObject("Room light").AddComponent<Light>();
                 lamp.transform.SetParent(fort, false);
                 lamp.transform.localPosition = station ? Vector3.Lerp(Rooms.entrance, Rooms.core, i / 3f) : new Vector3(0, Interior.TunnelFloor(-12 + i * 14) + 4, -12 + i * 14);
-                lamp.color = new Color(0.2f, 0.85f, 0.65f);
+                lamp.color = new Color(0.65f, 0.2f, 0.55f);
                 lamp.range = station ? 100 : 18;
-                lamp.intensity = station ? 12 : 3;
+                lamp.intensity = station ? 3 : 0.8f;
             }
             shimmer = new Material(Resources.Load<Shader>("Shield"));
             shell = Shapes.Part(fort, "Shield", Shapes.Sphere(station ? 310 : 45, 24), shimmer, Vector3.zero, Vector3.one, false).transform;
             Prize = Place(station ? Rooms.entrance : Rooms.core + new float3(0, 0.5f, -3));
             crate = Models.Equipment(stage == 2); crate.name = "Prize"; crate.SetParent(fort, false); crate.localPosition = Local(Prize);
-            crate.gameObject.SetActive(false);
+            prizeShield = Shapes.Part(crate, "Locked equipment field", Shapes.Sphere(1.7f, 32), shimmer, Vector3.up * 0.8f, new Vector3(1, 0.8f, 1), false).transform;
+            if (!station)
+            {
+                var tissue = Shapes.Solid(Surface.Chitin, new Color(0.6f, 0.08f, 0.37f), true);
+                for (int i = 0; i < 12; i++)
+                {
+                    float z = -20 + i * 4.5f;
+                    var rib = Shapes.Part(fort, "Living tunnel tissue", Shapes.Sphere(1, 24), tissue,
+                        new Vector3(i % 2 == 0 ? -4.2f : 4.2f, Interior.TunnelFloor(z) + 2.5f, z), new Vector3(0.7f, 2.8f, 1.1f)).transform;
+                    rib.gameObject.AddComponent<LivingTissue>();
+                }
+            }
         }
 
         public void Leave(int world)
         {
             if (world != World) return;
             waiting.Clear();
-            waiting.AddRange(game.Battle.Foes.Where(foe => foe.kind == FoeKind.Mind || foe.kind == FoeKind.Sentry));
+            waiting.AddRange(game.Battle.Foes.Where(foe => foe.kind == FoeKind.Mind || foe.kind == FoeKind.Sentry || foe.outerGuard));
             spawned = false;
         }
         public void Flash() => flash = 1f;
@@ -202,13 +222,48 @@ namespace Infinigame
         void Update()
         {
             if (shell == null) return;
-            shell.gameObject.SetActive(!Fallen);
+            shell.gameObject.SetActive(!Fallen && OuterLeft == 0);
+            if (prizeShield != null) prizeShield.gameObject.SetActive(!Fallen);
             flash = Mathf.MoveTowards(flash, 0, Time.deltaTime * 2);
             shimmer.SetFloat("_Hit", flash);
             for (int i = 0; i < walls.Count; i++) walls[i].gameObject.SetActive(!Rooms.walls[i].broken && !(Rooms.walls[i].door && Open));
         }
+        public void ArmDemolition()
+        {
+            if (World < 0 || stage == Campaign.Citadel) return;
+            var ruin = game.Ruins.FirstOrDefault(item => item.stage == stage);
+            if (ruin == null) { ruin = new Ruin { stage = stage }; game.Ruins.Add(ruin); }
+            ruin.detonates = game.System.Clock + 30;
+            game.Hermit.Remark("Equipment recovered. I have armed a demolition charge in the dead mind. Thirty seconds. Get out of the burrow and keep running.");
+        }
         public void Tick()
         {
+            foreach (var site in kept.ToArray())
+            {
+                var ruin = game.Ruins.FirstOrDefault(item => item.stage == site.stage);
+                if (ruin == null || ruin.destroyed || ruin.detonates <= 0) continue;
+                double remaining = ruin.detonates - game.System.Clock;
+                if (site.world == game.System.Reference && math.ceil(remaining) != math.ceil(remaining + Time.deltaTime)) game.Sounds.Alarm();
+                if (remaining > 0) continue;
+                float3 centre = site.position + math.rotate(site.rotation, site.rooms.core);
+                ruin.destroyed = true;
+                Destroy(site.root.gameObject); kept.Remove(site);
+                game.System.Descriptor.bodies[site.world].burrows.RemoveAll(burrow => math.distance(burrow.origin, site.position) < 1);
+                game.System.Bodies[site.world].Dig(centre, 45);
+                if (site.world == game.System.Reference)
+                {
+                    game.Effects.Mushroom(centre, math.normalizesafe(centre), 75);
+                    game.Sounds.Nuke();
+                    if (math.distance(game.Player.Position, centre) < 65) game.Player.Hurt(10000, "Inside the burrow demolition radius");
+                    for (int i = 0; i < game.Battle.Foes.Count; i++)
+                    {
+                        var foe = game.Battle.Foes[i];
+                        if (math.distance(foe.position, centre) < 70) { foe.health = 0; game.Battle.Foes[i] = foe; }
+                    }
+                }
+                game.Hermit.Remark("The burrow is gone. " + game.Hermit.Briefing);
+                game.Write();
+            }
             if (World != game.System.Reference) return;
             if (Fallen)
             {
@@ -226,6 +281,11 @@ namespace Infinigame
                 }
                 return;
             }
+            for (int i = 0; i < game.Battle.Foes.Count; i++)
+            {
+                var foe = game.Battle.Foes[i];
+                if (foe.kind == FoeKind.Mind) { foe.protectedCore = OuterLeft > 0; game.Battle.Foes[i] = foe; }
+            }
             if (spawned || math.distance(game.Player.Position, Position) > (game.Stage == Campaign.Citadel ? 1800 : 600)) return;
             spawned = true;
             if (waiting.Count > 0)
@@ -235,7 +295,19 @@ namespace Infinigame
                 return;
             }
             game.Battle.Add(FoeKind.Mind, Core);
-            for (int i = 0; i < game.Mission.count; i++)
+            if (stage >= 5 && stage < Campaign.Citadel)
+                for (int i = 0; i < Campaign.OuterDefences(stage); i++)
+                {
+                    float3 at = Place(new float3((i % 2 == 0 ? -1 : 1) * (18 + i * 7), i % 2 == 0 ? 100 : 1, -68));
+                    float3 up = math.normalizesafe(at);
+                    at = up * (game.System.ReferenceBody.GroundRadius(up) + (i % 2 == 0 ? 100 : 1));
+                    game.Battle.Add(i % 2 == 0 ? FoeKind.Raider : FoeKind.Sentry, at, MotileCaste.Breacher);
+                    var guard = game.Battle.Foes[^1]; guard.outerGuard = true; guard.stationary = i % 2 != 0;
+                    game.Battle.Foes[^1] = guard;
+                }
+            int coreIndex = game.Battle.Foes.FindIndex(foe => foe.kind == FoeKind.Mind);
+            var core = game.Battle.Foes[coreIndex]; core.protectedCore = OuterLeft > 0; game.Battle.Foes[coreIndex] = core;
+            for (int i = 0; i < math.max(2, game.Mission.count); i++)
             {
                 // Two sentries watch the rooms; the remaining guards use the authored patrol kind.
                 FoeKind kind = FoeKind.Sentry;
@@ -244,7 +316,9 @@ namespace Infinigame
                     : kind == FoeKind.Raider ? new float3((i % 4 - 1.5f) * 35, 25, -90 - i / 4 * 30)
                     : kind == FoeKind.Drone ? new float3((i % 4 - 1.5f) * 12, 3, -18 - i / 4 * 8)
                     : new float3((i % 2 * 2 - 1) * 2, Interior.TunnelFloor(-16 + i * 44f / math.max(1, game.Mission.count - 1)) + 0.9f, -16 + i * 44f / math.max(1, game.Mission.count - 1));
+                if (i < 2) position = Rooms.core + new float3(i == 0 ? -2.5f : 2.5f, 0.9f, -4);
                 game.Battle.Add(kind, Place(position), Combat.Caste(game.Stage, i));
+                var sentry = game.Battle.Foes[^1]; sentry.guardian = i < 2; game.Battle.Foes[^1] = sentry;
             }
         }
         public void Killed(FoeKind kind)
@@ -260,7 +334,7 @@ namespace Infinigame
                 var foe = game.Battle.Foes[i]; foe.scattered = true; foe.shield = 0; foe.clever = false; game.Battle.Foes[i] = foe;
             }
             game.Notify(game.Stage == Campaign.Citadel ? "CORE DESTROYED  ·  25 SECONDS TO ESCAPE" : "MIND SILENT · COORDINATION, COPIED WEAPONS AND SHIELDS OFFLINE");
-            game.Hermit.Remark(game.Stage == Campaign.Citadel ? "That shield held the final mind safe. Get us out. We have twenty-five seconds." : "The mind is silent. This world has lost coordinated tactics, copied weapons and shields. Its remaining bodies are confused; our robots still need to finish the war.");
+            game.Hermit.Remark(game.Stage == Campaign.Citadel ? "That shield held the final mind safe. Get us out. We have twenty-five seconds." : "The mind is silent. This world has lost coordinated tactics, copied weapons and shields. Our robodogs can now overwhelm them. Seed a factory if you have not already. Even an empty factory will rebuild its patrols and win this world.");
             game.Sounds.Chime();
         }
     }

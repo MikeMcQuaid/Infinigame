@@ -23,20 +23,20 @@ The provider page shows the route in use, selected model, requests and token cou
 
 ## Voice choices
 
-Text generation and speaking are separate. The game uses free local macOS speech. New preferences default to **Zarvox**, an intentionally synthetic robot voice; an existing saved choice is preserved. Settings > Spoken voices offers Zarvox, Daniel and Eddy in British English, System voice and Text only. An unavailable named voice falls back to the system voice.
+Text generation and speaking are separate. The game uses free local system speech on Mac, Windows and Apple mobile devices. Robot subtitles have a separate toggle. New preferences default to **Zarvox**, an intentionally synthetic robot voice; an existing saved choice is preserved. On Mac, Settings > Robot voice offers Zarvox, Daniel and Eddy in British English, System voice and Voice off. Other platforms offer their available system voice modes. An unavailable named voice falls back to the system voice.
 
 | Platform | Implemented now | Other local options |
 |---|---|---|
 | macOS | Zarvox, Daniel, Eddy and the system voice | Download a voice in Accessibility > Read & Speak, select it as the system voice and choose System voice in the game. Fred, Ralph and Trinoids are other synthetic character choices where installed. |
-| iPhone/iPad | Text replies, native voice input | Apple's downloaded accessibility voices are a possible future AVSpeechSynthesizer integration. Selecting an OS voice does not currently make the game speak. |
-| Windows/SteamVR | Text replies, OS dictation input | An installed SAPI voice would be a small future integration. Windows Narrator's natural voices are available for Narrator; they are not automatically game voices. |
+| iPhone/iPad | British AVSpeechSynthesizer output and native input | Robot or natural pitch, using the installed British system voice. |
+| Windows/SteamVR | Local SAPI output through PowerShell, OS dictation input | Uses an installed British voice when available, otherwise the default. Robot mode adds light modulation. Narrator-only voices are not necessarily exposed to SAPI. |
 | Steam Deck through Proton | Text replies and typed input | Local speech would need a separate Linux/Proton bridge. Nothing downloads a voice model or calls paid speech. |
 
-See [Apple's Mac voice settings](https://support.apple.com/en-euro/guide/mac-help/mchlp2290/27/mac/27) and [Microsoft's Narrator voice settings](https://support.microsoft.com/en-us/accessibility/windows/narrator/chapter-7-customizing-narrator). This pass keeps non-Mac output as text rather than adding several speech backends. Pre-recorded lines or a paid service remain optional future choices.
+See [Apple's Mac voice settings](https://support.apple.com/en-euro/guide/mac-help/mchlp2290/27/mac/27) and [Microsoft's Narrator voice settings](https://support.microsoft.com/en-us/accessibility/windows/narrator/chapter-7-customizing-narrator). Steam Deck keeps text when the Windows speech backend is unavailable under Proton. Pre-recorded lines or a paid service remain optional future choices.
 
 ## Voice input and bounded state
 
-Press Y, Mic on a mobile device or left grip plus right-stick click in VR to start dictation. Press it again to finish. The transcript is sent as a normal companion question. Permission is requested only when you choose to speak. Apple builds require on-device British English recognition; no audio is sent to Apple. If the language model is unavailable, the transcript receives an authored reply. If local dictation is unavailable or permission is denied, type with Return instead. Windows uses its OS speech recogniser and its privacy settings. The Unity editor uses typed input; native voice is enabled in player builds. Tests inject a transcript and never open the microphone.
+Hold Y, Mic on a mobile device, LT + R3 on a gamepad or left grip plus right-stick click in VR to dictate. Release to finish. Partial recognition appears in the HUD when available. The transcript becomes a companion question and the reply stays in the HUD without opening a menu. Permission is requested only when you choose to speak. Apple builds require on-device British English recognition; no audio is sent to Apple. If the language model is unavailable, the transcript receives an authored reply. If local dictation is unavailable or permission is denied, type with Return instead. Windows uses its OS speech recogniser and its privacy settings. The Unity editor uses typed input; native voice is enabled in player builds. Tests inject a transcript and never open the microphone.
 
 On each question the game writes `companion-state.json` in Unity's per-user persistent data directory. It contains stage, system depth, location, objective, suit health/power, hull condition, altitude and at most 24 world summaries: alien/robodog/ship populations and factory flags. It includes no keys or audio. The current world comes first. Story instructions are capped at 4,000 characters, history at six 240-character lines and the question at 400 characters. Scanner facts are capped at 1,200 characters. No simulation tick calls an LLM.
 

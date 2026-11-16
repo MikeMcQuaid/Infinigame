@@ -154,7 +154,8 @@ namespace Infinigame.Tests
             game.Advance();
             game.Write();
             yield return UnityEngine.SceneManagement.SceneManager.LoadSceneAsync("Main");
-            yield return null;
+            game = Object.FindAnyObjectByType<Game>();
+            while (!game.Ready) yield return null;
             Assert.IsNotEmpty(game.Ruins.Single(ruin => ruin.stage == 2).broken);
             Assert.AreEqual(1, Object.FindObjectsByType<Transform>().Count(part => part.name == "Mind burrow"));
         }

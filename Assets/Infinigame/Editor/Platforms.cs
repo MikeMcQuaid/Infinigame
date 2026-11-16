@@ -63,16 +63,26 @@ namespace Infinigame.Editor
         }
         public static void SteamDeck()
         {
+            int width = PlayerSettings.defaultScreenWidth, height = PlayerSettings.defaultScreenHeight;
+            bool native = PlayerSettings.defaultIsNativeResolution;
+            var mode = PlayerSettings.fullScreenMode;
+            PlayerSettings.defaultScreenWidth = 1280; PlayerSettings.defaultScreenHeight = 800;
+            PlayerSettings.defaultIsNativeResolution = true; PlayerSettings.fullScreenMode = FullScreenMode.FullScreenWindow;
             PlayerSettings.SetScriptingBackend(UnityEditor.Build.NamedBuildTarget.Standalone, ScriptingImplementation.Mono2x);
 #if INFINIGAME_XR
             var settings = XRGeneralSettingsPerBuildTarget.XRGeneralSettingsForBuildTarget(BuildTargetGroup.Standalone);
             bool automatic = settings != null && settings.InitManagerOnStart;
             if (settings != null) settings.InitManagerOnStart = false;
-            try { Build("Build/SteamDeck/Infinigame.exe", BuildTarget.StandaloneWindows64); }
-            finally { if (settings != null) settings.InitManagerOnStart = automatic; }
-#else
-            Build("Build/SteamDeck/Infinigame.exe", BuildTarget.StandaloneWindows64);
 #endif
+            try { Build("Build/SteamDeck/Infinigame.exe", BuildTarget.StandaloneWindows64, true); }
+            finally
+            {
+                PlayerSettings.defaultScreenWidth = width; PlayerSettings.defaultScreenHeight = height;
+                PlayerSettings.defaultIsNativeResolution = native; PlayerSettings.fullScreenMode = mode;
+#if INFINIGAME_XR
+                if (settings != null) settings.InitManagerOnStart = automatic;
+#endif
+            }
         }
         public static void IOS()
         {
@@ -86,9 +96,9 @@ namespace Infinigame.Editor
             try { Build("Build/iOS", BuildTarget.iOS); }
             finally { PlayerSettings.iOS.appleDeveloperTeamID = previousTeam; }
         }
-        static void Build(string path, BuildTarget target)
+        static void Build(string path, BuildTarget target, bool deck = false)
         {
-            var report = BuildPipeline.BuildPlayer(new[] { "Assets/Scenes/Main.unity" }, path, target, BuildOptions.None);
+            var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions { scenes = new[] { "Assets/Scenes/Main.unity" }, locationPathName = path, target = target, extraScriptingDefines = deck ? new[] { "INFINIGAME_DECK" } : Array.Empty<string>() });
             if (report.summary.result != BuildResult.Succeeded) throw new InvalidOperationException($"{target} build failed: {report.summary.result}");
         }
     }

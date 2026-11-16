@@ -12,6 +12,15 @@ namespace Infinigame
         [NonSerialized] public Game game;
         Transform hands;
         float crackle, nextPunch;
+        int stains;
+        public void Stain(Material material)
+        {
+            if (gauntlets[1] == null || stains >= 12) return;
+            int index = stains++;
+            Shapes.Part(gauntlets[index % 2], "Violet blood", Shapes.Rock(2), material,
+                new Vector3((index % 3 - 1) * 0.06f, 0.085f, 0.02f + index / 3 * 0.03f), new Vector3(0.065f, 0.012f, 0.075f), false);
+            game.Player.Stain(material, index);
+        }
         readonly Vector3[] previous = new Vector3[2];
         readonly bool[] tracked = new bool[2];
         int punchFrame = -1;
@@ -64,7 +73,7 @@ namespace Infinigame
         void LateUpdate()
         {
             if (hands == null) return;
-            hands.gameObject.SetActive(!game.Player.flying && !game.Player.ThirdPerson && !game.Player.SystemView && !game.Title && !game.Dead && !game.Frontier.Collapsing && game.Player.Has(Gear.Suit));
+            hands.gameObject.SetActive((!game.Player.flying || DeviceControls.VR && game.Player.Seated) && !game.Player.ThirdPerson && !game.Player.SystemView && !game.Title && !game.Dead && !game.Frontier.Collapsing && game.Player.Has(Gear.Suit));
             if (DeviceControls.VR)
             {
                 for (int i = 0; i < 2; i++)

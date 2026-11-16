@@ -52,9 +52,10 @@ namespace Infinigame.Core
                 if (front.aliens > 0)
                 {
                     float hostile = front.aliens, friendly = front.dogs;
-                    front.aliens = math.max(0, hostile + dt * (hostile * growth * (1 - hostile / 4000) - friendly * 0.12f));
-                    front.dogs = math.max(0, friendly + dt * ((front.factory ? math.max(2, friendly) * 0.024f : 0) - hostile * 0.0015f));
-                    if (!front.factory) front.aliens = math.max(1, front.aliens);
+                    front.aliens = math.max(0, hostile + dt * (front.mindDead ? -friendly * 0.65f : hostile * growth * (1 - hostile / 4000) - friendly * 0.015f));
+                    // An intact factory can restart its assembly line after losing every patrol.
+                    front.dogs = math.max(0, friendly + dt * ((front.factory ? math.max(2, friendly) * (front.mindDead ? 0.09f : 0.008f) : 0) - (front.mindDead ? 0 : hostile * 0.002f)));
+                    if (!front.factory || !front.mindDead) front.aliens = math.max(1, front.aliens);
                     else if (front.aliens < 0.5f) front.aliens = 0;
                 }
                 if (front.alienShips > 0)

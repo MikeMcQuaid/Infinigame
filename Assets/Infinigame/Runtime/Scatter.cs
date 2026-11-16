@@ -63,6 +63,45 @@ namespace Infinigame
         Layer[] layers;
         int tier = -1, growing;
         float floor;
+        readonly Dictionary<int3, float> wounds = new Dictionary<int3, float>();
+        readonly Instances[] broken = { new Instances(), new Instances(), new Instances() };
+        Mesh[][] brokenTrees;
+        static int3 TreeKey(Vector3 point) => (int3)math.round(math.normalizesafe((float3)point) * 1000000);
+        public bool Strike(float3 from, float3 to, float damage, out float3 hit)
+        {
+            hit = to; float closest = math.distance(from, to); bool found = false;
+            int3 wounded = default; float previous = 0;
+            if (layers == null) return false;
+            float3 ray = to - from; float length = math.lengthsq(ray);
+            foreach (var layer in layers)
+            {
+                if (layer.name != "conifer tree") continue;
+                float cellRadius = QuadtreeLod.NodeSize(body.radius, layer.depth) + 25;
+                foreach (var cell in layer.cells.Values)
+                {
+                    float3 nearCell = from + ray * math.saturate(math.dot(cell.centre - from, ray) / math.max(length, 0.001f));
+                    if (cell.things == null || math.distancesq(cell.centre, nearCell) > cellRadius * cellRadius) continue;
+                    foreach (var thing in cell.things)
+                    {
+                        float3 foot = (Vector3)thing.GetColumn(3); var key = TreeKey(foot); wounds.TryGetValue(key, out float hurt);
+                        if (hurt >= 80) continue;
+                        float3 up = math.normalizesafe(foot);
+                        float height = (hurt >= 60 ? 1.4f : hurt >= 40 ? 4 : hurt >= 20 ? 7 : 10) * thing.lossyScale.x;
+                        float3 flat = ray - up * math.dot(ray, up), offset = from - foot;
+                        float along = math.saturate(-math.dot(offset, flat) / math.max(math.lengthsq(flat), 0.001f));
+                        float3 point = from + ray * along;
+                        float3 centre = foot + up * math.clamp(math.dot(point - foot, up), 0, height);
+                        if (math.distance(point, centre) > math.max(0.5f, thing.lossyScale.x)) continue;
+                        float distance = math.distance(from, point);
+                        if (distance >= closest) continue;
+                        closest = distance; hit = point; found = true; wounded = key; previous = hurt;
+                    }
+                }
+            }
+            if (found) wounds[wounded] = previous + damage;
+            return found;
+        }
+
         readonly HashSet<NodeId> near = new HashSet<NodeId>();
         readonly List<NodeId> stale = new List<NodeId>();
         readonly Plane[] frustum = new Plane[6];
@@ -112,6 +151,20 @@ namespace Infinigame
                 return;
             }
             var (trunk, needles) = Shapes.Conifer();
+            brokenTrees = new Mesh[3][];
+            for (int stage = 0; stage < 3; stage++)
+            {
+                brokenTrees[stage] = new Mesh[2];
+                var source = new[] { trunk, needles };
+                for (int part = 0; part < 2; part++)
+                {
+                    var vertices = source[part].vertices; var triangles = source[part].triangles; var indices = new List<int>();
+                    float cut = 7.5f - stage * 3;
+                    for (int t = 0; t < triangles.Length; t += 3)
+                        if (vertices[triangles[t]].y < cut && vertices[triangles[t + 1]].y < cut && vertices[triangles[t + 2]].y < cut) indices.AddRange(new[] { triangles[t], triangles[t + 1], triangles[t + 2] });
+                    var mesh = Instantiate(source[part]); mesh.triangles = indices.ToArray(); mesh.RecalculateBounds(); brokenTrees[stage][part] = mesh;
+                }
+            }
             layers = new[]
             {
                 boulders,
@@ -164,6 +217,7 @@ namespace Infinigame
                 // the full shape is kept for where it can be made out
                 float fine = lod.Range(tall) / 8f;
                 layer.whole.Clear();
+                foreach (var fragments in broken) fragments.Clear();
                 layer.plain.Clear();
                 if (height - top < range)
                 {
@@ -200,7 +254,13 @@ namespace Infinigame
                         float size = Detail.Fade(distance, range);
                         if (cell.things == null || cell.things.Length == 0 || !above || size <= 0f || !InView(cell.centre, cellSize + tall + 30f)) continue;
                         cell.whole = layer.distant == null || distance < fine * (cell.whole ? 1.15f : 1f);
-                        (cell.whole ? layer.whole : layer.plain).Add(cell.things, size);
+                        if (layer.name != "conifer tree" || wounds.Count == 0) (cell.whole ? layer.whole : layer.plain).Add(cell.things, size);
+                        else foreach (var thing in cell.things)
+                        {
+                            wounds.TryGetValue(TreeKey(thing.GetColumn(3)), out float hurt);
+                            if (hurt < 20) (cell.whole ? layer.whole : layer.plain).Add(thing);
+                            else if (hurt < 80) broken[Mathf.Clamp((int)(hurt / 20) - 1, 0, 2)].Add(thing);
+                        }
                     }
                 }
                 stale.Clear();
@@ -215,6 +275,8 @@ namespace Infinigame
 
                 var bounds = new Bounds(camera, Vector3.one * (2f * range + 200f));
                 for (int m = 0; m < layer.meshes.Length; m++) layer.whole.Draw(layer.meshes[m], layer.materials[m], layer.shadows, bounds);
+                if (layer.name == "conifer tree")
+                    for (int part = 0; part < 2; part++) for (int stage = 0; stage < 3; stage++) broken[stage].Draw(brokenTrees[stage][part], layer.materials[part], layer.shadows, bounds);
                 if (layer.distant != null) layer.plain.Draw(layer.distant, layer.distantMaterial, false, bounds);
                 Drawn += layer.whole.Count + layer.plain.Count;
             }
@@ -234,6 +296,17 @@ namespace Infinigame
         {
             foreach (var layer in layers)
             {
+                if (layer.name == "conifer tree")
+                {
+                    foreach (var cell in layer.cells.Values)
+                        if (cell.things != null) foreach (var tree in cell.things)
+                        {
+                            Vector3 foot = tree.GetColumn(3);
+                            if (math.distance(math.normalizesafe((float3)foot), crater.xyz) * body.radius > crater.w + 1) continue;
+                            var key = TreeKey(foot); wounds.TryGetValue(key, out float hurt); wounds[key] = hurt + math.max(12, crater.w * 8);
+                        }
+                    continue;
+                }
                 float reach = QuadtreeLod.NodeSize(body.radius, layer.depth) + 1.5f * crater.w;
                 stale.Clear();
                 foreach (var pair in layer.cells)
@@ -279,8 +352,8 @@ namespace Infinigame
                 if (!layer.grows(direction, height, level)) continue;
                 // nothing is left standing in a crater
                 bool blasted = false;
-                foreach (float4 crater in craters) blasted |= math.distance(direction, crater.xyz) * body.radius < 1.1f * crater.w;
-                if (blasted) continue;
+                foreach (float4 crater in craters) blasted |= (layer.name != "conifer tree" || crater.w >= 4) && math.distance(direction, crater.xyz) * body.radius < 1.1f * crater.w;
+                if (blasted || body.Dry(direction * (body.radius + height))) continue;
                 float3 along = math.normalize(math.cross(direction, math.abs(direction.y) < 0.9f ? new float3(0, 1, 0) : new float3(1, 0, 0)));
                 grown.Add(float4x4.TRS(direction * (body.radius + height - 0.1f), quaternion.LookRotation(math.rotate(quaternion.AxisAngle(direction, turn), along), direction), size));
             }

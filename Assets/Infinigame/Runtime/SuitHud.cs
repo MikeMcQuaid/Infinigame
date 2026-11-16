@@ -81,19 +81,20 @@ namespace Infinigame
                 game.Speech.Say("You are not dead. You are not dead. Fight. Emergency power. Punch your way out.");
             }
             for (int i = 0; i < bootTicks.Length; i++) bootTicks[i].enabled = game.Buried && age > 5 + i * 0.18f && age < 11.8f;
-            glass.alpha = game.Player.flying || game.Frontier.Collapsing ? 0 : math.saturate((age - 8) / 4);
+            glass.alpha = game.Paused || game.ShowControls || game.Hermit.Talking || game.Player.SystemView || game.Player.flying || game.Frontier.Collapsing ? 0 : math.saturate((age - 8) / 4);
             blackout.color = game.Frontier.Whiteout > 0 ? new Color(1, 1, 1, game.Frontier.Whiteout) : new Color(0, 0, 0, age < 8 ? 1 : math.saturate((12 - age) / 4));
             sweep.enabled = game.Buried && age >= 5 && age < 12;
             sweep.rectTransform.anchoredPosition = new Vector2(0, 400 - (age % 2) * 400);
             boot.enabled = game.Buried && age < 12;
             boot.text = age < 3.5f ? "" : age < 5 ? "YOU ARE NOT DEAD." : age < 6.5f ? "YOU ARE NOT DEAD.\n\nFIGHT." : age < 9 ? "NEURAL LINK RESTORED\nVISOR ONLINE  ·  ACTUATORS ONLINE\nREACTOR CRITICAL" : "EMERGENCY FISTS READY\n\nPUNCH YOUR WAY OUT\n\nTHRUSTERS AND WEAPON BUS OFFLINE";
             telemetry.enabled = systems.enabled = radio.enabled = reactor.enabled = !game.Paused && !game.Hermit.Talking && !game.Player.SystemView && !game.ShowControls;
+            telemetry.fontSize = DeviceControls.Touch ? 26 : 19;
             telemetry.text = $"FOUNDRY // SEALED ARMOUR\nINTEGRITY {100 * math.saturate(game.Player.health / game.Player.MaxHealth):0}%    REACTOR {100 * game.Player.energy / (Suit.Capacity + (game.Player.Has(Gear.Capacitor) ? 50 : 0)):0}%\nALT {game.Player.Altitude:0} m    SPEED {math.length(game.Player.Velocity):0} m/s";
             if (game.Player.InSpace && (game.Player.Has(Gear.Ship) || game.Player.captive)) telemetry.text += $"\nSHIP {math.distance(game.Player.Position, game.Player.ship.position):0} m   RELATIVE SPEED {math.length(game.Player.Velocity - game.Player.ship.velocity):0} m/s";
             reactor.rectTransform.sizeDelta = new Vector2(300 * math.saturate(game.Player.energy / (Suit.Capacity + (game.Player.Has(Gear.Capacitor) ? 50 : 0))), 4);
             reactor.color = game.Player.Powered ? Color.cyan : new Color(1, 0.65f, 0.1f);
             systems.text = game.Outpost.Escape > 0 && game.Stage == Campaign.Citadel ? $"ESCAPE  {math.ceil(game.Outpost.Escape):0}s\nCORE COLLAPSE IMMINENT"
-                : game.Player.Weapon.rail ? $"RAIL CHARGE {game.Battle.RailCharge:0%}\nHOLD FIRE · RELEASE TO SHOOT" : "";
+                : game.Player.Weapon.rail ? $"RAIL CHARGE {game.Battle.RailCharge:0%}\n{(DeviceControls.Touch ? "TAP FIRE · AUTOMATIC CHARGE" : "HOLD FIRE · RELEASE TO SHOOT")}" : "";
             radio.text = "";
 
         }

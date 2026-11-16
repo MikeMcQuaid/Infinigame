@@ -1,5 +1,7 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using UnityEngine.UI;
 using System.IO;
 using System.Linq;
 using Infinigame.Core;
@@ -52,8 +54,8 @@ namespace Infinigame
         public const float BootDuration = 12;
         public const string Settings = "Settings", Cheats = "Cheats", ColonyPage = "Factory uplink";
         // The rows of the settings page before those of the oracle's voices.
-        const int Dials = 5;
-        public static readonly string[] Menu = { "Resume", "Controls", Settings, Cheats, "New game", "Quit to title", "Quit to desktop" };
+        const int Dials = 6;
+        public static readonly string[] Menu = { "Resume", "Controls", Settings, Cheats, "Recentre VR", "New game", "Quit to title", "Quit to desktop" };
         public static readonly string[] Confirm = { "Keep playing", "Quit" }, Over = { "Try again" };
 
         public SolarSystem System { get; private set; }
@@ -107,6 +109,10 @@ namespace Infinigame
         string pending, cheatCode = "";
         int pendingSlot;
         public bool CheatsUnlocked { get; private set; }
+        public bool Subtitles { get; private set; } = true;
+        bool mapOpen, mapPressed;
+        Vector2 lastPointer;
+        public SuitTutorial Tutorial { get; private set; }
         public int MapSelection { get; private set; } = 1;
         // The page of the menu that is open, when it is not the first: Cheats, Settings and, from
         // there, the name of one of the oracle's voices.
@@ -129,21 +135,21 @@ namespace Infinigame
             {
                 $"Have {Page} write", $"MODEL   ·   {Oracle.Model(Voice).name.ToUpperInvariant()}", $"THINKING   ·   {Oracle.Effort(Voice).ToUpperInvariant()}",
             }.Concat(Oracle.Roads(Voice)).Concat(new[] { "Use the key on the clipboard", "Forget key and sign-in", "Back" }).ToArray()
-            : Page == "Voice" ? new[] { "Zarvox robot (Mac)", "Daniel British (Mac)", "Eddy British (Mac)", "System voice (Mac)", "Text only", "Back" }
+            : Page == "Voice" ? (Application.platform == RuntimePlatform.OSXPlayer || Application.platform == RuntimePlatform.OSXEditor ? new[] { "Zarvox robot", "Daniel British", "Eddy British", "System voice", "Voice off", "Back" } : new[] { "Local robot voice", "British system voice", "Natural system voice", "Default system voice", "Voice off", "Back" })
             : Page == Settings ? new[]
             {
                 $"DETAIL   ·   {QualitySettings.names[QualitySettings.GetQualityLevel()].ToUpperInvariant()}", $"MUSIC   ·   {(Music.Muted ? "OFF" : "ON")}",
-                $"LOOK SPEED   ·   {DesktopControls.Sensitivity:0.00}", $"FULL SCREEN   ·   {(Screen.fullScreen ? "ON" : "OFF")}", $"SPOKEN VOICES   ·   {(Speech.Muted ? "OFF" : "ON")}",
+                $"LOOK SPEED   ·   {DesktopControls.Sensitivity:0.00}", $"FULL SCREEN   ·   {(Screen.fullScreen ? "ON" : "OFF")}", $"ROBOT VOICE   ·   {(Speech.Muted ? "OFF" : "ON")}", $"ROBOT SUBTITLES   ·   {(Subtitles ? "ON" : "OFF")}",
             }
             // who can write for the scanner and the hermit: how the player stands with each, and the model it would use
             .Concat(Oracle.Voices.Select((voice, i) => $"{voice.ToUpperInvariant()}   ·   {signedIn[i]}   ·   {Oracle.Model(i).name.ToUpperInvariant()}{(i == Oracle.Voice ? "   ·   IN USE" : "")}"))
             .Append("Back").ToArray()
             : Title ? slots.Concat(Enumerable.Range(0, Slots).Where(slot => File.Exists(SlotPath(slot))).Select(slot => $"Delete slot {slot + 1}")).Concat(CheatsUnlocked ? new[] { Cheats, Settings, "Quit to desktop" } : new[] { Settings, "Quit to desktop" }).ToArray()
-            : Menu.Where(item => item != Cheats || CheatsUnlocked).ToArray();
+            : Menu.Where(item => (item != Cheats || CheatsUnlocked) && (item != "Recentre VR" || DeviceControls.VR)).ToArray();
         // On a voice's page: how the player stands with it and what it has been asked for so far,
         // and what the highlighted item would do.
         public string Standing => Voice < 0 ? null : $"{signedIn[Voice]}{(Voice == Oracle.Voice ? "   ·   IN USE" : "")}   ·   {Oracle.Used(Voice)}";
-        public string Hint => Page == "Voice" ? "FREE LOCAL MAC VOICES · OTHER PLATFORMS USE TEXT · VOICE INPUT: Y, MIC OR VR LEFT GRIP + RIGHT STICK"
+        public string Hint => Page == "Voice" ? "FREE LOCAL SYSTEM VOICES · BRITISH VOICE WHEN INSTALLED · HOLD Y / MIC TO TALK · DECK USES TEXT IF SPEECH IS UNAVAILABLE"
             : Page == ColonyPage ? $"{Hermit.Name}: {Frontier.FactoryHint(Selected)}"
             : Page == Cheats ? Selected == 2 ? "RECOVER ALL SUIT MODULES, SHIP SYSTEMS AND TORPEDOES"
                 : "CHOOSE A MISSION OR PREPARE THE FACTORY AND CONQUESTS REQUIRED FOR MOON ENGINES"
@@ -153,7 +159,8 @@ namespace Infinigame
                 1 => "M DOES THE SAME WHILE PLAYING",
                 2 => "HOW FAST THE VIEW TURNS   ·   - AND = DO THE SAME WHILE PLAYING",
                 3 => "OPTION-RETURN DOES THE SAME WHILE PLAYING",
-                4 => "WHETHER THE HERMIT'S WORDS ARE SPOKEN ALOUD AS WELL AS WRITTEN",
+                4 => "CHOOSE A FREE LOCAL VOICE OR TURN SPEECH OFF",
+                5 => "SHOW ROBOT SUBTITLES · ESSENTIAL SUIT INSTRUCTIONS REMAIN VISIBLE",
                 _ when Selected < Dials + Oracle.Voices.Length => "SIGN IN, GIVE IT A KEY, PICK ITS MODEL AND HOW HARD IT THINKS   ·   THE ONE IN USE WRITES THE SCANNER'S JOURNAL AND THE HERMIT'S TALK",
                 _ => "",
             }
@@ -221,13 +228,27 @@ namespace Infinigame
             return read;
         }
 
-        void Awake()
+        public bool Ready { get; private set; }
+        T Add<T>() where T : MonoBehaviour { var component = gameObject.AddComponent<T>(); component.enabled = false; return component; }
+        void Awake() => StartCoroutine(Initialise());
+        IEnumerator Initialise()
         {
+            var loading = new GameObject("Loading", typeof(Canvas), typeof(CanvasScaler));
+            loading.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            loading.GetComponent<Canvas>().sortingOrder = 100;
+            var panel = new GameObject("Background", typeof(RectTransform), typeof(Image)); panel.transform.SetParent(loading.transform, false);
+            var backdrop = panel.GetComponent<Image>(); backdrop.color = new Color(0.015f, 0.025f, 0.04f);
+            backdrop.rectTransform.anchorMin = Vector2.zero; backdrop.rectTransform.anchorMax = Vector2.one; backdrop.rectTransform.offsetMin = backdrop.rectTransform.offsetMax = Vector2.zero;
+            var message = new GameObject("Progress", typeof(RectTransform), typeof(Text)).GetComponent<Text>(); message.transform.SetParent(loading.transform, false);
+            message.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"); message.fontSize = 30; message.alignment = TextAnchor.MiddleCenter; message.color = new Color(0.5f, 0.9f, 1);
+            message.rectTransform.sizeDelta = new Vector2(850, 240); message.text = "INFINIGAME\nPreparing your suit…";
+            yield return null; yield return null;
             Narrative.Load(Resources.Load<TextAsset>("STORY").text, Resources.Load<TextAsset>("MISSIONS").text,
                 Resources.Load<TextAsset>("FACTIONS").text, Resources.Load<TextAsset>("COLONIES").text);
             // in step with the screen, at 60 frames a second: every other refresh of a fast display
             QualitySettings.vSyncCount = Screen.currentResolution.refreshRateRatio.value > 90 ? 2 : 1;
-            Application.targetFrameRate = 60;
+            Application.targetFrameRate = DeviceControls.VR ? -1 : 60;
+            if (DeviceControls.VR) QualitySettings.vSyncCount = 0;
             Cursor.lockState = CursorLockMode.Locked;
             // the slot played last is the one written last
             for (int slot = 1; slot < Slots; slot++)
@@ -240,39 +261,47 @@ namespace Infinigame
             Music.Muted = PlayerPrefs.GetInt($"{Prefs}.muted") == 1;
             Speech.Choice = PlayerPrefs.GetString($"{Prefs}.voice", "Zarvox");
             Speech.Muted = PlayerPrefs.GetInt($"{Prefs}.silent") == 1;
-            System = gameObject.AddComponent<SolarSystem>();
-            gameObject.AddComponent<Rainfall>();
+            Subtitles = PlayerPrefs.GetInt($"{Prefs}.subtitles", 1) == 1;
+            System = Add<SolarSystem>();
+            Add<Rainfall>();
             Player = new GameObject("Player").AddComponent<Player>();
             Player.Init(System);
             Player.game = this;
-            gameObject.AddComponent<DeviceControls>().game = this;
-            Scanner = gameObject.AddComponent<Scanner>();
+            var devices = Add<DeviceControls>(); devices.game = this; Player.controls = devices.Poll;
+            message.text = "INFINIGAME\nGrowing machines…"; yield return null;
+            Scanner = Add<Scanner>();
             Scanner.game = this;
-            Hermit = gameObject.AddComponent<Hermit>();
+            Hermit = Add<Hermit>();
             Hermit.game = this;
-            Effects = gameObject.AddComponent<Effects>();
+            Effects = Add<Effects>();
             Effects.game = this;
-            Corpses = gameObject.AddComponent<Corpses>();
+            Corpses = Add<Corpses>();
             Corpses.game = this;
-            Battle = gameObject.AddComponent<Battle>();
+            Battle = Add<Battle>();
             Battle.game = this;
             System.ReferenceChanged += Battle.Rebase;
-            Outpost = gameObject.AddComponent<Outpost>();
+            message.text = "INFINIGAME\nBuilding the worlds…"; yield return null;
+            Outpost = Add<Outpost>();
             Outpost.game = this;
-            Sounds = gameObject.AddComponent<Sounds>();
+            Sounds = Add<Sounds>();
             Sounds.game = this;
-            Speech = gameObject.AddComponent<Speech>();
-            gameObject.AddComponent<Music>().game = this;
-            gameObject.AddComponent<Arms>().game = this;
-            hud = gameObject.AddComponent<Hud>();
+            Speech = Add<Speech>();
+            Add<Music>().game = this;
+            Add<Arms>().game = this;
+            hud = Add<Hud>();
             hud.game = this;
-            gameObject.AddComponent<SuitHud>().game = this;
-            gameObject.AddComponent<VoiceInput>().game = this;
-            gameObject.AddComponent<FrameLog>().game = this;
-            Frontier = gameObject.AddComponent<Frontier>();
+            Add<SuitHud>().game = this;
+            Add<VoiceInput>().game = this;
+            Add<FrameLog>().game = this;
+            Frontier = Add<Frontier>();
             Frontier.game = this;
+            Tutorial = Add<SuitTutorial>(); Tutorial.game = this;
             Enter();
             ShowTitle();
+            Ready = true;
+            foreach (var component in GetComponents<MonoBehaviour>()) component.enabled = true;
+            yield return null;
+            Destroy(loading);
         }
 
         // Builds the saved seed's system, terrain and gravity together, round the world the
@@ -316,7 +345,7 @@ namespace Infinigame
             System.Focus = Player.Position;
             Player.health = Player.MaxHealth;
             Player.hull = Player.MaxHull;
-            Dug = 0;
+            Dug = 0; mapOpen = false; Tutorial?.Reset();
             if (burial != null) Destroy(burial.gameObject);
             // the hole they wake in
             if (Buried)
@@ -338,15 +367,21 @@ namespace Infinigame
 
         void Update()
         {
+            if (!Ready) return;
             var c = Player.controls();
-            if (Title && !string.IsNullOrEmpty(c.typed))
+            if (Paused && !string.IsNullOrEmpty(c.typed))
             {
                 cheatCode = (cheatCode + c.typed.ToLowerInvariant());
                 if (cheatCode.Contains("idgaf")) { CheatsUnlocked = true; Notify("CHEATS UNLOCKED"); }
                 if (cheatCode.Length > 12) cheatCode = cheatCode.Substring(cheatCode.Length - 12);
             }
-            if (Buried && DeviceControls.VR) c.fire = GetComponent<Arms>().MotionPunch;
-            bool map = c.systemView && !Paused && !Dead && !Hermit.Talking;
+            if (Buried && DeviceControls.VR && !c.interfaceActive) c.fire = GetComponent<Arms>().MotionPunch;
+            GetComponent<VoiceInput>().Hold(c.voice);
+            if (c.systemView && !mapPressed && !Paused && !Dead && !Hermit.Talking) { mapOpen = !mapOpen; ShowControls = false; }
+            mapPressed = c.systemView;
+            if (c.menu && mapOpen) { mapOpen = false; c.menu = false; }
+            bool map = mapOpen && !Paused && !Dead && !Hermit.Talking;
+            c.systemView = map;
             Time.timeScale = Paused || Dead || Hermit.Talking || ShowControls || map ? 0 : 1;
             if (map)
             {
@@ -356,6 +391,7 @@ namespace Infinigame
                         MapSelection = (MapSelection + (c.up ? System.Bodies.Length - 1 : 1)) % System.Bodies.Length;
                         if (MapSelection > 0 && System.Charted(MapSelection) && (System.Descriptor.bodies[MapSelection].kind != BodyKind.Station || Stage >= Campaign.Citadel)) break;
                     }
+                if (c.click && hud.MapItemAt(c.pointer) is int selectedWorld && selectedWorld >= 0) MapSelection = selectedWorld;
                 if (c.confirm || c.travel) { Notify(Player.TravelTo(MapSelection)); c.travel = false; }
                 c.talk = c.interact = c.confirm = false;
             }
@@ -371,9 +407,11 @@ namespace Infinigame
             }
             else if (Paused)
             {
+                if (c.click && hud.CheatAt(c.pointer)) { CheatsUnlocked = true; Page = Cheats; Selected = 0; c.click = false; }
                 int hover = hud.MenuItemAt(c.pointer);
-                if (hover >= 0) Selected = hover;
-                else if (c.up || c.down) Selected = (Selected + (c.down ? 1 : Items.Length - 1)) % Items.Length;
+                if (hover >= 0 && (c.click || c.pointer != lastPointer) && !c.up && !c.down) Selected = hover;
+                lastPointer = c.pointer;
+                if (c.up || c.down) Selected = (Selected + (c.down ? 1 : Items.Length - 1)) % Items.Length;
                 if (c.menu && (Confirming || Page != null)) Back();
                 // escape leaves the pause menu, but the only way off the title page is to choose
                 else if (c.menu && !Title) Resume();
@@ -387,6 +425,7 @@ namespace Infinigame
                 else if (c.menu) Pause();
                 if (c.help) ShowControls = !ShowControls;
                 if (ShowControls) c = default;
+                else if (!map) Tutorial.Filter(ref c);
                 if (c.warp) Warp();
                 if (c.scan) Scanner.Scan();
                 if (c.travel)
@@ -415,6 +454,7 @@ namespace Infinigame
                 }
                 else if (c.interact && Outpost.Near)
                 {
+                    Outpost.ArmDemolition();
                     Advance();
                     c = default;
                 }
@@ -437,12 +477,13 @@ namespace Infinigame
                         }
                     }
                     (c.move, c.jump) = (Vector2.zero, false);
+                    c.look = Vector2.zero;
                 }
                 if (Buried && Boot < BootDuration) c = default;
                 pulled = c.fire;
             }
             Time.timeScale = Paused || Dead || Hermit.Talking || ShowControls || map ? 0 : 1;
-            Cursor.lockState = Paused || Dead || map || ShowControls ? CursorLockMode.None : CursorLockMode.Locked;
+            Cursor.lockState = Paused || Dead || map || ShowControls || DeviceControls.Pointer ? CursorLockMode.None : CursorLockMode.Locked;
 
             int bound = Player.Destination;
             string held = Player.Weapon.name;
@@ -546,7 +587,7 @@ namespace Infinigame
             Outpost.Settle();
             Stow();
             // riding along, the hermit says at once what he makes of the next one
-            Hermit.Remark(Hermit.Briefing);
+            if (Outpost.Demolition <= 0) Hermit.Remark(Hermit.Briefing);
             Write();
         }
 
@@ -668,6 +709,7 @@ namespace Infinigame
             if (Page == "Voice" && Selected < 5)
             {
                 Speech.Muted = Selected == 4;
+                if (Speech.Muted) Speech.Silence();
                 Speech.Choice = Selected == 1 ? "Daniel (English (UK))" : Selected == 2 ? "Eddy (English (UK))" : Selected == 0 ? "Zarvox" : "";
                 PlayerPrefs.SetString($"{Prefs}.voice", Speech.Choice);
                 PlayerPrefs.SetInt($"{Prefs}.silent", Speech.Muted ? 1 : 0);
@@ -742,7 +784,8 @@ namespace Infinigame
                 // quicker each time, then back round to the slowest
                 else if (Selected == 2) Look(DesktopControls.Sensitivity > 0.7f ? 0.08f : DesktopControls.Sensitivity * 1.25f);
                 else if (Selected == 3) Screen.fullScreen = !Screen.fullScreen;
-                else { Page = "Voice"; Selected = 0; }
+                else if (Selected == 4) { Page = "Voice"; Selected = 0; }
+                else { Subtitles = !Subtitles; PlayerPrefs.SetInt($"{Prefs}.subtitles", Subtitles ? 1 : 0); }
                 return;
             }
             if (Page == Settings && Selected < Dials + Oracle.Voices.Length)
@@ -772,7 +815,7 @@ namespace Infinigame
             {
                 if (!File.Exists(SlotPath(Selected)))
                 {
-                    pendingSlot = Selected; pending = "slot"; Confirmation = $"Start a new game in slot {Selected + 1}?"; Confirming = true; Selected = 0; return;
+                    Title = false; Began = Time.unscaledTime; Switch(Selected); return;
                 }
                 // A saved slot resumes without confirmation.
                 Title = false;
@@ -808,6 +851,8 @@ namespace Infinigame
                     Confirming = true;
                     Selected = 0;
                     break;
+                case "Recentre VR":
+                    Player.Calibrate(); Resume(); break;
                 case "Controls":
                     ShowControls = true;
                     Resume();
