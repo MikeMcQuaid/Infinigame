@@ -15,7 +15,7 @@ namespace Infinigame.Tests
             int owned = Campaign.Kit(Campaign.Won);
             Assert.IsTrue(Suit.Fits(owned, Suit.Default(owned)));
             Assert.IsFalse(Suit.Fits(0, 1 << (int)Gear.Beams));
-            Assert.IsFalse(Suit.Fits(owned, Suit.Modules.Aggregate(0, (bits, gear) => bits | 1 << (int)gear)));
+            Assert.IsTrue(Suit.Fits(owned, Suit.Modules.Aggregate(0, (bits, gear) => bits | 1 << (int)gear)));
             foreach (var module in Suit.Modules)
                 Assert.IsTrue(Suit.Fits(owned, 1 << (int)module), module.ToString());
             float energy = 10f;
@@ -46,7 +46,7 @@ namespace Infinigame.Tests
             for (uint i = 0; i < 8; i++) Assert.AreEqual(Gear.Ship, Combat.CapturedWeapon(kit, i).needs);
             var learned = new HashSet<Gear>();
             kit = Campaign.Kit(Campaign.Citadel);
-            for (uint i = 0; i < 4; i++) learned.Add(Combat.CapturedWeapon(kit, i).needs);
+            for (uint i = 0; i < Combat.Guns.Length; i++) learned.Add(Combat.CapturedWeapon(kit, i).needs);
             CollectionAssert.AreEquivalent(Combat.Guns.Select(weapon => weapon.needs), learned);
         }
 

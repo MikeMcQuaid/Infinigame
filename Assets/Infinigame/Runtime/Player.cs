@@ -74,7 +74,7 @@ namespace Infinigame
         public bool PlanetView => SystemView && !Has(Gear.Orbiter);
         // Where the copilot sits, in a ship that has such a seat.
         public Transform Seat => model.Find("Cockpit/Copilot");
-        bool NearShip => Has(Gear.Ship) && ship.landed && math.distance(walker.position, ship.position) < BoardingRange;
+        public bool NearShip => (Has(Gear.Ship) || captive) && math.distance(walker.position, ship.position) < BoardingRange;
 
         public bool Has(Gear gear) => Campaign.Has(Suit.Modules.Contains(gear) ? fitted : kit, gear);
         public float MaxHealth => Full + (Has(Gear.Armour) ? 50f : 0f);
@@ -91,7 +91,16 @@ namespace Infinigame
 
         // The weapon that would fire now, once it has been won: one of the ship's in flight, one of
         // those carried on foot. Arm is which of the latter.
-        public Weapon Weapon => flying ? Combat.Guns[gun] : Combat.Arms[arm];
+        public bool Powered => Campaign.Has(kit, Gear.Thrusters);
+        public Weapon Weapon
+        {
+            get
+            {
+                var weapon = flying ? Combat.Guns[gun] : Combat.Arms[Powered ? arm : 0];
+                if (!flying && !Powered) { weapon.name = "Emergency fists"; weapon.damage = 18; weapon.period = 0.55f; weapon.blast = 0; }
+                return weapon;
+            }
+        }
         public int Arm => arm;
         public bool Armed => Has(Weapon.needs);
         // Out past the moon without a shield, the sun's radiation is eating at the hull.
@@ -258,7 +267,7 @@ namespace Infinigame
             float frame = Mathf.Clamp(Time.deltaTime, 1e-4f, 0.1f);
             int steps = Mathf.Max(1, Mathf.CeilToInt(frame * 60f));
             float dt = frame / steps;
-            energy = math.min(Suit.Capacity + (Has(Gear.Capacitor) ? 50 : 0), energy + Suit.Recharge * frame);
+            energy = math.min(Suit.Capacity + (Has(Gear.Capacitor) ? 50 : 0), energy + (Powered ? Suit.Recharge : 0) * frame);
             if (cloaked && !Suit.Spend(ref energy, 18 * frame)) cloaked = false;
             float3 before = Position;
             var bodies = system.Descriptor.bodies;
@@ -329,9 +338,9 @@ namespace Infinigame
                     walker.fuel = energy > 0 ? Walker.JetpackFuel : 0;
                     Walker.Step(ref walker, new WalkerInput
                     {
-                        move = c.move, yaw = i == 0 ? math.radians(c.look.x) : 0f, jump = c.jump, sprint = c.sprint, bare = !Has(Gear.Thrusters) || energy < 25 * dt, riding = false, pitch = math.radians(pitch),
+                        move = c.move, yaw = i == 0 ? math.radians(c.look.x) : 0f, jump = c.jump, sprint = c.sprint, bare = !Has(Gear.Thrusters) || energy < 15 * dt, riding = false, pitch = math.radians(pitch),
                     }, Body, dt);
-                    if (Has(Gear.Thrusters) && !walker.grounded && (c.jump || math.lengthsq(c.move) > 0)) Suit.Spend(ref energy, 25 * dt);
+                    if (Has(Gear.Thrusters) && !walker.grounded && (c.jump || math.lengthsq(c.move) > 0)) Suit.Spend(ref energy, 15 * dt);
                     float3 up = math.normalizesafe(walker.position);
                     float ceiling = Body.GroundRadius(up) + Suit.Ceiling;
                     if (math.length(walker.position) > ceiling)
@@ -340,7 +349,7 @@ namespace Infinigame
                         walker.velocity -= up * math.max(0, math.dot(walker.velocity, up));
                     }
                     // an empty ship brings itself down
-                    Ship.Step(ref ship, new ShipInput { land = true }, Body, true, dt);
+                    if (!captive) Ship.Step(ref ship, new ShipInput { land = true }, Body, true, dt);
                 }
                 // the bike's wheels take half of a landing
                 Hurt(Combat.Fall(walker.impact * (riding ? 0.5f : 1f)), $"Fell to the ground on {Body.name}");
@@ -395,6 +404,8 @@ namespace Infinigame
                 traveller.SetPositionAndRotation(walker.position - system.Anchor, quaternion.LookRotationSafe(walker.forward, math.normalizesafe(walker.position)));
                 foreach (var plate in armour) plate.SetActive(Has(Gear.Suit));
                 pack.gameObject.SetActive(Has(Gear.Thrusters));
+                motion.strike = Weapon.melee ? math.saturate(1 - (Time.time - game.Battle.Fired) / 0.35f) : 0;
+                motion.recoil = math.saturate(1 - (Time.time - HurtAt) / 0.4f);
                 motion.speed = walker.grounded ? math.length(Velocity) : 0;
             }
             // until it is won back the ship is not there to be seen
@@ -485,7 +496,7 @@ namespace Infinigame
 
         void Interact()
         {
-            if (!flying && NearShip) (flying, riding) = (true, false);
+            if (!flying && NearShip) { if (captive) game.Advance(); (flying, riding) = (true, false); }
             else if (flying && ship.landed)
             {
                 float3 forward = math.rotate(ship.rotation, new float3(0, 0, 1));

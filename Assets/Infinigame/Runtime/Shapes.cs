@@ -12,6 +12,25 @@ namespace Infinigame
         // The top of a body's air and the height of its cloud deck, as multiples of its radius. The air
         // clears the highest peaks. Broken cloud sits below the summits so they stand clear of it; an
         // unbroken shroud covers everything.
+        static Mesh seaweed;
+        public static Mesh Seaweed()
+        {
+            if (seaweed != null) return seaweed;
+            var mesh = new MeshKit();
+            for (int stem = 0; stem < 5; stem++)
+            {
+                var points = new Vector3[17];
+                for (int i = 0; i < points.Length; i++) points[i] = new Vector3(Mathf.Sin(i * 0.35f + stem) * 0.3f + (stem - 2) * 0.2f, i * 0.19f, Mathf.Cos(i * 0.3f + stem) * 0.25f);
+                mesh.Tube(points, 0.035f, 12, 0.01f);
+                for (int i = 3; i < 15; i += 2)
+                {
+                    float side = i % 4 < 2 ? -1 : 1;
+                    mesh.Ball(points[i] + new Vector3(side * 0.2f, 0.12f, 0), new Vector3(0.24f, 0.35f, 0.025f), 16);
+                }
+            }
+            return seaweed = mesh.Mesh("Seaweed fronds");
+        }
+
         public static float AirTop(BodyDescriptor body) => 1f + math.max(0.12f, 1.45f * body.terrain.MaxHeight / body.radius);
         public static float CloudDeck(BodyDescriptor body) => 1f + (body.cloud < 1f ? 0.55f : 1.15f) * body.terrain.MaxHeight / body.radius;
 

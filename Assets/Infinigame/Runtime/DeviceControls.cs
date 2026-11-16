@@ -65,7 +65,7 @@ namespace Infinigame
                 c.ride = map && !leftSecondary && modifier;
                 c.reload = next && !secondary && modifier;
                 c.travel = travel && !stick && !modifier;
-                c.warp = travel && !stick && modifier;
+                if (travel && !stick && modifier) game.GetComponent<VoiceInput>().Toggle();
                 c.confirm = b && !primary;
                 c.cycle = next && !secondary && !modifier ? 1 : 0;
                 c.scan = fire && !trigger && modifier;
@@ -118,7 +118,7 @@ namespace Infinigame
                 var rect = new Rect(Screen.safeArea.xMin + i * width, bottom, width - 5, height);
                 bool down = (i == 0 && !game.Paused || i == 1 || i == 5) ? GUI.RepeatButton(rect, labels[i]) : GUI.Button(rect, labels[i]);
                 var above = new Rect(rect.x, rect.y - height * 0.6f, rect.width, height * 0.5f);
-                string label = i == 6 ? "Robot" : i == 5 ? "Colony" : i == 4 ? "Gate" : i == 3 ? "Auto" : i == 2 ? "Down" : i == 1 ? "Cloak" : "View";
+                string label = i == 6 ? "Robot" : i == 5 ? "Factory" : i == 4 ? "Mic" : i == 3 ? "Auto" : i == 2 ? "Down" : i == 1 ? "Cloak" : "View";
                 bool pressed = i == 2 ? GUI.RepeatButton(above, label) : GUI.Button(above, label);
                 if (down)
                 {
@@ -133,7 +133,7 @@ namespace Infinigame
                 if (!pressed) continue;
                 if (i == 6) buttons.talk = true;
                 if (i == 5) buttons.ride = true;
-                if (i == 4) buttons.warp = true;
+                if (i == 4) game.GetComponent<VoiceInput>().Toggle();
                 if (i == 3) buttons.travel = true;
                 if (i == 2) buttons.lift = -1;
                 if (i == 1) buttons.reload = true;

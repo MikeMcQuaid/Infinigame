@@ -4,9 +4,9 @@
 
 | Trigger | Sent to the selected model | Gameplay contribution |
 |---|---|---|
-| Type to the companion, or choose one of its questions | Known story and faction facts, current briefing, location, recent discoveries and the last six exchanges | Short contextual answers about the world and what to do |
+| Type to the companion, or choose one of its questions | Known story and faction facts, current briefing, location, recent discoveries and the last three exchanges, each line capped at 240 characters | Short contextual answers about the world and what to do |
 | Scan a new kind of object on a world | Observed terrain, climate and subject facts | A named field-journal entry, saved for later reading |
-| Read a briefing, take equipment or build something | Nothing | Authored guidance from `MISSIONS.md` and `COLONIES.md` |
+| Read a briefing, restore suit power or seed a factory | Nothing | Authored guidance from `MISSIONS.md` and factory guidance |
 | Move, fight, generate terrain, build models or simulate colonies | Nothing | Deterministic game code |
 
 The current defaults are Claude Haiku 5.5 and GPT-6 Luna, with low thinking effort. Claude also offers Sonnet 5.5 and Opus 5.5; ChatGPT offers GPT-6.1 Terra, GPT-6.1 Sol and GPT-6 Astra. These are the configured choices in `Oracle.Models`; account access still depends on the provider.
@@ -39,3 +39,11 @@ Options for a later voice pass:
 For a small next step, audition a few pre-generated mission lines before adding live speech. [ElevenLabs currently lists Starter at $6/month with 30,000 credits and a commercial licence](https://elevenlabs.io/pricing), excluding tax; generation allowances vary by model. No paid speech service is enabled in the game.
 
 OpenAI's older `tts-1`, `tts-1-hd` and `gpt-4o-mini-tts` speech models are scheduled to shut down on 6 January 2027. Its recommended replacement uses the Realtime API, so it is not a drop-in change to the old speech endpoint. See [OpenAI's current speech guide](https://developers.openai.com/api/docs/guides/text-to-speech). Voice options checked on 15 November 2026.
+
+## Voice input and bounded state
+
+Press Y, Mic on a mobile device or left grip plus right-stick click in VR to start dictation. Press it again to finish. The transcript is sent as a normal companion question. Permission is requested only when you choose to speak. Apple builds require on-device British English recognition; no audio is sent to Apple. If the language model is unavailable, the transcript receives an authored reply. If local dictation is unavailable or permission is denied, type with Return instead. Windows uses its OS speech recogniser and its privacy settings. The Unity editor uses typed input; native voice is enabled in player builds. Tests inject a transcript and never open the microphone.
+
+On each question the game writes `companion-state.json` in Unity's per-user persistent data directory. It contains stage, system depth, location, objective, suit health/power, hull condition, altitude and at most 24 world summaries: alien/dog/ship populations and factory flags. It includes no keys or audio. The current world comes first. Story instructions are capped at 4,000 characters, history at six 240-character lines and the question at 400 characters. Scanner facts are capped at 1,200 characters. No simulation tick calls an LLM.
+
+Apple's speech permission and local-only requirements are documented in [speech authorisation](https://developer.apple.com/documentation/Speech/asking-permission-to-use-speech-recognition) and [on-device recognition](https://developer.apple.com/documentation/speech/sfspeechrecognitionrequest/requiresondevicerecognition). Windows input uses Unity's [DictationRecognizer](https://docs.unity.com/en-us/engine/6000.7/script-reference/unityengine/windows/speech/dictationrecognizer). Microphone permissions, language availability and recognition quality still require testing on the target hardware.

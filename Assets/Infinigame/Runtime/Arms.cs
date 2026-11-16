@@ -10,6 +10,7 @@ namespace Infinigame
     {
         [NonSerialized] public Game game;
         Transform hands;
+        float crackle;
         readonly Transform[] gauntlets = new Transform[2];
         void Start()
         {
@@ -29,7 +30,7 @@ namespace Infinigame
         void LateUpdate()
         {
             if (hands == null) return;
-            hands.gameObject.SetActive(!game.Player.flying && !game.Player.ThirdPerson && !game.Player.SystemView && !game.Title && !game.Dead && game.Player.Has(Gear.Suit));
+            hands.gameObject.SetActive(!game.Player.flying && !game.Player.ThirdPerson && !game.Player.SystemView && !game.Title && !game.Dead && !game.Frontier.Collapsing && game.Player.Has(Gear.Suit));
             if (DeviceControls.VR)
             {
                 for (int i = 0; i < 2; i++)
@@ -38,6 +39,16 @@ namespace Infinigame
                 return;
             }
             float punch = math.saturate(1 - (Time.time - game.Battle.Fired) / 0.25f);
+            for (int i = 0; i < 2; i++)
+            {
+                float side = i == 0 ? -1 : 1;
+                float strike = ((int)(game.Battle.Fired * 10) % 2 == i) ? punch : punch * 0.2f;
+                gauntlets[i].localPosition = new Vector3(side * (0.29f - strike * 0.12f), -0.25f + strike * 0.08f, 0.46f + strike * 0.38f);
+                gauntlets[i].localRotation = Quaternion.Euler(-strike * 22, -side * strike * 18, side * strike * 15);
+                if (!game.Player.Powered && hands.gameObject.activeSelf && Time.time >= crackle)
+                    game.Effects.Crackle((float3)gauntlets[i].position + game.System.Anchor);
+            }
+            if (Time.time >= crackle) crackle = Time.time + 0.08f;
             hands.localPosition = new Vector3(0, math.sin(Time.time * 8) * math.min(math.length(game.Player.Velocity), 8) * 0.001f, game.Player.Weapon.melee ? punch * 0.2f : -punch * 0.025f);
         }
     }

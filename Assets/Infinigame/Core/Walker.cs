@@ -58,7 +58,7 @@ namespace Infinigame.Core
             float r = math.length(s.position);
             bool jumped = false;
 
-            s.swimming = body.SeaRadius > 0 && r + EyeHeight < body.SeaRadius;
+            s.swimming = body.SeaRadius > 0 && r + EyeHeight < body.SeaRadius && !body.Dry(s.position);
             if (s.grounded)
             {
                 // climbing costs up to two fifths of your pace, going down costs nothing

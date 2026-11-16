@@ -4,7 +4,7 @@ This is design guidance, not a runtime configuration file. `Models.cs`, `MeshKit
 
 Build models in passes: primary proportions and curved volumes, articulated structure, overlapping shell panels and recesses, then fasteners, cables, vents and optics. Use real geometry for silhouette and parallax, and generated normal and roughness detail for small surface marks. Additional triangles alone do not make a convincing model.
 
-The traveller has a complete articulated body for third-person play and a matching pair of first-person gauntlets. Do not expose an unambiguous human face or robotic brain. The workshop's loose suit disappears when collected.
+The traveller has a complete articulated body for third-person play and a matching pair of first-person gauntlets. Do not expose an unambiguous human face or robotic brain. The suit is worn from the opening. Critical power leaves only emergency fists, with visible arcing at the gauntlets.
 
 Friendly quadrupeds and ships share rounded alloy armour, dark moving joints, protected cables and cyan instruments. Enemy ground bodies, scouts, ships and buildings share carapaces, fluted tissue, recessed sensory organs and warmer internal light. Maintain different silhouettes for workers, scouts, armed ground bodies and rooted minds.
 
@@ -16,7 +16,7 @@ The [blast-pool capture](docs/lava.jpg) shows molten rock bounded by the floor o
 
 The current surface library generates shared 2048 × 2048 colour/height and normal maps on PC and VR, or 1024 × 1024 on Mobile. Machined metal has brushed grain and fine scratches; ceramic has granular wear; flexible seals have a woven surface; organic shells have cellular seams, striations and pores. Terrain and bark use the same resolutions. Foliage cards use 1024 px textures on desktop and 512 px on Mobile. Maps have mipmaps and anisotropic filtering; CPU copies are released after upload. Twelve pairs of fully populated uncompressed RGBA maps cost about 512 MiB on desktop or 128 MiB on Mobile, shared across the world. Maps are created only when requested.
 
-Near characters use 48-sided main curves on desktop and 28 on Mobile. Stalkers, breachers and spitters have different anatomies and leg counts, with separate shell and tissue colours. Flying scouts carry a sensory fan; vessels carry ribbed propulsion chambers. Wildlife uses curved bodies, feather geometry and fin rays. Radar dishes, drill assemblies and twin-barrel turrets have functional silhouettes. Flat panels, crystal faces, foliage cards and small effects remain deliberately economical; adding subdivisions to a flat surface adds no visible detail.
+Near characters use 48-sided main curves on desktop and 28 on Mobile. Stalkers, breachers and spitters have different anatomies and leg counts, with separate shell and tissue colours. Flying scouts carry a sensory fan; vessels carry ribbed propulsion chambers. Wildlife uses curved bodies, feather geometry and fin rays. Replication factories expose assembly cradles and laser dogs; ship factories add launch rails. Flat panels, crystal faces, foliage cards and small effects remain deliberately economical; adding subdivisions to a flat surface adds no visible detail.
 
 Sound follows the same distinction: friendly equipment uses induction tones, metallic impacts and controlled resonance; enemy fire uses rough, modulated organic pulses. Powered fists no longer play a shotgun reload, and the rail gauntlet no longer plays a bolt-action rifle. The beam has a sustained loop. All effects remain deterministic synthesis at 48 kHz, with no paid service or downloaded samples.
 
@@ -28,7 +28,7 @@ Desktop close-view triangle counts from the checked render:
 
 | Model | Triangles |
 |---|---:|
-| Foundry companion | 187,924 |
+| Foundry companion with dorsal laser | 189,008 |
 | Powered suit, including gauntlets and pack | 209,704 |
 | Stalker, including six legs | 235,752 |
 | Breacher, including eight legs | 317,188 |

@@ -38,6 +38,8 @@ Shader "Infinigame/Water"
                 half4 _Sky;
                 float _AirRadius;
             CBUFFER_END
+            float4x4 _Burrows[8];
+            int _BurrowCount;
             TEXTURE2D(_Waves); SAMPLER(sampler_Waves);
             TEXTURE2D(_Foam);
 
@@ -97,6 +99,11 @@ Shader "Infinigame/Water"
 
             half4 Fragment(Varyings input) : SV_Target
             {
+                for (int i = 0; i < _BurrowCount; i++)
+                {
+                    float3 cave = mul(_Burrows[i], float4(input.positionOS, 1)).xyz;
+                    if (abs(cave.x) < 8 && cave.z > -25 && cave.z < 42 && cave.y > -16 && cave.y < 12) discard;
+                }
                 float3 upOS = normalize(input.positionOS);
                 float3 weights = pow(abs(upOS), 4.0);
                 weights /= dot(weights, 1.0);

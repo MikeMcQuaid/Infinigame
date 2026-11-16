@@ -1,19 +1,17 @@
 # Factions
 
-The game includes the facts below in the companion's story context. Edit them here; the next build or Play session imports them.
-
 ## Foundry
 
-The player's faction consists of independent, self-replicating machines. Its quadruped fabrication robots mine ore, extract ice and recover salvage. A workshop can spend these resources to assemble more robots. Depots hold supplies, turrets defend the settlement and radar reveals local threats. Reclaimed territory protects plants, animals and friendly machines. Foundry machines destroy hostile bodies rather than exterminating native life.
+Independent self-replicating machines preserve native life. You wear their sealed armour. Your named recovery companion waits where you emerge, later rides in your cockpit and answers the radio anywhere in the system.
 
-The recovery companion is one of these machines, with its own memory and personality. It explains each piece of recovered technology and why a colony needs it. It travels in a visible cradle beside the pilot and talks over the radio while the traveller is outside.
+Laser dogs are quadruped combat fabricators. A dog factory grows their population exponentially while enemies remain. Dogs hunt roaming aliens and stop replicating once the world is clear. A factory on a moon can build a ship factory. Robot ships hunt the living fleet. Support reaches only the same planetary neighbourhood and one adjacent planet, never relaying across the entire system.
 
 ## Presence
 
-The enemy is an alien collective. Rooted minds grow multi-limbed ground bodies, hovering scouts and organic ships. They convert harvested resources into more of themselves. Their territory blights vegetation, drives off wildlife and attacks independent machines. Killing a controlling mind frees that location, but other minds can spread back towards it. The enemy has no diplomacy or conversation system. Many early compounds are captured Foundry depots, their industrial shells threaded with grown neural ribs. Clearing the mind leaves useful structures to reclaim; the presence also grows rooted nests of its own.
+The hostile distributed mind grows bodies and living ships. Basic six-legged stalkers defend the first underground mind. Later burrows mix stalkers, eight-legged armoured breachers and four-legged ranged spitters. Drones hover and raiders fight in space. There are no control terminals or hacking.
 
-The first armed outpost contains three mobile castes. Stalkers are light, six-legged flankers. Eight-legged breachers carry a thick dorsal crest, push towards short range and withstand more than twice a stalker's damage. Four-legged spitters carry paired pressure reservoirs and ranged firing throats; close on them before their slow projectiles arrive. These are specialised bodies of the same mind, not separate civilisations. All scatter when their local mind dies and all can be turned by its terminal.
+Native life thins under occupation. Enemy populations replenish until a factory establishes a permanent counterforce. The player tips the war by killing defenders and minds, founding factories and helping weaker fronts. There is no overall timed game over. Both sides' whole-world populations are simulated; nearby units represent that war visually.
 
 ## Silhouettes
 
-Foundry construction uses overlapping pale alloy shells, dark articulated mechanisms, rounded joint housings and restrained cyan or amber optics. Organic enemy construction uses layered carapaces, ribbed tissue, asymmetric sensory organs, root-like conduits and warm recessed light. These are original designs shared across each faction's bodies, ships and architecture.
+Foundry armour uses rounded pale metal, exposed joints, cyan optics and dorsal lasers. The Presence uses layered shells, teal tissue, sensory fans and rooted neural folds. Alien fluid is turquoise and green, never red. Factories share the Foundry's curved machinery. Burrows have mineral walls and living ribs.

@@ -4,7 +4,7 @@ using Unity.Mathematics;
 
 namespace Infinigame.Core
 {
-    public enum Building { Depot, Mine, Drill, Turret, Radar, Workshop, Robot }
+    public enum Building { Depot, Mine, Drill, Turret, Radar, Workshop, Robot, Factory, ShipFactory }
 
     [Serializable]
     public class Colony
@@ -55,6 +55,7 @@ namespace Infinigame.Core
     public class Presence
     {
         public float played;
+        public List<Front> fronts = new List<Front>();
         public List<int> worlds = new List<int>();
         public List<float> freed = new List<float>();
         public void Step(float dt) => played += math.max(0f, dt);

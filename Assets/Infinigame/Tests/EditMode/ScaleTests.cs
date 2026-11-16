@@ -547,11 +547,11 @@ namespace Infinigame.Tests
         }
 
         [Test]
-        public void TheShipAndSuitEachHaveFourDifferentWeapons()
+        public void TheShipAndSuitEachHaveFiveDifferentWeapons()
         {
             foreach (var rack in new[] { Combat.Guns, Combat.Arms })
             {
-                Assert.AreEqual(4, rack.Length);
+                Assert.AreEqual(5, rack.Length);
                 Assert.AreEqual(rack.Length, rack.Select(weapon => weapon.name).Distinct().Count());
                 Assert.AreEqual(rack.Length, rack.Select(weapon => weapon.voice).Distinct().Count(), "each sounds different");
                 // quick and light, or slow and heavy: no weapon is simply the best
@@ -596,9 +596,9 @@ namespace Infinigame.Tests
             }
             float full = Combat.Health(FoeKind.Base, 1);
             foreach (var weapon in Combat.Guns.Take(3)) Assert.AreEqual(full, Left(weapon), $"{weapon.name} does nothing to it");
-            Assert.Less(Left(Combat.Guns[3]), full - 500f, "a torpedo takes a great piece out of it");
-            Assert.GreaterOrEqual(Combat.Guns[3].blast, Combat.Nuclear);
-            Assert.Less(full / Combat.Guns[3].damage, 3f, "and two finish it");
+            Assert.Less(Left(Combat.Guns[4]), full - 500f, "a torpedo takes a great piece out of it");
+            Assert.GreaterOrEqual(Combat.Guns[4].blast, Combat.Nuclear);
+            Assert.Less(full / Combat.Guns[4].damage, 3f, "and two finish it");
         }
 
         [Test]

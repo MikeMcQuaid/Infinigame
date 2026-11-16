@@ -7,7 +7,7 @@ namespace Infinigame.Core
     // What a mission can leave the player with.
     public enum Gear
     {
-        Suit, Thrusters, Beams, Stealth, Capacitor, Ship, Orbiter, Shield, Missiles, Plating, Lance, Mender, Rail, Armour, Bulkheads, Nukes, GateParts, BackMissiles,
+        Suit, Thrusters, Beams, Stealth, Capacitor, Ship, Orbiter, Shield, Missiles, Plating, Lance, Mender, Rail, Armour, Bulkheads, Nukes, GateParts, BackMissiles, Nova, ShipRail,
     }
 
     // One step of the game: where it is, who holds it and what is there to be won.
@@ -29,7 +29,7 @@ namespace Infinigame.Core
         public static Mission[] Missions { get; internal set; } = Array.Empty<Mission>();
 
         // Everything won by the missions before this one, as a set of bits.
-        public static int Kit(int stage) => Missions.Take(stage).SelectMany(mission => mission.wins).Aggregate(0, (kit, gear) => kit | 1 << (int)gear);
+        public static int Kit(int stage) => Missions.Take(stage).SelectMany(mission => mission.wins).Aggregate(1 << (int)Gear.Suit, (kit, gear) => kit | 1 << (int)gear);
 
         public static bool Has(int kit, Gear gear) => (kit & 1 << (int)gear) != 0;
 
@@ -37,8 +37,8 @@ namespace Infinigame.Core
         {
             Gear.Suit => "POWERED ARMOUR", Gear.Thrusters => "SUIT THRUSTERS", Gear.Beams => "GAUNTLET BEAMS", Gear.Stealth => "A CLOAK", Gear.Capacitor => "A CAPACITOR",
             Gear.Orbiter => "AN ORBITAL DRIVE", Gear.Shield => "A RADIATION SHIELD", Gear.Missiles => "SEEKER MISSILES", Gear.Plating => "HEAT PLATING", Gear.Mender => "A HULL MENDER",
-            Gear.Rail => "A RAIL GAUNTLET", Gear.Armour => "HEAVY PLATE", Gear.Bulkheads => "BULKHEADS", Gear.Nukes => "NUCLEAR TORPEDOES", Gear.GateParts => "GATE PARTS",
-            Gear.Ship => "YOUR SHIP", Gear.BackMissiles => "BACK MISSILES", _ => gear.ToString().ToUpperInvariant(),
+            Gear.Rail => "A RAIL GAUNTLET", Gear.Armour => "HEAVY PLATE", Gear.Bulkheads => "BULKHEADS", Gear.Nukes => "NUCLEAR TORPEDOES", Gear.GateParts => "MOON ENGINE PLANS",
+            Gear.Nova => "HEMISPHERE LASERS", Gear.ShipRail => "SHIP RAILGUN", Gear.Ship => "YOUR SHIP", Gear.BackMissiles => "BACK MISSILES", _ => gear.ToString().ToUpperInvariant(),
         };
 
         // What a mission wins, for the news of it: "A, B AND C".
@@ -60,7 +60,8 @@ namespace Infinigame.Core
         {
             if (stage == Citadel) return Array.FindIndex(system.bodies, body => body.kind == BodyKind.Station);
             if (!system.generated) return Array.FindIndex(system.bodies, body => body.name == Missions[stage].world);
-            if (stage <= Tower) return SolarSystemDescriptor.Home;
+            if (stage < Tower) return SolarSystemDescriptor.Home;
+            if (stage == Tower) return Array.FindIndex(system.bodies, body => body.orbit.parent == SolarSystemDescriptor.Home);
             var worlds = Enumerable.Range(1, system.bodies.Length - 1).Where(i => system.bodies[i].kind == BodyKind.Rock && i != SolarSystemDescriptor.Home).ToArray();
             return worlds[(stage - Tower - 1) % worlds.Length];
         }
@@ -82,7 +83,17 @@ namespace Infinigame.Core
             if (stage == Citadel) return new float3(0, 1, 0);
             if (world != SolarSystemDescriptor.Home) return body.FindLanding(system.seed + (uint)stage);
             float3 landing = body.FindLanding(system.seed + 1u);
-            if (stage <= Stranger) return stage == Buried ? landing : body.FindCamp(landing);
+            if (stage == Buried) return landing;
+            if (stage == Stranger)
+            {
+                float3 east = math.normalizesafe(math.cross(landing, new float3(0.2f, 0.9f, 0.4f)));
+                for (int i = 0; i < 256; i++)
+                {
+                    float3 near = math.normalize(landing + math.rotate(quaternion.AxisAngle(landing, i * 2.399963f), east) * ((9 + i % 4 * 4) / body.radius));
+                    if (body.GroundRadius(near) > body.SeaRadius + 3 && math.dot(body.GroundNormal(near), near) > 0.94f) return near;
+                }
+                return landing;
+            }
             if (stage < Tower)
             {
                 float3 previous = system.missionSites[stage - 1], origin = previous * body.GroundRadius(previous);

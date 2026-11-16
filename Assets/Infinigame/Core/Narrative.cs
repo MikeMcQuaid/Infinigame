@@ -28,8 +28,8 @@ namespace Infinigame.Core
                 parsed[i] = new Mission { name = row[1], world = row[2], guards = guard, count = count,
                     wins = row[5].Split(',').Where(value => value.Trim().Length > 0).Select(value => (Gear)Enum.Parse(typeof(Gear), value.Trim())).ToArray(), task = row[6], brief = row[7] };
             }
-            var costs = new float3[7];
-            var explanations = new string[7];
+            var costs = new float3[9];
+            var explanations = new string[9];
             foreach (var row in Rows(colonies, 5))
             {
                 if (!Enum.TryParse(row[0], out Building building)) continue;
@@ -39,7 +39,7 @@ namespace Infinigame.Core
                 if (math.any(costs[index] < 0)) throw new FormatException("Colony costs cannot be negative.");
                 explanations[index] = row[4];
             }
-            if (explanations.Any(line => string.IsNullOrWhiteSpace(line)) || !plot.Contains("## Public") || !sides.Contains("## Foundry"))
+            if (explanations.Skip(7).Any(line => string.IsNullOrWhiteSpace(line)) || !plot.Contains("## Public") || !sides.Contains("## Foundry"))
                 throw new FormatException("Check the colony explanations and the Public section in STORY.md.");
             Campaign.Missions = parsed;
             Costs = costs;

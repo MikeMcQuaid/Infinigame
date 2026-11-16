@@ -8,7 +8,7 @@ namespace Infinigame
     public class MachineMotion : MonoBehaviour
     {
         public bool quadruped, seated, working;
-        public float speed;
+        public float speed, strike, recoil;
         public Transform look, planet;
         public BodyDescriptor ground;
         Transform torso, head;
@@ -65,6 +65,12 @@ namespace Infinigame
                     arms[i].localRotation = Quaternion.Euler(-Mathf.Sin(phase + i * Mathf.PI) * 18 * stride, 0, i == 0 ? -7 : 7);
                     elbows[i].localRotation = Quaternion.Euler(-12 - 15 * stride, 0, 0);
                 }
+            if (!quadruped && arms != null)
+            {
+                torso.localRotation = Quaternion.Euler(recoil * 16, strike * 18, recoil * 9);
+                arms[1].localRotation *= Quaternion.Euler(-strike * 85, 0, -strike * 12);
+                elbows[1].localRotation *= Quaternion.Euler(strike * 35, 0, 0);
+            }
             if (look != null)
             {
                 Vector3 direction = head.parent.InverseTransformDirection(look.position - head.position);

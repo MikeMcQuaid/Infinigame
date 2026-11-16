@@ -1,0 +1,76 @@
+#import <Foundation/Foundation.h>
+#import <Speech/Speech.h>
+#import <AVFoundation/AVFoundation.h>
+#import <TargetConditionals.h>
+#include <stdlib.h>
+#include <string.h>
+
+static AVAudioEngine *engine;
+static SFSpeechRecognizer *recogniser;
+static SFSpeechAudioBufferRecognitionRequest *request;
+static SFSpeechRecognitionTask *task;
+static NSString *words = @"";
+static int state;
+static bool tapped;
+static int generation;
+
+static void StopCapture() {
+    [engine stop];
+    if (tapped) { [engine.inputNode removeTapOnBus:0]; tapped = false; }
+    [request endAudio];
+}
+extern "C" {
+void InfinigameVoiceStop() {
+    StopCapture();
+    state = 3;
+}
+void InfinigameVoiceCancel() {
+    generation++;
+    StopCapture(); [task cancel]; task = nil; words = @""; state = 0;
+}
+void InfinigameVoiceStart() {
+    InfinigameVoiceCancel();
+    int session = generation;
+    state = 1;
+    [SFSpeechRecognizer requestAuthorization:^(SFSpeechRecognizerAuthorizationStatus status) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (session != generation) return;
+            if (status != SFSpeechRecognizerAuthorizationStatusAuthorized) { state = -1; return; }
+            [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL granted) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (session != generation) return;
+                    if (!granted) { state = -1; return; }
+                    recogniser = [[SFSpeechRecognizer alloc] initWithLocale:[NSLocale localeWithLocaleIdentifier:@"en-GB"]];
+                    if (!recogniser.available || !recogniser.supportsOnDeviceRecognition) { state = -1; return; }
+#if TARGET_OS_IPHONE
+                    [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayAndRecord mode:AVAudioSessionModeMeasurement options:AVAudioSessionCategoryOptionDefaultToSpeaker error:nil];
+                    [[AVAudioSession sharedInstance] setActive:YES error:nil];
+#endif
+                    engine = [[AVAudioEngine alloc] init];
+                    request = [[SFSpeechAudioBufferRecognitionRequest alloc] init];
+                    request.requiresOnDeviceRecognition = YES;
+                    request.shouldReportPartialResults = YES;
+                    AVAudioFormat *format = [engine.inputNode outputFormatForBus:0];
+                    if (format.sampleRate <= 0 || format.channelCount == 0) { state = -1; return; }
+                    [engine.inputNode installTapOnBus:0 bufferSize:1024 format:format block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when) { [request appendAudioPCMBuffer:buffer]; }];
+                    tapped = true;
+                    task = [recogniser recognitionTaskWithRequest:request resultHandler:^(SFSpeechRecognitionResult *result, NSError *error) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            if (session != generation) return;
+                            if (result) words = result.bestTranscription.formattedString;
+                            if (result.isFinal || error) { StopCapture(); state = words.length ? 3 : -1; }
+                        });
+                    }];
+                    [engine prepare];
+                    NSError *error = nil;
+                    state = [engine startAndReturnError:&error] ? 2 : -1;
+                    if (error) StopCapture();
+                });
+            }];
+        });
+    }];
+}
+int InfinigameVoiceState() { return state; }
+char *InfinigameVoiceText() { return strdup(words.UTF8String); }
+void InfinigameVoiceFree(char *text) { free(text); }
+}

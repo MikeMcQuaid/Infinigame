@@ -7,11 +7,11 @@ namespace Infinigame.Tests
     public class CasteTests
     {
         [Test]
-        public void FirstOutpostContainsThreeDistinctGroundRoles()
+        public void FirstBurrowContainsOnlyStalkers()
         {
             Assert.AreEqual(MotileCaste.Stalker, Combat.Caste(2, 0));
-            Assert.AreEqual(MotileCaste.Breacher, Combat.Caste(2, 1));
-            Assert.AreEqual(MotileCaste.Spitter, Combat.Caste(2, 2));
+            Assert.AreEqual(MotileCaste.Stalker, Combat.Caste(2, 1));
+            Assert.AreEqual(MotileCaste.Stalker, Combat.Caste(2, 2));
             Assert.AreEqual(MotileCaste.Stalker, Combat.Caste(1, 2));
         }
 

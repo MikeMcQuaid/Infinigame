@@ -62,6 +62,12 @@ namespace Infinigame.Core
         public string name, summary;
         public bool destroyed;
         public float blight;
+        public readonly List<Burrow> burrows = new List<Burrow>();
+        public bool Dry(float3 point)
+        {
+            foreach (var burrow in burrows) if (burrow.Contains(point)) return true;
+            return false;
+        }
         public BodyKind kind;
         public float radius, surfaceGravity, soiRadius;
         public float hue; // a star's colour, 0 to 1
@@ -176,6 +182,8 @@ namespace Infinigame.Core
         // Levels a disc of ground this many metres in radius at the height it has at its centre,
         // though never below the sea, and chars it as a blast would: somewhere to set a ship down.
         // It blends into the ground round it, and nothing dug before or after disturbs it.
+        public void Tunnel(float3 point, float size) => Leave(new Blast { crater = new float4(math.normalize(point), size), scar = Scar.Pad, level = math.length(point) - radius });
+
         public void Level(float3 direction, float size)
         {
             if (kind != BodyKind.Rock) return;
@@ -693,7 +701,7 @@ namespace Infinigame.Core
             foreach (var body in bodies)
             {
                 do body.name = Name(ref rnd); while (!names.Add(body.name));
-                body.summary = body.kind == BodyKind.Sun ? "a star beyond the gate" : body.kind == BodyKind.Station ? "the presence's citadel" : body.SeaRadius > 0 ? "a living world beyond the gate" : "an uncharted world";
+                body.summary = body.kind == BodyKind.Sun ? "a star beyond the singularity" : body.kind == BodyKind.Station ? "the presence's citadel" : body.SeaRadius > 0 ? "a living world beyond the singularity" : "an uncharted world";
             }
             return new SolarSystemDescriptor { seed = seed, bodies = bodies.ToArray(), generated = true };
         }

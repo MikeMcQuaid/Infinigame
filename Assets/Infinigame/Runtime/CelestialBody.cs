@@ -38,7 +38,7 @@ namespace Infinigame
         // the nodes whose finer children were drawn last frame and this: detail on show lingers
         HashSet<NodeId> shown = new HashSet<NodeId>(), showing = new HashSet<NodeId>();
         Func<NodeId, bool> isReady;
-        Material terrain;
+        Material terrain, water;
         MeshFilter sea;
         LodSettings lod;
         int tier = -1, maxDepth;
@@ -116,7 +116,7 @@ namespace Infinigame
             if (descriptor.SeaRadius == 0f) return;
 
             // a world with seas is alive, and its poles glow at night
-            var water = new Material(Resources.Load<Shader>("Water"));
+            water = new Material(Resources.Load<Shader>("Water"));
             water.SetColor("_Shallow", Shapes.SeaColour(0f));
             water.SetColor("_Deep", Shapes.SeaColour(1f));
             water.SetTexture("_Waves", Textures.Normal(Surface.Water));
@@ -127,6 +127,20 @@ namespace Infinigame
             aurora.SetFloat("_Inner", radius * (Shapes.AirTop(descriptor) - 0.15f));
             aurora.SetFloat("_Outer", radius * (Shapes.AirTop(descriptor) - 0.01f));
             Shell("Aurora", Shapes.AirTop(descriptor), aurora);
+        }
+
+        public void SealBurrow(Burrow burrow)
+        {
+            Descriptor.burrows.Add(burrow);
+            if (water == null) return;
+            var frames = new Matrix4x4[8];
+            for (int i = 0; i < math.min(8, Descriptor.burrows.Count); i++)
+            {
+                var cave = Descriptor.burrows[i];
+                frames[i] = Matrix4x4.TRS(cave.origin, cave.rotation, Vector3.one).inverse;
+            }
+            water.SetMatrixArray("_Burrows", frames);
+            water.SetInt("_BurrowCount", math.min(8, Descriptor.burrows.Count));
         }
 
         void Update()
@@ -234,6 +248,8 @@ namespace Infinigame
 
         // Levels a pad of this radius to land on, at the height the ground has at a point given in
         // the body's own frame.
+        public void Tunnel(float3 point, float size) => Remake(body => body.Tunnel(point, size));
+
         public void Level(float3 point, float size) => Remake(body => body.Level(point, size));
 
         // Lets a blast change the ground, then rebuilds the patches it shows on and clears what grew there.

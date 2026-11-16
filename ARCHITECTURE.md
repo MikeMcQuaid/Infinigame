@@ -44,9 +44,9 @@ Detail tiers are Unity quality levels (Mobile, VR, PC), with per-platform defaul
 
 ## The campaign
 
-`MISSIONS.md` is the mission table, loaded by `Core/Narrative.cs` into `Campaign`. `STORY.md`, `FACTIONS.md` and `COLONIES.md` supply the plot, faction context and building costs. `Editor/ContentImport.cs` packages copies as Resources text assets. Mission locations are fixed before terrain is changed. Ownership is the stable `Player.kit` bit set; `Player.fitted` holds the suit modules chosen at a workshop. `Suit` validates the slots and power budget. `Game` owns progression and saves it.
+`MISSIONS.md` is the mission table, loaded by `Core/Narrative.cs` into `Campaign`. `STORY.md`, `FACTIONS.md` and `COLONIES.md` supply the plot, faction context and building costs. `Editor/ContentImport.cs` packages copies as Resources text assets. Mission locations are fixed before terrain is changed. Ownership is the stable `Player.kit` bit set; `Player.fitted` holds the powered modules, all enabled when recovered. `Suit` validates owned modules; restored power enables the complete arsenal. `Game` owns progression and saves it.
 
-`Outpost` draws the shield and rooms, spawns their controlling mind and sentries and opens the prize when the mind dies. The citadel is a ship-sized tunnel with a timed escape after its core is destroyed. The later colony phase moves a moon onto the final mind's world and powers the gate.
+`Outpost` cuts descending terrain pads and draws enclosing rock shells. Ground movement and terrain meshing share the same pad heights; the shells supply side and ceiling collision. Dry burrow volumes exclude sea rendering and underwater movement without adding another terrain collision source. It spawns the controlling mind and its guards, then exposes the power core when the mind dies. The citadel is a ship-sized tunnel with a timed escape after its core is destroyed. The factory phase moves a moon onto the final mind, starts a singularity cinematic and moves the traveller into a pre-generated harder system.
 
 The recovery robot (`Hermit.cs`) briefs each mission from the table, so the story needs no language model. After the first meeting it speaks over the radio; once the ship is recovered it joins the cockpit.
 
@@ -62,14 +62,14 @@ The game can start each tool's own sign-in from the settings page. It never show
 
 ## Effects
 
-`Effects.cs` draws everything that burns, bursts, smokes or steams: explosions, hits on a hull, steam off water, mushroom clouds and workshop lights. It is built from three kinds of thing, each drawn in one instanced call: puffs (`Resources/Puff.shader`), sparks (`Spark.shader`) and tumbling wreckage. `Battle` decides which effect a strike calls for. Raiders and drones are drawn with `Hull.shader`, which takes how battered each one is through `Instances.Add` and eats glowing holes in it to match.
+`Effects.cs` draws everything that burns, bursts, smokes or steams: explosions, hits on a hull, steam off water, mushroom clouds and factory lights. It is built from three kinds of thing, each drawn in one instanced call: puffs (`Resources/Puff.shader`), sparks (`Spark.shader`) and tumbling wreckage. `Battle` decides which effect a strike calls for. Raiders and drones are drawn with `Hull.shader`, which takes how battered each one is through `Instances.Add` and eats glowing holes in it to match.
 
 ## Interface, sound and speech
 
 - `Hud.cs` builds one uGUI canvas in front of the camera, from code. It reads state and never changes it. Markers for worlds, foes and mission goals are placed each frame by `Mark`, which hides what a world is in the way of, keeps names from overlapping and holds a guide mark at the edge of the screen when its place is out of view.
 - `Core/Synth.cs` computes every sound effect as samples, and `Core/Riffs.cs` writes a song for each system. `Sounds.cs` and `Music.cs` play them. Audio files dropped into `Resources/Music` replace the synthesised song. `Playlist` schedules complete tracks with equal-power crossfades; `Music` uses two streaming decks per mood.
 - `Speech.cs` speaks the robot's lines with the existing macOS system voice. Other platforms use text.
-- `Models*.cs`, `MeshKit.cs` and `Shapes.cs` build every mesh and material: the ship and its cockpit, the robot and its workshop, raiders, drones and the citadel. `Arms.cs` builds the powered gauntlets.
+- `Models*.cs`, `MeshKit.cs` and `Shapes.cs` build every mesh and material: the ship and its cockpit, the robot and its factories, raiders, drones and the citadel. `Arms.cs` builds the powered gauntlets.
 - `Cockpit.cs` drives the ship's instruments. `Models.Ship` names every part that moves or lights, `Player.Tick` fills a `Readings` struct with what the ship is doing, and `Cockpit.Show` eases each needle, lamp, switch and the stick to match. Nothing on the dash is decoration.
 
 ## Saving
@@ -97,12 +97,14 @@ A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, 
 
 ## The suit and colony expansion
 
-`Suit` owns the three-slot, six-power loadout and shared energy rules. `Player.kit` still records ownership; `Player.fitted` records the modules selected at a workshop. Stable gear bit positions preserve equipment from older saves. `Combat.Ray` handles continuous beams and piercing rail shots, while missiles remain bolts. `Shield` rejects incoming fire at the boundary before damage or splash is applied.
+`Suit` owns the recovered modules and shared energy rules. `Player.kit` still records ownership; `Player.fitted` records the recovered powered modules. Stable gear bit positions preserve equipment from older saves. `Combat.Ray` handles continuous beams and piercing rail shots, while missiles remain bolts. `Shield` rejects incoming fire at the boundary before damage or splash is applied.
 
-`Interior` describes built rooms as boxes in a local frame. `Outpost` draws those same boxes and resolves movement against them. Terrain collision still comes only from `GroundRadius`. A stationary `FoeKind.Mind` controls the outpost; its death opens the prize and scatters the bodies. Sentries observe noise, light and visibility, and a terminal turns them against the mind. The citadel has a ship-sized tunnel layout and an escape timer.
+`Interior` describes built destructible tunnel shells as boxes in a local frame. `Outpost` draws those same boxes and resolves movement against them. Terrain collision still comes only from `GroundRadius`. A stationary `FoeKind.Mind` controls the outpost; its death opens the prize and scatters the bodies. Sentries observe noise, light and visibility. There is no terminal hacking. The citadel has a ship-sized tunnel layout and an escape timer.
 
-`Presence`, `Colony` and `Moonfall` keep the new simulation in the core. `Frontier` steps the colonies only during play, draws the buildings and robots and stages the moon impact. Game saves hold those states, the clock, collected resources, loadout and gate power. `SolarSystemDescriptor.Beyond` uses a separate random stream; `Generate` retains the original system's draws. The gate is appended by `Game.Load`, leaving existing body indices stable.
+`War` and saved `Front` populations simulate alien and robot replication and attrition. `Colony` retains factory sites and legacy save fields. `Moonfall` controls the impact. `Frontier` steps the colonies only during play, draws the factories, nearby laser dogs and ships and stages the moon impact and singularity. Game saves hold those states, the clock and equipment. Old resource and gate fields remain readable for save compatibility. `SolarSystemDescriptor.Beyond` uses a separate random stream; `Generate` retains the original system's draws. The old gate is no longer appended; original world indices remain stable.
 
 `Radar` draws a transparent sphere and 3D contacts separately from the canvas. `DeviceControls` supplies touch and XR input through `Controls`. The iOS native bridge stores account data in Keychain. Speech remains local to macOS; other platforms show dialogue as text. `Platforms` configures device exports and the Windows OpenXR loader and Valve Index profile. The platform settings are generated by code when building.
 
 Procedural machine models share cached meshes, with separate articulated joints driven by `MachineMotion`. Presence bodies use curved carapaces, sensory organs and rooted neural folds. `MotileCaste` selects stalker, breacher or spitter combat rules within the stable sentry kind; `Outpost` assigns the mix and `Battle` instances each anatomy. `Textures` generates shared metal, ceramic, seal and chitin maps alongside the terrain library. `Models.Surfaces` builds the panelled interior shells. Terrain blast pools use a level surface bounded by the crater, with slow shader flow.
+
+`SuitHud` adds the helmet instruments and seven-second cold start. `VoiceInput` requests native dictation only on a player action, with an injectable test route. `VoiceBuild` compiles the macOS speech bridge and adds permission strings; iOS compiles the same Objective-C++ source. `Hermit` writes a bounded JSON state snapshot before a question. `Frontier` pre-generates the next descriptor and mission sites on a worker task during moonfall.

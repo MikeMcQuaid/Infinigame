@@ -45,6 +45,13 @@ namespace Infinigame
             if (body.TryGetComponent(out Scatter scatter)) scatter.Collect(eye, things);
             if (body.TryGetComponent(out Creatures creatures)) things.AddRange(creatures.Seen);
             if (system.Reference == SolarSystemDescriptor.Home) things.Add(game.Hermit.Likeness);
+            foreach (var foe in game.Battle.Foes)
+                things.Add(new Scannable { name = foe.kind == FoeKind.Sentry ? "Presence " + foe.caste + (foe.caste == MotileCaste.Stalker ? ": six-legged close-range fighter" : foe.caste == MotileCaste.Breacher ? ": heavily armoured eight-legged charger" : ": four-legged mortar body that retreats before firing")
+                    : foe.kind == FoeKind.Mind ? "Presence mind: rooted controller; its death scatters this brood" : "Presence " + foe.kind,
+                    foot = foe.position - math.normalizesafe(foe.position) * foe.size * 0.5f, height = foe.size * 2, girth = foe.size });
+            game.Frontier.Collect(things);
+            if (game.Player.Has(Gear.Ship) || game.Player.captive)
+                things.Add(new Scannable { name = "Foundry pilotable spacecraft", foot = game.Player.ship.position, height = 8, girth = 10 });
             int pick = Core.Scan.Pick(eye, ray, things), world = -1;
             if (pick >= 0)
             {
@@ -71,6 +78,7 @@ namespace Infinigame
                 ? $"Subject: a {Subject}, found {Core.Scan.Place(system.Descriptor, system.Reference, at, system.Clock)}.\nThat world is {Core.Scan.Describe(body.Descriptor)}"
                 : $"Subject: a whole world, seen from {math.distance(eye, at) / 1000f:0} km away. It is {Core.Scan.Describe(system.Descriptor.bodies[world])}";
 
+            facts = facts.Substring(0, math.min(facts.Length, 1200));
             string writer = Oracle.Writer.ToUpperInvariant();
             Source = $"ASKING {writer} · OBSERVED FACTS";
             Busy = true;

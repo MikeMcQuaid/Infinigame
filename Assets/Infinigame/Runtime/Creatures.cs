@@ -20,6 +20,7 @@ namespace Infinigame
             // how big it looks, how far its members stray from the troop's spot and the furthest it is ever drawn
             public float size, stray, furthest, height, girth;
             public int depth;
+            public Vector3 proportions = Vector3.one;
             public Mesh body, lights;
             public Material material, glow;
             // A cell maps to the search for its troop, which ends with the troop or with nothing.
@@ -60,16 +61,30 @@ namespace Infinigame
                 Make(Creature.Grazer, "grazing animal, hoofed and horned, about a metre at the shoulder, one of a small herd", 1.4f, 20f, 600f, 1.4f, 0.8f, Shapes.Grazer(), new Color(0.5f, 0.36f, 0.24f)),
                 Make(Creature.Bird, "soaring bird with a two metre wingspan, one of a flock wheeling overhead", 2.4f, 70f, 900f, 0.3f, 1.4f, bird, new Color(0.2f, 0.19f, 0.2f)),
                 // the sea is too murky to see a fish from far
+                Make(Creature.Gull, "pale coastal glider with long narrow wings", 3, 80, 900, 0.4f, 1.6f, bird, new Color(0.85f, 0.88f, 0.8f)),
+                Make(Creature.Swift, "blue dartwing, a small fast flocking bird", 1.2f, 70, 600, 0.2f, 0.7f, bird, new Color(0.12f, 0.36f, 0.65f)),
+                Make(Creature.ReefFish, "striped amber reef fish", 0.6f, 8, 120, 0.3f, 0.5f, Shapes.Fish(), new Color(0.9f, 0.55f, 0.12f)),
+                Make(Creature.Ray, "broad blue sea ray with winglike fins", 1.4f, 8, 150, 0.3f, 1.2f, Shapes.Fish(), new Color(0.2f, 0.5f, 0.7f)),
+                Make(Creature.Butterfly, "violet butterfly feeding above the meadow", 0.5f, 8, 90, 0.2f, 0.3f, Shapes.Fish(), new Color(0.65f, 0.3f, 0.9f)),
+                Make(Creature.Kelp, "rooted seaweed forest sheltering small fish", 3, 5, 180, 3, 1, Shapes.Seaweed(), new Color(0.15f, 0.4f, 0.18f)),
                 Make(Creature.Fish, "silver fish half a metre long, one of a school", 0.5f, 8f, 120f, 0.2f, 0.5f, Shapes.Fish(), new Color(0.75f, 0.68f, 0.55f)),
                 Make(Creature.Drifter, "vast creature like a living airship, a pale dome trailing tendrils through the cloud tops, one of a slow herd", 40f, 520f, 9000f, 40f, 12f, Models.Drifter(), Color.white),
                 Make(Creature.Strider, "tall three-legged walker with a sail on its back, crossing the dust on stilt legs, one of a small band", 6f, 60f, 1500f, 6f, 1.5f, strider, new Color(0.5f, 0.38f, 0.27f)),
             };
             // a drifter is half clear, seen from inside its bell as well as out, and a strider carries lights of its own
-            all[3].material = Shapes.Material("Water", new Color(0.45f, 0.95f, 0.9f, 0.5f));
-            all[3].material.SetFloat("_Cull", 0f);
-            all[3].material.enableInstancing = true;
-            all[4].lights = striderLights;
-            all[4].glow = Shapes.Material("Glow", new Color(1f, 3.5f, 4.5f));
+            var drifter = System.Array.Find(all, kind => kind.creature == Creature.Drifter);
+            var walker = System.Array.Find(all, kind => kind.creature == Creature.Strider);
+            drifter.material = Shapes.Material("Water", new Color(0.45f, 0.95f, 0.9f, 0.5f));
+            drifter.material.SetFloat("_Cull", 0f);
+            drifter.material.enableInstancing = true;
+            walker.lights = striderLights;
+            walker.glow = Shapes.Material("Glow", new Color(1f, 3.5f, 4.5f));
+            foreach (var kind in all)
+                kind.proportions = kind.creature == Creature.Gull ? new Vector3(1.4f, 0.8f, 1.1f)
+                    : kind.creature == Creature.Swift ? new Vector3(0.65f, 0.65f, 0.9f)
+                    : kind.creature == Creature.Ray ? new Vector3(2.5f, 0.4f, 1.2f)
+                    : kind.creature == Creature.ReefFish ? new Vector3(0.7f, 1.4f, 0.75f)
+                    : kind.creature == Creature.Butterfly ? new Vector3(0.18f, 0.25f, 0.3f) : Vector3.one;
             kinds = System.Array.FindAll(all, kind => Wildlife.Lives(descriptor, kind.creature));
             reach = 0f;
             foreach (var kind in kinds) reach = math.max(reach, kind.furthest);
@@ -98,7 +113,7 @@ namespace Infinigame
                         stale.Add(id);
                 foreach (var id in stale) kind.cells.Remove(id);
 
-                kind.bodies.Clear();
+                kind.bodies.Clear(); wings.Clear();
                 foreach (var id in near)
                 {
                     if (!kind.cells.TryGetValue(id, out var search))
@@ -113,26 +128,28 @@ namespace Infinigame
                     for (int i = 0; i < here.count; i++)
                     {
                         Wildlife.Member(body, here, i, time, out float3 position, out float3 forward);
+                        if (body.Dry(position)) continue;
                         // each has its own size and its own beat
                         float quirk = math.frac((here.seed % 1000u) * 0.37f + i * 0.61f), size = 0.8f + 0.4f * quirk;
                         Quaternion facing = Quaternion.LookRotation(forward, math.normalize(position));
-                        if (kind.creature == Creature.Fish) facing *= Quaternion.AngleAxis(14f * math.sin(beat * 7f + quirk * 40f), Vector3.up);
+                        if (Wildlife.IsFish(kind.creature)) facing *= Quaternion.AngleAxis(14f * math.sin(beat * 7f + quirk * 40f), Vector3.up);
                         // Whole populations dwindle as the presence consumes a world, recovering under protection.
                         float survival = math.saturate((1 - body.blight - quirk * 0.85f) * 8);
                         if (survival <= 0) continue;
-                        var matrix = Matrix4x4.TRS(position, facing, Vector3.one * (size * shrink * survival));
+                        if (kind.creature == Creature.Kelp) facing *= Quaternion.Euler(math.sin(beat + quirk * 6) * 6, 0, math.cos(beat * 0.8f + quirk * 5) * 5);
+                        var matrix = Matrix4x4.TRS(position, facing, kind.proportions * (size * shrink * survival));
                         kind.bodies.Add(matrix);
                         Seen.Add(new Scannable { name = kind.name, foot = position, height = kind.height * size, girth = kind.girth * size });
-                        if (kind.creature != Creature.Bird) continue;
+                        if (!Wildlife.IsBird(kind.creature) && kind.creature != Creature.Butterfly) continue;
                         // a few slow beats, then a long glide
-                        float flap = 32f * math.sin(beat * 6f + quirk * 40f) * math.saturate(1.5f * math.sin(beat * 0.5f + quirk * 9f)) + 6f;
+                        float flap = kind.creature == Creature.Butterfly ? 65 * math.sin(beat * 35 + quirk * 40) : 32f * math.sin(beat * 6f + quirk * 40f) * math.saturate(1.5f * math.sin(beat * 0.5f + quirk * 9f)) + 6f;
                         wings.Add(matrix * Matrix4x4.Rotate(Quaternion.Euler(0f, 0f, flap)));
                         wings.Add(matrix * Matrix4x4.Rotate(Quaternion.Euler(0f, 0f, 180f - flap)));
                     }
                 }
                 kind.bodies.Draw(kind.body, kind.material, kind.creature != Creature.Drifter, bounds);
                 if (kind.lights != null) kind.bodies.Draw(kind.lights, kind.glow, false, bounds);
-                if (kind.creature == Creature.Bird) wings.Draw(wing, kind.material, true, bounds);
+                if (Wildlife.IsBird(kind.creature) || kind.creature == Creature.Butterfly) wings.Draw(wing, kind.material, true, bounds);
             }
         }
 

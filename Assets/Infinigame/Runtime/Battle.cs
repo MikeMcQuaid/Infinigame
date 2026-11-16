@@ -46,6 +46,8 @@ namespace Infinigame
         // charged: a landing charge has gone down for the landing in hand
         bool left, charged;
         LineRenderer ray;
+        readonly List<LineRenderer> sweep = new List<LineRenderer>();
+        float sweepUntil;
         public bool Beaming => ray != null && ray.enabled && game.Player.Weapon.beam;
 
         void Awake()
@@ -135,6 +137,7 @@ namespace Infinigame
             bool there = body.kind == BodyKind.Station && Base > 0;
             trigger -= frame;
             ray.enabled = false;
+            foreach (var beam in sweep) beam.enabled = Time.time < sweepUntil;
             var weapon = player.Weapon;
             if (c.fire && trigger <= 0 && player.Armed && (aloft || !flying) && !player.Autopilot
                 && (flying || Suit.Spend(ref player.energy, weapon.energy * (weapon.beam ? frame : 1))))
@@ -165,7 +168,26 @@ namespace Infinigame
                     muzzle = (float3)(hand + aim * Vector3.forward * 0.12f) + system.Anchor;
                     forward = aim * Vector3.forward;
                 }
-                if (weapon.beam || weapon.rail || weapon.melee)
+                if (weapon.sweep)
+                {
+                    sweepUntil = Time.time + 0.1f;
+                    for (int i = 0; i < 32; i++)
+                    {
+                        if (sweep.Count <= i)
+                        {
+                            var beam = new GameObject("Hemisphere ray").AddComponent<LineRenderer>();
+                            beam.transform.SetParent(transform, false); beam.sharedMaterial = ray.sharedMaterial;
+                            beam.startWidth = beam.endWidth = 0.035f; beam.positionCount = 2; sweep.Add(beam);
+                        }
+                        float3 direction = math.rotate(quaternion.AxisAngle(up, Time.time * 2.4f), Combat.SweepDirection(i, 32, up));
+                        float reach = 100;
+                        for (float distance = 2; distance <= 100; distance += 2)
+                            if (!game.Outpost.Visible(self + up * 0.4f, self + up * 0.4f + direction * distance)) { reach = distance - 2; break; }
+                        float3 end = Combat.Ray(Foes, body, self + up * 0.4f, direction, reach, weapon.damage, false, game.Outpost.Shield, struck);
+                        sweep[i].enabled = true; sweep[i].SetPosition(0, self - system.Anchor); sweep[i].SetPosition(1, end - system.Anchor);
+                    }
+                }
+                else if (weapon.beam || weapon.rail || weapon.melee)
                 {
                     float reach = weapon.melee ? 4.5f : weapon.rail ? 2000 : flying ? 3000 : 250;
                     float3 end = muzzle + forward * reach;
@@ -184,12 +206,19 @@ namespace Infinigame
                     end = Combat.Ray(Foes, body, muzzle, forward, reach, weapon.damage * (weapon.beam ? frame : 1), weapon.rail, game.Outpost.Shield, struck);
                     if (weapon.melee)
                     {
+                        if (player.Powered)
+                        {
+                            player.walker.velocity += forward * 26 + up * 4;
+                            player.walker.grounded = false;
+                            player.walker.position += up * 0.08f;
+                            game.Effects.Hit(end, -forward, 2);
+                        }
                         for (int i = 0; i < Foes.Count; i++)
                         {
                             var foe = Foes[i];
-                            if (math.distance(foe.position, end) < foe.size + 1) { foe.velocity += forward * 45; Foes[i] = foe; }
+                            if (math.distance(foe.position, end) < foe.size + 1) { foe.velocity += forward * (player.Powered ? 45 : 8); Foes[i] = foe; }
                         }
-                        if (math.length(end) < body.GroundRadius(math.normalizesafe(end)) + 1) game.Dig(end, 3);
+                        if (player.Powered && math.length(end) < body.GroundRadius(math.normalizesafe(end)) + 1) game.Dig(end, 3);
                     }
                     else
                     {
@@ -226,7 +255,9 @@ namespace Infinigame
                 {
                     var foe = Foes[i];
                     bool hunting = !foe.friendly && !foe.scattered;
-                    float3 quarry = self;
+                    float3 quarry = game.Frontier.Target(foe.position, self);
+                    foe.recoil = math.max(0, foe.recoil - dt * 4);
+                    foe.attack = math.max(0, foe.attack - dt * 5);
                     if (foe.kind == FoeKind.Sentry)
                     {
                         if (foe.friendly)
@@ -238,29 +269,37 @@ namespace Infinigame
                             }
                             hunting = false;
                         }
-                        else hunting = Combat.Observe(ref foe, self, c.fire ? 1 : c.sprint ? 0.6f : 0.05f, player.cloaked ? 0.03f : math.max(0.15f, math.saturate(math.dot(up, math.normalizesafe(system.ToReference(0))))) ,
-                            game.Outpost.Visible(foe.position, self), dt) == Alert.Alarmed;
+                        else hunting = Combat.Observe(ref foe, quarry, c.fire ? 1 : c.sprint ? 0.6f : 0.05f, player.cloaked ? 0.03f : math.max(0.15f, math.saturate(math.dot(up, math.normalizesafe(system.ToReference(0))))) ,
+                            game.Outpost.Visible(foe.position, quarry), dt) == Alert.Alarmed;
                     }
                     float3 before = foe.position;
                     if (hunting || foe.scattered)
                     {
                         bool fired = Combat.Hunt(ref foe, body, quarry, player.Velocity, game.Threat, dt, out var shot);
                         if (foe.kind == FoeKind.Sentry) foe.position = game.Outpost.Resolve(before, foe.position, 0.9f, out _);
-                        if (fired && hunting && game.Outpost.Visible(foe.position, self))
+                        if (fired && hunting && game.Outpost.Visible(foe.position, quarry))
                         {
                             if (foe.kind == FoeKind.Raider)
                             {
                                 var copied = Combat.CapturedWeapon(player.kit, foe.seed);
-                                shot.velocity = math.normalizesafe(shot.velocity) * copied.speed;
+                                shot.velocity = math.normalizesafe(shot.velocity) * math.max(420, copied.speed);
                                 shot.homing = copied.homing;
                                 shot.blast = copied.blast;
                                 shot.damage = math.max(shot.damage, copied.damage * 0.12f);
-                                shot.life = copied.life;
+                                shot.life = math.max(3, copied.life);
                             }
+                            foe.attack = 1;
                             Bolts.Add(shot);
                             game.Sounds.Shot(foe.kind == FoeKind.Raider ? 6 : foe.kind == FoeKind.Base ? 8 : 7,
                                 0.45f / (1 + math.lengthsq(foe.position - self) / 2500));
                         }
+                    }
+                    if (foe.patrol && !hunting && !foe.scattered)
+                    {
+                        float3 roaming = math.normalizesafe(Walker.Project(foe.forward, math.normalizesafe(foe.position)));
+                        foe.position += roaming * dt * 2;
+                        float3 over = math.normalizesafe(foe.position);
+                        foe.position = over * (body.GroundRadius(over) + 0.9f);
                     }
                     Foes[i] = foe;
                 }
@@ -307,7 +346,7 @@ namespace Infinigame
                 else if (strike.foe >= 0)
                 {
                     var foe = Foes[strike.foe];
-                    effects.Hit(strike.at, math.normalizesafe(strike.at - foe.position, -where), foe.kind == FoeKind.Base ? 20f : foe.size, foe.velocity);
+                    effects.Flesh(strike.at, math.normalizesafe(strike.at - foe.position, -where), math.min(foe.size, 4), foe.velocity);
                 }
                 else if (sea && strike.blast >= 1.2f) effects.Steam(strike.at, where, hole);
                 else if (strike.ground && strike.blast >= 5f) effects.Explode(strike.at, float3.zero, 0.8f * strike.blast);
@@ -327,9 +366,9 @@ namespace Infinigame
                 float away = math.distance(foe.position, self);
                 if (foe.health <= 0f)
                 {
-                    game.Effects.Explode(foe.position, foe.velocity, foe.size);
+                    game.Effects.Flesh(foe.position, up, math.min(foe.size * 2, 8), foe.velocity);
+                    War.Kill(game.Frontier.Local, foe.kind == FoeKind.Raider);
                     game.Sounds.Boom(math.saturate(1f - away / 2500f), foe.kind != FoeKind.Drone);
-                    game.Collect(new float3(0, 0, foe.kind == FoeKind.Raider ? 12 : 4));
                     game.Award(foe.kind);
                 }
                 else if (foe.kind == FoeKind.Mind || foe.kind == FoeKind.Sentry || (foe.kind == FoeKind.Base ? there : !(foe.kind == FoeKind.Raider ? away > 6000f || (ashore > 25f && !player.Has(Gear.BackMissiles)) : away > 350f))) continue;
@@ -350,6 +389,7 @@ namespace Infinigame
             var player = game.Player;
             var system = game.System;
             var body = system.ReferenceBody;
+            if (game.Stage <= 2 || game.Frontier.Local.alienShips <= 0) return;
             int raiders = 0, drones = 0;
             foreach (var foe in Foes)
                 if (foe.kind == FoeKind.Raider) raiders++;
@@ -383,7 +423,7 @@ namespace Infinigame
             }
 
             // drones find someone on foot, though never at the hermit's fire
-            bool exposed = !player.flying && player.Has(Gear.Suit) && body.kind == BodyKind.Rock && !player.walker.swimming
+            bool exposed = game.Frontier.Local.aliens > 0 && !player.flying && player.Has(Gear.Suit) && body.kind == BodyKind.Rock && !player.walker.swimming
                 && !(system.Reference == SolarSystemDescriptor.Home && math.distance(self, game.Hermit.Position) < 70f);
             if (exposed && drones < math.min(1 + game.Depth, 5) && (pack -= frame) <= 0f)
             {
@@ -422,7 +462,7 @@ namespace Infinigame
                 else if (foe.kind == FoeKind.Sentry)
                 {
                     Quaternion facing = Quaternion.LookRotation(math.normalizesafe(Walker.Project(foe.forward, up), new float3(0, 0, 1)), up);
-                    sentries[(int)foe.caste].Add(Matrix4x4.TRS(foe.position - anchor, facing, Vector3.one), battered, foe.seed);
+                    sentries[(int)foe.caste].Add(Matrix4x4.TRS(foe.position - anchor, facing * Quaternion.Euler(-foe.attack * 18 + foe.recoil * 24, 0, math.sin(foe.seed) * foe.recoil * 18), new Vector3(1 + foe.recoil * 0.08f, 1 - foe.recoil * 0.12f, 1)), battered, foe.seed);
                     for (int i = 0; i < Models.LimbCount(foe.caste); i++)
                     {
                         float side = i < Models.LimbCount(foe.caste) / 2 ? -1 : 1, stride = math.min(math.length(foe.velocity) * 0.012f, 0.08f);

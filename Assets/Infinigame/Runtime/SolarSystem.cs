@@ -179,7 +179,7 @@ namespace Infinigame
             float air = body.air > 0f ? math.exp(-math.max(height, 0f) / (body.radius * (Shapes.AirTop(body) - 1f) * 0.125f)) : 0f;
             float day = math.smoothstep(-0.1f, 0.25f, elevation), low = air * math.saturate(body.air) * (1f - math.smoothstep(0f, 0.4f, elevation));
             float blocked = math.saturate(1f - height / (0.5f * body.radius)) * (1f - math.smoothstep(-0.15f, 0.02f, elevation));
-            bool underCloud = height < body.radius * (Shapes.CloudDeck(body) - 1f), underwater = body.SeaRadius > 0f && height + Walker.EyeHeight < 0f;
+            bool underCloud = height < body.radius * (Shapes.CloudDeck(body) - 1f), underwater = body.SeaRadius > 0f && height + Walker.EyeHeight < 0f && !body.Dry(Focus);
             Rain = underCloud ? Weather.Rain(body, up, Clock) : 0f;
             float overcast = math.max(Rain, underCloud && body.cloud >= 1f && body.kind == BodyKind.Rock ? 0.75f : 0f);
             Color sky = Shapes.Colour(body.sky), haze = Shapes.Haze(body), dusk = Shapes.Colour(body.dusk), grey = new Color(0.45f, 0.48f, 0.52f);

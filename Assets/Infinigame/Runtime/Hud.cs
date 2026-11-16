@@ -26,16 +26,16 @@ namespace Infinigame
             ("ON FOOT", new[]
             {
                 "W A S D|Run", "Mouse|Look", "Space|Jump, hold for thrusters", "W  aloft|Fly where you look", "Shift|Sprint", "F|Talk, take, board the ship", "Click|Fire", "R|Toggle fitted cloak",
-                "1 2 3 4|Fists, beam, missiles, rail", "B|Colony and workshop", "Right click|Scan what you face", "V|First or third person",
+                "1 2 3 4 5|Fists, beam, missiles, rail, hemisphere", "B|Factory uplink", "Right click|Scan what you face", "V|First or third person",
             }),
             ("IN THE SHIP", new[]
             {
                 "W A S D|Thrust and strafe", "Mouse|Steer", "Space  Ctrl|Climb, descend", "Shift|Boost", "Q  E|Roll", "F|Land, then leave",
-                "Click|Fire", "1 2 3 4|Cannons, missiles, lance, torpedoes", "T|Autopilot to what you face", "G|Cross the powered gate", "Z|Flight assist", "V|Cockpit or chase view", "Right click|Scan the world ahead",
+                "Click|Fire", "1 2 3 4 5|Blasters, missiles, beam, rail, nuclear", "T|Autopilot to what you face", "Z|Flight assist", "V|Cockpit or chase view", "Right click|Scan the world ahead",
             }),
             ("ANYWHERE", new[]
             {
-                "Tab|Hold for the map and the mission", "Return|Talk to your robot", "H|Show this", "Esc|Close this, pause", "M|Music on or off", "[  ]|Less or more detail", "-  =|Slower or faster look",
+                "Tab|Hold for the map and the mission", "Return|Talk to your robot", "Y|Voice input", "H|Show this", "Esc|Close this, pause", "M|Music on or off", "[  ]|Less or more detail", "-  =|Slower or faster look",
                 "Opt Return|Full screen or window",
             }),
         };
@@ -344,6 +344,8 @@ namespace Infinigame
 
         void LateUpdate()
         {
+            canvas.enabled = !game.Frontier.Collapsing && (!game.Buried || game.Boot >= 4);
+            if (!canvas.enabled) return;
             var player = game.Player;
             var system = game.System;
             var body = system.ReferenceBody;
@@ -398,13 +400,13 @@ namespace Infinigame
             // sunk into a giant, its cloud closes over the view
             float sunk = body.kind == BodyKind.Gas ? math.saturate((body.radius - math.length(player.Position)) / 60f) : 0f;
             // and under the ground there is only the dark, thinning as the earth is torn away
-            murk.color = game.Buried ? new Color(0f, 0f, 0f, 1f - 0.9f * Mathf.Pow((float)game.Dug / Game.Digs, 2.2f))
+            murk.color = game.Buried ? new Color(0f, 0f, 0f, 0.84f - 0.74f * Mathf.Pow((float)game.Dug / Game.Digs, 2.2f))
                 : new Color(body.ground.x * 0.6f, body.ground.y * 0.6f, body.ground.z * 0.6f, 0.97f * sunk);
             flash.color = new Color(Harm.r, Harm.g, Harm.b, game.Dead ? 0.3f : 0.4f * math.saturate(1f - (Time.time - player.HurtAt) / 0.6f) + 0.25f * math.saturate(1f - left * 4f));
 
             // the mission in hand, and how much of its guard has fallen
             runText.text = game.Objective;
-            charge.rectTransform.sizeDelta = new Vector2(game.Outpost.World < 0 ? 0f : 220f * (1f - (float)game.Outpost.Left / game.Mission.count), 3f);
+            charge.rectTransform.sizeDelta = new Vector2(game.Outpost.World < 0 ? 0f : 220f * (1f - (float)game.Outpost.Left / math.max(1, game.Mission.count)), 3f);
             Show(run, playing);
 
             Show(radar, playing, 4f);
@@ -419,7 +421,7 @@ namespace Infinigame
                 int on = game.Outpost.World >= 0 ? game.Outpost.World : SolarSystemDescriptor.Home;
                 float far = game.Goal is float3 goal ? math.distance(player.Position, goal)
                     : math.max(0f, Vector3.Distance(player.Position - system.Anchor, system.Bodies[on].transform.position) - worlds[on].radius);
-                string Sentence(string words) => char.ToUpperInvariant(words[0]) + words.Substring(1).ToLowerInvariant();
+                string Sentence(string words) => string.IsNullOrEmpty(words) ? "Establish a foothold" : char.ToUpperInvariant(words[0]) + words.Substring(1).ToLowerInvariant();
                 briefHead.text = $"MISSION {game.Stage + 1} OF {Campaign.Missions.Length}";
                 briefTitle.text = mission.name;
                 briefTask.text = game.Objective.Substring(game.Objective.IndexOf('·') + 1).Trim();
@@ -457,7 +459,7 @@ namespace Infinigame
             if (action != null)
             {
                 promptText.text = action;
-                promptKey.text = action == "Colony and workshop" ? "B" : "F";
+                promptKey.text = "F";
                 float width = 54f + promptText.preferredWidth;
                 promptCap.anchoredPosition = new Vector2(20f - width / 2f, 0f);
                 promptPlate.sizeDelta = new Vector2(width + 36f, 60f);
@@ -480,8 +482,8 @@ namespace Infinigame
             if (game.Buried)
             {
                 (bannerBody, bannerSince) = (-2, now);
-                bannerTitle.text = Spaced("Buried");
-                bannerSub.text = game.Mission.task;
+                bannerTitle.text = Spaced(game.Boot < 7 ? "" : "Emergency power");
+                bannerSub.text = game.Boot < 7 ? "" : game.Mission.task;
             }
             // or as play begins there
             bool arriving = now - Mathf.Max(bannerSince, game.Began) < BannerStays;
@@ -623,11 +625,11 @@ namespace Infinigame
                 else if (charting && outpost.World == system.Reference && game.Stage < Campaign.Citadel)
                     Mark(ground + (Vector3)(outpost.Position + math.normalize(outpost.Position) * 20f), game.Mission.name.ToUpperInvariant(), Distance(math.distance(player.Position, outpost.Position)), Harm, false, -1, true);
                 float3 walker = player.walker.position;
-                if (charting && !player.flying && player.Has(Gear.Ship) && math.distance(walker, player.ship.position) > 25f)
-                    Mark(player.ship.position - system.Anchor, "SHIP", Distance(math.distance(walker, player.ship.position)), Ink, false, -1, true);
+                if (charting && !player.flying && (player.Has(Gear.Ship) || player.captive) && math.distance(walker, player.ship.position) > 25f)
+                    Mark(player.ship.position - system.Anchor, player.captive ? "UNMANNED SHIP" : "SHIP", Distance(math.distance(walker, player.ship.position)), Ink, false, -1, true);
                 // the hermit's fire, while he is still at it: the way to it is shown until he has been met
                 float camp = math.distance(player.Position, hermit.Position);
-                if (charting && !hermit.Aboard && system.Reference == SolarSystemDescriptor.Home && camp > 12f && (camp < 1500f || planetView))
+                if (charting && !hermit.Aboard && system.Reference == SolarSystemDescriptor.Home && camp > 5f && (camp < 1500f || planetView))
                     Mark(ground + (Vector3)(hermit.Position + math.normalize(hermit.Position) * 2.4f), hermit.Name.ToUpperInvariant(), Distance(camp), Ink, false, -1, game.Stage == Campaign.Stranger);
                 if (carding) Mark(scanner.Mark, "", "", Accent);
                 // whatever is hunting you, and for a raider where to aim so the cannons meet it

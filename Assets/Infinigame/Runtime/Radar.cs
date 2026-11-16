@@ -26,7 +26,7 @@ namespace Infinigame
         void LateUpdate()
         {
             if (globe == null) return;
-            bool visible = !game.Paused && !game.Dead && !game.Hermit.Talking && !game.Player.SystemView && !game.Buried;
+            bool visible = !game.Paused && !game.Dead && !game.Hermit.Talking && !game.Player.SystemView && !game.Buried && !game.Frontier.Collapsing;
             globe.gameObject.SetActive(visible);
             int used = 0;
             var camera = Camera.main;

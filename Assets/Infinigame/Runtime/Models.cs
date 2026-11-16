@@ -1023,7 +1023,15 @@ namespace Infinigame
         static void Add(Transform root, string name, MeshKit mesh, Material material, bool shadows = true) =>
             Shapes.Part(root, name, mesh.Mesh(name), material, Vector3.zero, Vector3.one, shadows);
 
-        public static Transform Robot() => Fabricator();
+        public static Transform Robot()
+        {
+            var robot = Fabricator();
+            var barrel = new MeshKit();
+            barrel.Rod(new Vector3(0, 1.65f, -0.3f), new Vector3(0, 1.65f, 0.8f), 0.12f, 32);
+            barrel.Ball(new Vector3(0, 1.5f, -0.15f), new Vector3(0.3f, 0.2f, 0.3f));
+            Shapes.Part(robot, "Dorsal laser", barrel.Mesh("Dorsal laser"), Shapes.Solid(Surface.Metal, new Color(0.25f, 0.4f, 0.45f), true), Vector3.zero, Vector3.one);
+            return robot;
+        }
 
         public static Transform Camp()
         {
@@ -1080,6 +1088,17 @@ namespace Infinigame
                 metal.Box(new Vector3(-1.8f, 1.5f, 0), new Vector3(1, 3, 4), 0.1f);
                 metal.Box(new Vector3(1.8f, 1.5f, 0), new Vector3(1, 3, 4), 0.1f);
                 metal.Box(new Vector3(0, 3, 0), new Vector3(5, 0.4f, 4), 0.1f);
+                if (kind == Core.Building.Factory || kind == Core.Building.ShipFactory)
+                {
+                    var dog = Robot(); dog.name = "Fabrication cradle"; dog.SetParent(root, false); dog.localPosition = Vector3.up * 0.45f;
+                    foreach (float side in new[] { -1f, 1f })
+                    {
+                        metal.Rod(new Vector3(side * 2, 2.7f, -1), new Vector3(side * 0.8f, 2.2f, 0), 0.13f, Curves);
+                        glow.Ball(new Vector3(side * 0.8f, 2.2f, 0), 0.18f, Curves);
+                    }
+                    if (kind == Core.Building.ShipFactory)
+                        for (int i = 0; i < 3; i++) metal.Rod(new Vector3(-8, 0.2f, 6 + i * 2), new Vector3(8, 0.2f, 6 + i * 2), 0.2f, Curves);
+                }
                 if (kind == Core.Building.Workshop)
                 {
                     var suit = Traveller(); suit.name = "Powered armour"; suit.SetParent(root, false); suit.localPosition = Vector3.up * 0.45f;

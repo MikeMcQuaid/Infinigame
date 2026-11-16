@@ -36,15 +36,18 @@ namespace Infinigame.Tests
         }
 
         [Test]
-        public void WorkshopsReplicateWorkersOnlyWhenResourcesPermit()
+        public void FactoriesReplicateOnlyWhileEnemiesRemain()
         {
-            var colony = new Colony { buildings = (1 << (int)Building.Depot) | (1 << (int)Building.Workshop), ore = 100, ice = 100, salvage = 100 };
-            colony.Step(121, 0);
-            Assert.Greater(colony.robots, 1);
-            colony.ore = colony.ice = colony.salvage = 0;
-            int robots = colony.robots;
-            colony.Step(240, 0);
-            Assert.AreEqual(robots, colony.robots);
+            var front = War.Create(3, 1, 0);
+            front.kills = War.RequiredKills(front);
+            Assert.IsTrue(War.Build(front, false));
+            front.aliens = 20; // The player has tipped the balance.
+            War.Step(front, 30);
+            Assert.Greater(front.dogs, 4);
+            front.aliens = 0;
+            float before = front.dogs;
+            War.Step(front, 240);
+            Assert.AreEqual(before, front.dogs);
         }
 
         [Test]

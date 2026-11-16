@@ -22,7 +22,8 @@ namespace Infinigame.Core
         public int burst;
         public bool away, scattered, friendly;
         public Alert alert;
-        public float suspicion;
+        public float suspicion, recoil, attack;
+        public bool patrol;
         public uint seed, random;
     }
 
@@ -47,7 +48,7 @@ namespace Infinigame.Core
         // throws the aim up by and a widening of its spread with each shot fired in a hurry.
         public int clip;
         public float reload, kick, bloom;
-        public bool beam, rail, melee;
+        public bool beam, rail, melee, sweep;
         public float energy;
         // what has to have been won before it can be used
         public Gear needs;
@@ -80,6 +81,7 @@ namespace Infinigame.Core
             new Weapon { name = "Pulse cannons", speed = 900f, damage = 12f, period = 0.09f, blast = 2.5f, life = 3f, pellets = 1, voice = 0, needs = Gear.Ship },
             new Weapon { name = "Seeker missiles", speed = 420f, damage = 60f, period = 1.1f, homing = 2.4f, blast = 9f, life = 7f, pellets = 1, voice = 1, needs = Gear.Missiles },
             new Weapon { name = "Lance", beam = true, speed = 3500f, damage = 56f, period = 0f, blast = 4f, life = 1.2f, pellets = 1, voice = 2, needs = Gear.Lance },
+            new Weapon { name = "Railgun", damage = 240, period = 2.5f, rail = true, voice = 5, needs = Gear.ShipRail },
             new Weapon { name = "Nuclear torpedoes", speed = 260f, damage = 800f, period = 3.5f, blast = 60f, life = 30f, pellets = 1, voice = 10, needs = Gear.Nukes },
         };
 
@@ -89,7 +91,15 @@ namespace Infinigame.Core
             new Weapon { name = "Gauntlet beam", speed = 1000, damage = 42, period = 0, life = 0.25f, voice = 2, beam = true, energy = 24, needs = Gear.Beams },
             new Weapon { name = "Back missiles", speed = 240, damage = 70, period = 1.2f, homing = 3f, blast = 8f, life = 9, pellets = 1, voice = 1, energy = 15, needs = Gear.BackMissiles },
             new Weapon { name = "Rail gauntlet", speed = 10000, damage = 140, period = 2.4f, life = 0.2f, voice = 5, rail = true, energy = 40, needs = Gear.Rail },
+            new Weapon { name = "Hemisphere lasers", damage = 18, period = 0.12f, sweep = true, energy = 3, voice = 0, needs = Gear.Nova },
         };
+
+        public static float3 SweepDirection(int index, int count, float3 up)
+        {
+            float height = (index + 0.5f) / count, angle = index * 2.39996323f;
+            float3 east = math.normalizesafe(math.cross(up, new float3(0, 0, 1)), new float3(1, 0, 0));
+            return up * height + (east * math.cos(angle) + math.cross(up, east) * math.sin(angle)) * math.sqrt(1 - height * height);
+        }
 
         public static Weapon CapturedWeapon(int kit, uint choice)
         {
@@ -108,7 +118,7 @@ namespace Infinigame.Core
             : kind == FoeKind.Raider ? 60f : kind == FoeKind.Drone ? 35f : kind == FoeKind.Mind ? 120f : 1500f) * (1f + 0.25f * (depth - 1));
         public static float Damage(FoeKind kind, int depth) => (kind == FoeKind.Raider ? 6f : kind == FoeKind.Drone ? 9f : 8f) * (1f + 0.2f * (depth - 1));
 
-        public static MotileCaste Caste(int stage, int guard) => stage < 2 ? MotileCaste.Stalker : (MotileCaste)((guard + stage - 2) % 3);
+        public static MotileCaste Caste(int stage, int guard) => stage <= 2 ? MotileCaste.Stalker : (MotileCaste)((guard + stage - 2) % 3);
 
         // Hull or health lost each second to the sun's radiation out in deep space, without a shield against it.
         public const float Radiation = 12f;
@@ -180,6 +190,7 @@ namespace Infinigame.Core
 
             if (foe.kind == FoeKind.Drone || foe.kind == FoeKind.Sentry)
             {
+                bool stalker = foe.kind == FoeKind.Sentry && foe.caste == MotileCaste.Stalker;
                 bool breacher = foe.kind == FoeKind.Sentry && foe.caste == MotileCaste.Breacher;
                 bool spitter = foe.kind == FoeKind.Sentry && foe.caste == MotileCaste.Spitter;
                 // close to a dozen paces, then circle, never quite still
@@ -187,9 +198,9 @@ namespace Infinigame.Core
                 float3 level = Walker.Project(to, up), toward = math.normalizesafe(level, foe.forward);
                 float3 round = math.cross(up, toward) * (foe.seed % 2u == 0u ? 1f : -1f);
                 float gap = math.length(level);
-                float stand = breacher ? 4 : spitter ? 28 : 12;
+                float stand = stalker ? 1.7f : breacher ? 4 : spitter ? 28 : 12;
                 float3 desired = toward * math.clamp((gap - stand) * 1.2f, -3, breacher ? 5 : spitter ? 7 : 10)
-                    + round * ((breacher ? 0.5f : 3.5f) * (1 - math.smoothstep(stand + 2, stand + 13, gap)));
+                    + round * ((stalker ? 0.8f : breacher ? 0.5f : 3.5f) * (1 - math.smoothstep(stand + 2, stand + 13, gap)));
                 foe.velocity = Walker.MoveTowards(Walker.Project(foe.velocity, up), desired, 14f * dt);
                 foe.position += foe.velocity * dt;
                 up = math.normalize(foe.position);
@@ -199,12 +210,13 @@ namespace Infinigame.Core
                     foe.position = up * (foe.kind == FoeKind.Sentry ? floor + 0.9f : math.max(floor + 0.8f, math.lerp(math.length(foe.position), floor + Hover, 1 - math.exp(-4 * dt))));
                 }
                 foe.forward = Turn(foe.forward, to / distance, 2.5f * dt);
-                if (distance > (spitter ? 70 : breacher ? 12 : DroneReach) || foe.cooldown > 0f) return false;
+                if (distance > (stalker ? 3.5f : spitter ? 70 : breacher ? 12 : DroneReach) || foe.cooldown > 0f) return false;
                 foe.cooldown = (spitter ? 3 : breacher ? 2 : 1.4f) + rnd.NextFloat(0.8f);
-                float speed = spitter ? 24 : DroneBolt;
+                float speed = stalker ? 140 : spitter ? 24 : DroneBolt;
                 shot = Fire(foe.position, math.normalize(to + targetVelocity * (distance / speed)), float3.zero, speed,
-                    Damage(foe.kind, depth) * (breacher ? 2 : spitter ? 1.75f : 1), true, spitter ? 3 : 1.2f);
-                shot.life = spitter ? 4 : 3;
+                    Damage(foe.kind, depth) * (breacher ? 2 : spitter ? 1.75f : 1), true, stalker ? 0 : spitter ? 3 : 1.2f);
+                shot.life = stalker ? 0.05f : spitter ? 4 : 3;
+                if (stalker) foe.velocity += toward * 6;
                 return true;
             }
 
@@ -268,7 +280,7 @@ namespace Infinigame.Core
                         if (!(hit = Crosses(bolt.position, step - foe.velocity * dt, foe.position, foe.size))) continue;
                         struckFoe = f;
                         // nothing short of a nuclear blast marks the citadel
-                        if (foe.kind != FoeKind.Base || bolt.blast >= Nuclear) foe.health -= bolt.damage;
+                        if (foe.kind != FoeKind.Base || bolt.blast >= Nuclear) { foe.health -= bolt.damage; foe.recoil = 1; }
                         foes[f] = foe;
                         // it ends on the near side of what it hit
                         at = foe.position - math.normalizesafe(step) * math.min(foe.size, math.distance(bolt.position, foe.position));
@@ -342,6 +354,7 @@ namespace Infinigame.Core
             {
                 var foe = foes[hit.index];
                 foe.health -= damage;
+                if (damage > 0) foe.recoil = 1;
                 foes[hit.index] = foe;
                 float3 at = from + direction * hit.distance;
                 struck?.Add(new Strike { at = at, foe = hit.index });

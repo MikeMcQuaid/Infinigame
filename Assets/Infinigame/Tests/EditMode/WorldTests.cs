@@ -341,7 +341,7 @@ namespace Infinigame.Tests
         {
             foreach (Creature kind in System.Enum.GetValues(typeof(Creature)))
             {
-                Assert.AreEqual(kind == Creature.Grazer || kind == Creature.Bird || kind == Creature.Fish, Troops(Planet, kind).Count > 10, $"{kind}");
+                Assert.AreEqual(kind != Creature.Drifter && kind != Creature.Strider, Troops(Planet, kind).Count > 10, $"{kind}");
                 Assert.AreEqual(0, Troops(Solar.bodies[SolarSystemDescriptor.Moon], kind).Count);
             }
         }

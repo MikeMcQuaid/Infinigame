@@ -61,6 +61,7 @@ namespace Infinigame
             // how far from the body's centre the ground is under it, and how nearly due its next puff of smoke is
             public float age, life, spin, floor, trail, damage;
             public uint seed;
+            public bool organic;
         }
 
         // A smaller blast still to come: fuel and magazines go up after the craft that carried them.
@@ -101,7 +102,7 @@ namespace Infinigame
         readonly List<Pop> pops = new List<Pop>();
         readonly Cloud[] clouds = new Cloud[8];
         readonly Glint[] glints = new Glint[4];
-        readonly Instances wreckage = new Instances();
+        readonly Instances wreckage = new Instances(), tissue = new Instances();
         // what the shaders are told of each puff and spark, in the order they are drawn
         readonly Matrix4x4[] puffPlaces = new Matrix4x4[Most], sparkPlaces = new Matrix4x4[Most];
         readonly Vector4[] looks = new Vector4[Most], heats = new Vector4[Most], smokes = new Vector4[Most], tails = new Vector4[Most], glares = new Vector4[Most];
@@ -109,7 +110,7 @@ namespace Infinigame
         readonly int[] order = new int[Most];
         int puffCount, sparkCount, chunkCount, kindled;
         Mesh card, shard;
-        Material smoke, glare, iron;
+        Material smoke, glare, iron, flesh;
         MaterialPropertyBlock puffLooks, sparkLooks;
         Random rnd = new Random(7);
         float3 sunward = new float3(0, 1, 0);
@@ -123,6 +124,7 @@ namespace Infinigame
             smoke.SetTexture("_Billows", Billows());
             glare = new Material(Resources.Load<Shader>("Spark")) { enableInstancing = true };
             iron = Shapes.Hull(new Color(0.3f, 0.26f, 0.24f), 0.7f);
+            flesh = Shapes.Solid(Surface.Chitin, new Color(0.15f, 0.65f, 0.45f), true);
             puffLooks = new MaterialPropertyBlock();
             sparkLooks = new MaterialPropertyBlock();
             for (int i = 0; i < glints.Length; i++)
@@ -176,6 +178,28 @@ namespace Infinigame
                 position = position, velocity = normal * (0.5f * size), drift = velocity, life = rnd.NextFloat(0.8f, 1.4f), from = 0.12f * size, to = 0.55f * size,
                 roll = rnd.NextFloat(6.28f), spin = rnd.NextFloat(-2f, 2f), seed = rnd.NextFloat(), heat = 1.2f, glow = 1f, cooling = 5f, shade = 0.8f, opacity = 0.8f, colour = 0.08f, drag = 2.5f, lift = 2f,
             });
+        }
+
+        public void Flesh(float3 position, float3 normal, float size, float3 velocity)
+        {
+            for (int i = 0; i < 12; i++)
+            {
+                float3 spray = math.normalizesafe(normal + rnd.NextFloat3Direction()) * rnd.NextFloat(2, 9);
+                Add(new Puff { position = position, velocity = spray, drift = velocity, life = 0.7f, from = 0.06f * size, to = 0.18f * size,
+                    colour = new float3(0.08f, 0.55f, 0.32f), shade = 0.7f, opacity = 0.8f, drag = 2, seed = rnd.NextFloat() });
+                if (i < 5 && chunkCount < Most)
+                {
+                    Shed(position, velocity + spray, rnd.NextFloat(0.08f, 0.22f) * size, 3);
+                    chunks[chunkCount - 1].organic = true;
+                    chunks[chunkCount - 1].damage = 0;
+                }
+            }
+        }
+
+        public void Crackle(float3 position)
+        {
+            for (int i = 0; i < 2; i++) Add(new Spark { position = position, velocity = rnd.NextFloat3Direction() * 2,
+                colour = new float3(0.3f, 3, 5), life = 0.1f, width = 0.015f, streak = 0.08f });
         }
 
         // A nuclear blast: a blinding flash, a fireball, a stem and a rolling cap that rise along up,
@@ -574,11 +598,12 @@ namespace Infinigame
                 Graphics.RenderMeshInstanced(new RenderParams(glare) { worldBounds = bounds, matProps = sparkLooks, shadowCastingMode = ShadowCastingMode.Off }, card, 0, sparkPlaces, sparkCount);
             }
 
-            wreckage.Clear();
+            wreckage.Clear(); tissue.Clear();
             for (int i = 0; i < chunkCount; i++)
                 // a piece shrinks away at the end and is never seen to vanish
-                wreckage.Add(Matrix4x4.TRS(chunks[i].position - anchor, chunks[i].turn, chunks[i].scale * math.saturate(2f * (chunks[i].life - chunks[i].age))), chunks[i].damage, chunks[i].seed);
+                (chunks[i].organic ? tissue : wreckage).Add(Matrix4x4.TRS(chunks[i].position - anchor, chunks[i].turn, chunks[i].scale * math.saturate(2f * (chunks[i].life - chunks[i].age))), chunks[i].damage, chunks[i].seed);
             wreckage.Draw(shard, iron, false, bounds);
+            tissue.Draw(shard, flesh, true, bounds);
         }
 
         static Texture2D Billows()

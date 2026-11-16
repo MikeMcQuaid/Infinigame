@@ -10,32 +10,13 @@ namespace Infinigame.Tests
 {
     public partial class PlayTests
     {
-        [UnityTest]
-        public IEnumerator RevisionColonyTurretsProtectConvertedSentries()
-        {
-            game.Jump(2);
-            yield return null;
-            game.Colonies.Clear();
-            game.Colonies.Add(new Colony { world = Home, site = Player.Position, robots = 4, buildings = (1 << (int)Building.Depot) | (1 << (int)Building.Turret) });
-            game.Battle.Foes.Clear();
-            float3 up = math.normalize(Player.Position), tangent = World(up);
-            var ally = Combat.Spawn(FoeKind.Sentry, Player.Position + tangent * 4 + up, tangent, game.Threat, 43);
-            ally.friendly = true;
-            game.Battle.Foes.Add(ally);
-            var enemy = Combat.Spawn(FoeKind.Sentry, Player.Position - tangent * 4 + up, tangent, game.Threat, 44);
-            game.Battle.Foes.Add(enemy);
-            yield return Seconds(0.4f);
-            Assert.AreEqual(ally.health, game.Battle.Foes.Single(foe => foe.seed == ally.seed).health, 0.01f, "converted defenders are protected");
-            Assert.Less(game.Battle.Foes.Single(foe => foe.seed == enemy.seed).health, enemy.health);
-        }
+
 
         [UnityTest]
         public IEnumerator RevisionColonyExplanationFitsBelowTheHeading()
         {
             game.Jump(Campaign.Won);
-            var colony = game.Colonies.First(c => c.world == Home);
             Player.flying = false;
-            Player.walker.position = colony.site;
             yield return Press(new Controls { ride = true });
             yield return null;
             var labels = GameObject.Find("HUD").GetComponentsInChildren<UnityEngine.UI.Text>();
@@ -53,7 +34,7 @@ namespace Infinigame.Tests
             game.Jump(2);
             Player.walker.position = game.Outpost.Place(new float3(0, 1, -8));
             yield return Seconds(0.2f);
-            Assert.AreEqual(3, game.Battle.Foes.Where(foe => foe.kind == FoeKind.Sentry).Select(foe => foe.caste).Distinct().Count());
+            Assert.AreEqual(1, game.Battle.Foes.Where(foe => foe.kind == FoeKind.Sentry).Select(foe => foe.caste).Distinct().Count());
             foreach (var foe in game.Battle.Foes)
                 Assert.AreEqual(Combat.Health(foe.kind, game.Threat, foe.caste), foe.health);
             game.Jump(4);
@@ -70,45 +51,23 @@ namespace Infinigame.Tests
         [UnityTest]
         public IEnumerator RevisionAuthoredPatrolKindsAreUsed()
         {
-            game.Jump(3);
+            game.Jump(2);
             Player.walker.position = game.Outpost.Place(new float3(0, 1, -8));
             yield return Seconds(0.2f);
-            Assert.AreEqual(2, game.Battle.Foes.Count(foe => foe.kind == FoeKind.Sentry));
-            Assert.AreEqual(game.Mission.count - 2, game.Battle.Foes.Count(foe => foe.kind == game.Mission.guards));
+            Assert.AreEqual(game.Mission.count, game.Battle.Foes.Count(foe => foe.kind == FoeKind.Sentry));
+            Assert.IsTrue(game.Battle.Foes.All(foe => foe.kind == FoeKind.Sentry || foe.kind == FoeKind.Mind));
         }
 
-        [UnityTest]
-        public IEnumerator RevisionWorkshopDisplayStandsAboveItsGround()
-        {
-            game.Jump(Campaign.Stranger);
-            yield return null;
-            var suit = Object.FindObjectsByType<Transform>().Single(part => part.name == "Powered armour");
-            float3 point = Solar.Bodies[Home].transform.InverseTransformPoint(suit.position);
-            Assert.GreaterOrEqual(math.length(point) - Body.GroundRadius(math.normalize(point)), -0.1f);
-            var head = suit.Find("Torso/Head");
-            point = Solar.Bodies[Home].transform.InverseTransformPoint(head.position);
-            Assert.Greater(math.length(point) - Body.GroundRadius(math.normalize(point)), 1.3f);
-        }
 
-        [UnityTest]
-        public IEnumerator RevisionArmourLeavesTheWorkshopWhenCollected()
-        {
-            game.Jump(Campaign.Stranger);
-            yield return null;
-            var suit = Object.FindObjectsByType<Transform>().Single(part => part.name == "Powered armour");
-            Assert.IsTrue(suit.gameObject.activeInHierarchy);
-            game.Hermit.Greet();
-            yield return null;
-            Assert.IsTrue(Player.Has(Gear.Suit));
-            Assert.IsTrue(suit == null || !suit.gameObject.activeInHierarchy, "the collected suit is no longer on the rack");
-        }
+
+
 
         [UnityTest]
         public IEnumerator RevisionCompletedOutpostsRemainWithTheirRooms()
         {
             game.Jump(2);
             yield return null;
-            var fort = Object.FindObjectsByType<Transform>().Single(part => part.name == "Shielded outpost");
+            var fort = Object.FindObjectsByType<Transform>().Single(part => part.name == "Mind burrow");
             float3 location = game.Outpost.Position;
             game.Advance();
             yield return null;
@@ -137,6 +96,7 @@ namespace Infinigame.Tests
         public IEnumerator RevisionUnarmouredWaterHurtsButTheSuitProtectsYou()
         {
             game.Jump(Campaign.Stranger);
+            Player.kit &= ~(1 << (int)Gear.Suit);
             yield return null;
             var rnd = new Unity.Mathematics.Random(79);
             float3 up = new float3(0, 1, 0);
@@ -189,14 +149,14 @@ namespace Infinigame.Tests
         {
             game.Jump(2);
             yield return null;
-            game.Outpost.Breach(game.Outpost.Place(new float3(-8, 2, -2)), 1000);
+            game.Outpost.Breach(game.Outpost.Place(game.Outpost.Rooms.walls[0].centre), 1000);
             Assert.IsNotEmpty(game.Ruins.Single(ruin => ruin.stage == 2).broken);
             game.Advance();
             game.Write();
             yield return UnityEngine.SceneManagement.SceneManager.LoadSceneAsync("Main");
             yield return null;
             Assert.IsNotEmpty(game.Ruins.Single(ruin => ruin.stage == 2).broken);
-            Assert.Greater(Object.FindObjectsByType<Transform>().Count(part => part.name == "Shielded outpost"), 1);
+            Assert.AreEqual(1, Object.FindObjectsByType<Transform>().Count(part => part.name == "Mind burrow"));
         }
 
         [UnityTest]
@@ -224,7 +184,7 @@ namespace Infinigame.Tests
             light.type = LightType.Directional; light.intensity = 1.5f;
             light.transform.rotation = robot.rotation * Quaternion.Euler(45, -30, 0);
             yield return Shot("90-foundry-robot", robot, new Vector3(3, 2, 4), new Vector3(0, 0.9f, 0));
-            var suit = Object.FindObjectsByType<Transform>().Single(part => part.name == "Powered armour");
+            var suit = Models.Traveller(); suit.SetParent(robot.parent, false); suit.localPosition = new Vector3(4, 0, 0);
             yield return Shot("91-powered-armour", suit, new Vector3(0.8f, 1.65f, 3.8f), new Vector3(0, 1.1f, 0));
             var nest = Models.Nest();
             nest.SetParent(robot.parent, false);
@@ -304,18 +264,12 @@ namespace Infinigame.Tests
             yield return Seconds(1);
             yield return Shot("97-companion-in-cockpit", Camera.main.transform, Vector3.zero, Vector3.forward);
             game.Jump(Campaign.Won);
-            var colony = game.Colonies.First(c => c.world == Home);
-            colony.ore = colony.ice = colony.salvage = 1000;
-            foreach (Building building in System.Enum.GetValues(typeof(Building))) colony.Build(building);
-            game.Frontier.Settle();
             Player.flying = false;
-            Player.walker.position = colony.site;
+            var front = game.Frontier.Local; front.kills = War.RequiredKills(front);
+            game.Frontier.BuildFactory(0);
             yield return Press(new Controls { ride = true });
             yield return Shot("81-colony", Camera.main.transform, Vector3.zero, Vector3.forward);
-            for (int i = 0; i < 7; i++) yield return Press(new Controls { down = true });
-            yield return Press(new Controls { confirm = true });
-            yield return Shot("82-workshop", Camera.main.transform, Vector3.zero, Vector3.forward);
-            for (int i = 0; i < 3; i++) yield return Press(new Controls { menu = true });
+            yield return Press(new Controls { menu = true });
             int io = System.Array.FindIndex(Solar.Descriptor.bodies, world => world.name == "Io");
             yield return HoverOver(io, 100);
             float3 up = Body.volcanoes[0].direction;

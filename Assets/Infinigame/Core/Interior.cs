@@ -12,6 +12,18 @@ namespace Infinigame.Core
         public List<int> broken = new List<int>();
     }
 
+    public struct Burrow
+    {
+        public float3 origin;
+        public quaternion rotation;
+        public float3 Local(float3 point) => math.rotate(math.inverse(rotation), point - origin);
+        public bool Contains(float3 point)
+        {
+            var local = Local(point);
+            return math.abs(local.x) < 8 && local.z > -25 && local.z < 42 && local.y > -16 && local.y < 12;
+        }
+    }
+
     public struct Wall
     {
         public float3 centre, half;
@@ -42,6 +54,20 @@ namespace Infinigame.Core
                 new Wall(new float3(0, 0.6f, 19), new float3(7.5f, 0.6f, 4)),
             },
         };
+        public static float TunnelFloor(float z) => -math.clamp((z + 24) * 0.22f, 0, 12);
+        public static Interior Burrow()
+        {
+            var walls = new List<Wall>();
+            for (int i = 0; i < 10; i++)
+            {
+                float z = -21 + i * 6, floor = TunnelFloor(z);
+                walls.Add(new Wall(new float3(-6, floor + 3, z), new float3(1.5f, 4, 3.2f)));
+                walls.Add(new Wall(new float3(6, floor + 3, z), new float3(1.5f, 4, 3.2f)));
+                if (i > 1) walls.Add(new Wall(new float3(0, floor + 7, z), new float3(7, 2, 3.2f)));
+            }
+            walls.Add(new Wall(new float3(0, -5, 40), new float3(7, 5, 2)));
+            return new Interior { entrance = new float3(0, 1, -26), core = new float3(0, -10, 32), console = new float3(10000), walls = walls.ToArray() };
+        }
         public static Interior Citadel()
         {
             return new Interior
