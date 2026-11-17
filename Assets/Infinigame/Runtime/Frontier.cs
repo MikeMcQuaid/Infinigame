@@ -166,6 +166,8 @@ namespace Infinigame
             }
             if (choice == 1)
             {
+                game.Escorts.count = 1;
+                game.Escorts.order = EscortOrder.Follow;
                 var colony = game.Colonies.First(item => item.world == front.world && item.region == front.region);
                 game.System.Bodies[front.world].Level(colony.site, 18);
                 colony.site = math.normalizesafe(colony.site) * body.GroundRadius(math.normalizesafe(colony.site));
@@ -173,7 +175,7 @@ namespace Infinigame
             front.established = true;
             assembly = deployed = 0;
             Settle();
-            game.Hermit.Remark(choice == 0 ? "Factory online. Robodogs control the alien population in this region. Kill its mind so our machines can replace their losses and win. Each Earth region needs its own factory. Spend recovered salvage in Equipment to modify your suit." : "Our robots are assembling autonomous ships. Help them break the living fleet. Open Fleet orders in the pause menu to command one to three escorts. They can follow your ship on autopilot. The rest defend this planet and its neighbours.");
+            game.Hermit.Remark(choice == 0 ? "Factory online. Robodogs control the alien population in this region. Kill its mind so our machines can replace their losses and win. Each Earth region needs its own factory. Spend recovered salvage in Equipment to modify your suit." : "Shipyard online. Your first escort is launching now and will follow you, including on autopilot. Open Fleet orders in the pause menu to command up to three ships. The rest defend this planet and its neighbours.");
 
             DrawUnits(0);
             game.Write();
@@ -325,8 +327,8 @@ namespace Infinigame
         void DrawUnits(float dt)
         {
             var front = Local;
-            var source = game.Presence.fronts.Where(item => item.shipyard && item.ships >= 1).OrderBy(item => item == front ? 0 : 1).FirstOrDefault();
-            int escorts = source == null ? 0 : math.min(math.clamp(game.Escorts.count, 1, 3), (int)source.ships);
+            var source = game.Presence.fronts.Where(item => item.shipyard && item.ships > 0).OrderBy(item => item == front ? 0 : 1).FirstOrDefault();
+            int escorts = source == null ? 0 : math.min(math.clamp(game.Escorts.count, 1, 3), (int)math.ceil(source.ships));
             int dogs = math.min(7, (int)math.ceil(front.dogs)), ships = math.min(3 - escorts, (int)front.ships - (source == front ? escorts : 0));
             assembly -= dt;
             if (shownWorld != game.System.Reference || shownRegion != front.region)

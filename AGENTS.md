@@ -16,7 +16,7 @@ New tooling goes in `script/`, following [scripts to rule them all](https://gith
 
 ## Rules of the project
 
-- **Everything is made by code.** Terrain, models, textures, materials, shaders, the interface, sound effects and the fallback music are all generated. Do not add downloaded art, fonts, models or Asset Store content. Official packages may always be added. The one exception is music the owner drops into `Assets/Infinigame/Resources/Music`.
+- **Everything is made by code.** Terrain, models, textures, materials, shaders, the interface, sound effects and the fallback music are all generated. Do not add downloaded art, fonts, models or Asset Store content. Official packages may always be added. The owner has also approved the bundled Festival/Flite/HTS speech engine and SLT voice in `ThirdParty/Festival`. Music may be supplied by the owner in `Assets/Infinigame/Resources/Music`.
 - **The core stays pure.** `Assets/Infinigame/Core` has no scene dependencies. Game rules and numbers go there, with an EditMode test. The runtime asks the core and draws the answer.
 - **The ground is a function.** `BodyDescriptor.GroundRadius` is the terrain for walking, flying, meshing and tests alike. It is called a great deal: keep it cheap, and never add a second source of truth such as a collider.
 - **Nothing drawn may flicker.** Anything with a level of detail appears once it is big enough to see and stays until it is off screen, over the horizon or too small. No popping in and out, no z-fighting, no shimmering lines.
@@ -24,7 +24,7 @@ New tooling goes in `script/`, following [scripts to rule them all](https://gith
 - **A seed is a system.** `SolarSystemDescriptor.Generate` must give the same system for the same seed. Do not change the order or number of its random draws: take new randomness from a generator of its own.
 - **The interface is held to a shipped-game standard.** No debug text on screen. The HUD says little until there is something to say.
 - **No key is ever built into the game**, and the game never shows a sign-in form. Players bring their own key or sign in with the makers' own tools and pages. See `Oracle.cs`.
-- **Tests never spend anyone's money.** PlayMode tests must not reach a real model, browser or speech engine. Set-up swaps `Oracle.Ask`, `Oracle.Tools`, `Oracle.Hosts`, `Oracle.Browse`, `Game.Clipboard` and `Speech.Tool` for stand-ins: keep it that way when adding a new road out of the game.
+- **Tests never spend anyone's money.** PlayMode tests must not reach a real model, browser or speech engine. Set-up swaps `Oracle.Ask`, `Oracle.Tools`, `Oracle.Hosts`, `Oracle.Browse`, `Game.Clipboard` and `Speech.Render` for stand-ins: keep it that way when adding a new road out of the game.
 - **Take feel, never content.** The game borrows mechanics and mood from other games, films and books. It does not use their names, characters, designs, music or levels, and the repository never names them: not in code, documents, interface text or commit messages.
 - **Game audio is muted in batch mode**, so tests are silent.
 

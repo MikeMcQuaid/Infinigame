@@ -10,6 +10,41 @@ namespace Infinigame.Tests
 {
     public partial class PlayTests
     {
+        [UnityTest] public IEnumerator FestivalVoiceIsAvailableWithoutSystemVoices()
+        {
+            PlayerPrefs.SetString($"{Game.Prefs}.voice", "Zarvox");
+            yield return Choose(Game.Settings);
+            while (game.Selected != 4) yield return Press(new Controls { down = true });
+            yield return Press(new Controls { confirm = true });
+            Assert.AreEqual("cmu_us_slt_arctic_hts", Speech.Choice);
+            StringAssert.StartsWith("FESTIVAL SLT", game.Items[0]);
+            StringAssert.Contains("OFFLINE", game.Hint);
+            yield return ReworkShot("festival-voice");
+        }
+
+        [UnityTest] public IEnumerator ShipyardImmediatelyLaunchesOneFollowingEscort()
+        {
+            game.Jump(Campaign.Tower);
+            var front = game.Frontier.Local;
+            front.factory = front.mindDead = true;
+            front.aliens = front.ships = 0;
+            float3 site = -Campaign.Site(Solar.Descriptor, Campaign.Tower);
+            site *= Body.GroundRadius(site);
+            game.Colonies.Add(new Colony { world = Moon, site = site });
+            game.Escorts.order = EscortOrder.Patrol;
+            game.Escorts.count = 3;
+            game.Frontier.BuildFactory(1);
+            Assert.IsTrue(front.shipyard);
+            Assert.AreEqual(1, front.ships);
+            Assert.AreEqual(EscortOrder.Follow, game.Escorts.order);
+            Assert.AreEqual(1, game.Escorts.count);
+            Assert.AreEqual(1, Object.FindObjectsByType<Transform>().Count(part => part.name == "Fleet escort"));
+            HoverAt(site + math.normalizesafe(site) * 180);
+            Player.hull = 10000;
+            yield return Until(() => game.Frontier.Contacts.Any(unit => unit.ship && math.distance(unit.position, Player.Position) < 120));
+            Assert.IsTrue(game.Frontier.Contacts.Any(unit => unit.ship && math.distance(unit.position, Player.Position) < 120), $"Ships: {front.ships}, distances: {string.Join(", ", game.Frontier.Contacts.Where(unit => unit.ship).Select(unit => math.distance(unit.position, Player.Position)))}");
+        }
+
         [UnityTest] public IEnumerator PlaytesterCheatCodeTogglesAndConsumesEachCode()
         {
             yield return Press(new Controls { menu = true });

@@ -66,6 +66,9 @@ namespace Infinigame.Tests
             Assert.IsFalse(War.Build(front, true));
             front.aliens = 0;
             Assert.IsTrue(War.Build(front, true));
+            Assert.AreEqual(1, front.ships, "The first escort is ready without waiting for replication");
+            Assert.IsFalse(War.Build(front, true));
+            Assert.AreEqual(1, front.ships, "Repeated upgrade requests cannot create extra ships");
         }
         [Test] public void FriendlyBodiesIgnoreProjectilesAndSplash()
         {

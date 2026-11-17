@@ -23,3 +23,4 @@ if ! script/unity --path &>/dev/null; then
   echo "==> Installing Unity $version"
   unity install "$version" --architecture "$(uname -m)" --yes
 fi
+script/build-speech macOS

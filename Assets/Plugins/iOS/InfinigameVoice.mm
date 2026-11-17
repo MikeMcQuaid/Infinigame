@@ -13,7 +13,6 @@ static NSString *words = @"";
 static int state;
 static bool tapped;
 static int generation;
-static AVSpeechSynthesizer *speaker;
 
 static void StopCapture() {
     [engine stop];
@@ -21,31 +20,6 @@ static void StopCapture() {
     [request endAudio];
 }
 extern "C" {
-char *InfinigameVoices() {
-    NSMutableArray *voices = [NSMutableArray array];
-    for (AVSpeechSynthesisVoice *voice in [AVSpeechSynthesisVoice speechVoices]) {
-        NSString *name = voice.quality > AVSpeechSynthesisVoiceQualityEnhanced ? [voice.name stringByAppendingString:@" (Premium)"]
-            : voice.quality == AVSpeechSynthesisVoiceQualityEnhanced ? [voice.name stringByAppendingString:@" (Enhanced)"] : voice.name;
-        [voices addObject:@{@"id": voice.identifier, @"name": name, @"language": voice.language}];
-    }
-    NSData *json = [NSJSONSerialization dataWithJSONObject:@{@"voices": voices} options:0 error:nil];
-    return strdup([[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding].UTF8String);
-}
-void InfinigameSpeak(const char *text, const char *voice, float strength) {
-    if (!speaker) speaker = [[AVSpeechSynthesizer alloc] init];
-    [speaker stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
-    AVSpeechUtterance *line = [AVSpeechUtterance speechUtteranceWithString:[NSString stringWithUTF8String:text]];
-    if (voice && *voice) line.voice = [AVSpeechSynthesisVoice voiceWithIdentifier:[NSString stringWithUTF8String:voice]];
-    line.pitchMultiplier = 1.0 - 0.3 * strength;
-    line.rate = AVSpeechUtteranceDefaultSpeechRate * 0.92;
-    [speaker speakUtterance:line];
-}
-bool InfinigameSpeaking() { return speaker.isSpeaking || speaker.isPaused; }
-void InfinigameSpeechPause(bool pause) {
-    if (pause) [speaker pauseSpeakingAtBoundary:AVSpeechBoundaryImmediate];
-    else [speaker continueSpeaking];
-}
-void InfinigameSilence() { [speaker stopSpeakingAtBoundary:AVSpeechBoundaryImmediate]; }
 void InfinigameVoiceStop() {
     if (state == 1) { generation++; state = -1; return; }
     StopCapture();

@@ -51,7 +51,7 @@ namespace Infinigame.Tests
             // test supplies stand-ins there are no tools for it to run
             Oracle.Tools[0] = Oracle.Tools[1] = "not-installed";
             // nor is anything said aloud unless a test listens for it
-            Speech.Tool = "not-installed";
+            Speech.Render = (words, directory) => null;
             VoiceInput.Capture = capture => capture.Submit("What should I do now?");
             asked = 0;
             Oracle.Ask = (persona, prompt) =>
@@ -91,7 +91,7 @@ namespace Infinigame.Tests
             Oracle.Ask = Oracle.Run;
             Oracle.Tools[1] = "codex";
             Oracle.Tools[0] = "claude";
-            Speech.Tool = "/usr/bin/say";
+            Speech.Render = Speech.Festival;
             VoiceInput.Capture = null;
             Speech.Muted = false;
             (Oracle.Hosts[0], Oracle.Hosts[1], Oracle.Hosts[2]) = ("https://api.anthropic.com", "https://api.openai.com", "https://auth.openai.com");
@@ -813,26 +813,8 @@ namespace Infinigame.Tests
         [UnityTest]
         public IEnumerator TheHermitsWordsAreSpokenAloud()
         {
-            // the sound a stand-in for the system's speech will answer with: a tenth of a second, with a chunk of padding before its data as the real one has
-            string sound = Path.Combine(Application.temporaryCachePath, "said.wav");
-            var wav = new List<byte>(Encoding.ASCII.GetBytes("RIFF"));
-            void Chunk(string name, byte[] body)
-            {
-                wav.AddRange(Encoding.ASCII.GetBytes(name));
-                wav.AddRange(System.BitConverter.GetBytes(body.Length));
-                wav.AddRange(body);
-            }
-            wav.AddRange(new byte[4]);
-            wav.AddRange(Encoding.ASCII.GetBytes("WAVE"));
-            Chunk("JUNK", new byte[28]);
-            Chunk("fmt ", new byte[] { 1, 0, 1, 0, 0x22, 0x56, 0, 0, 0x44, 0xAC, 0, 0, 2, 0, 16, 0 });
-            Chunk("data", Enumerable.Range(0, 2205).SelectMany(i => System.BitConverter.GetBytes((short)(i % 2 == 0 ? 16384 : -16384))).ToArray());
-            File.WriteAllBytes(sound, wav.ToArray());
-            Assert.AreEqual(2205, Speech.Samples(wav.ToArray()).Length);
-            Assert.AreEqual(0.5f, Speech.Samples(wav.ToArray())[0]);
-            // it notes what it was given to say
-            Speech.Tool = StandIn("say", $"while [ $# -gt 0 ]; do case \"$1\" in -o) out=\"$2\";; -f) cp \"$2\" \"$0.words\";; esac; shift; done\ncp '{sound}' \"$out\"");
-            File.Delete(Speech.Tool + ".words");
+            string spoken = "";
+            Speech.Render = (words, directory) => { spoken = words; return Enumerable.Repeat(0.5f, 3200).ToArray(); };
             AudioSource Voice() => game.GetComponents<AudioSource>().FirstOrDefault(source => source.clip != null && source.clip.name == "Speech");
 
             game.Jump(2);
@@ -842,21 +824,22 @@ namespace Infinigame.Tests
             yield return null;
             yield return Press(new Controls { interact = true });
             yield return Until(() => Voice() != null);
-            Assert.AreEqual(game.Mission.brief, File.ReadAllText(Speech.Tool + ".words"), "what he says of the mission is read out");
-            Assert.AreEqual(2205, Voice().clip.samples);
-            Assert.AreEqual("Zarvox", Speech.Choice);
+            Assert.AreEqual(game.Mission.brief, spoken, "what he says of the mission is read out");
+            Assert.AreEqual(3200, Voice().clip.samples);
+            Assert.AreEqual(32000, Voice().clip.frequency);
+            Assert.AreEqual("cmu_us_slt_arctic_hts", Speech.Choice);
             Assert.AreEqual(1f, Voice().pitch);
             Assert.IsTrue(Voice().ignoreListenerPause);
             // and so is whatever the model answers for him
             yield return Press(new Controls { typed = "1" });
-            yield return Until(() => File.ReadAllText(Speech.Tool + ".words").StartsWith("Well now"));
+            yield return Until(() => spoken.StartsWith("Well now"));
 
             // unless the player would rather read
             Speech.Muted = true;
-            File.Delete(Speech.Tool + ".words");
+            spoken = "";
             yield return Press(new Controls { typed = "2" });
             yield return Seconds(0.5f);
-            Assert.IsFalse(File.Exists(Speech.Tool + ".words"));
+            Assert.IsEmpty(spoken);
         }
 
         // A stand-in for Claude Code or Codex: it records how it was called and answers as told.
@@ -1277,17 +1260,10 @@ namespace Infinigame.Tests
             Assert.AreEqual(Game.Settings, game.Items[game.Selected]);
         }
 
-        [UnityTest]
-        public IEnumerator InstalledVoicesCanBePagedPreviewedAndRemembered()
+        [UnityTest] public IEnumerator FestivalSettingsPreviewAndRememberEffects()
         {
-            Speech.Tool = StandIn("voice-picker", "if [ \"$1\" = -v ] && [ \"$2\" = '?' ]; then cat \"$0.voices\"; exit; fi\nwhile [ $# -gt 0 ]; do case \"$1\" in -o) output=\"$2\";; -f) cp \"$2\" \"$0.words\";; esac; shift; done\ncp \"$0.wav\" \"$output\"");
-            File.WriteAllText(Speech.Tool + ".voices", "Áine (English (UK))   en_GB    # Hello\n" + string.Join("\n", Enumerable.Range(0, 12).Select(i => $"Voice {i:00}   en_US    # Hello")));
-            var wav = new byte[4430];
-            Encoding.ASCII.GetBytes("data").CopyTo(wav, 12);
-            System.BitConverter.GetBytes(4410).CopyTo(wav, 16);
-            File.WriteAllBytes(Speech.Tool + ".wav", wav);
-            File.Delete(Speech.Tool + ".words");
-
+            string spoken = "";
+            Speech.Render = (words, directory) => { spoken = words; return new float[3200]; };
             IEnumerator Pick(string prefix)
             {
                 int at = System.Array.FindIndex(game.Items, item => item.StartsWith(prefix));
@@ -1295,93 +1271,54 @@ namespace Infinigame.Tests
                 while (game.Selected != at) yield return Press(new Controls { down = true });
                 yield return Press(new Controls { confirm = true });
             }
-
             yield return Choose(Game.Settings);
             yield return Pick("ROBOT VOICE");
-            yield return Until(() => !game.Items.Contains("Finding installed voices…"));
-            Assert.LessOrEqual(game.Items.Length, 11, "installed voices fit the menu instead of overflowing it");
-            StringAssert.StartsWith("Áine", game.Items[1], "British voices come first after the system default");
-            yield return Pick("Áine");
-            yield return Until(() => File.Exists(Speech.Tool + ".words"));
-            Assert.AreEqual("Áine (English (UK))", Speech.Choice);
-            Assert.AreEqual(Speech.Choice, PlayerPrefs.GetString($"{Game.Prefs}.voice"));
-            CollectionAssert.Contains(File.ReadAllLines(Speech.Tool + ".args"), Speech.Choice, "the selected identifier reaches the synthesiser unchanged");
-            StringAssert.Contains("SELECTED", game.Items[1]);
-            var next = Object.FindObjectsByType<UnityEngine.UI.Text>().Single(label => label.text == "Next voices");
-            Vector3 edge = next.rectTransform.TransformPoint(new Vector3(0, next.rectTransform.rect.yMax - 1));
-            Assert.AreEqual(System.Array.IndexOf(game.Items, "Next voices"), game.GetComponent<Hud>().MenuItemAt(RectTransformUtility.WorldToScreenPoint(Camera.main, edge)), "touching the top of a row must not choose its neighbour");
-            var target = new RenderTexture(1280, 720, 24);
-            Camera.main.targetTexture = target;
-            yield return null;
-            Camera.main.Render();
-            RenderTexture.active = target;
-            var picture = new Texture2D(target.width, target.height, TextureFormat.RGB24, false);
-            picture.ReadPixels(new Rect(0, 0, target.width, target.height), 0, 0);
-            Directory.CreateDirectory("Logs/Screenshots");
-            File.WriteAllBytes("Logs/Screenshots/voice-picker.png", picture.EncodeToPNG());
-            RenderTexture.active = null;
-            Camera.main.targetTexture = null;
-            Object.Destroy(picture); Object.Destroy(target);
-            yield return Pick("Next voices");
-            Assert.IsFalse(game.Items.Any(item => item.StartsWith("Áine")));
-            yield return Pick("Next voices");
-            yield return Pick("Voice 08");
-            Assert.AreEqual("Voice 08", Speech.Choice);
+            Assert.AreEqual(5, game.Items.Length);
+            yield return Pick("FESTIVAL SLT");
+            yield return Until(() => spoken.Length > 0);
             yield return Pick("ROBOT EFFECT");
             Assert.AreEqual(1, PlayerPrefs.GetInt($"{Game.Prefs}.robot"));
             yield return Pick("EFFECT STRENGTH");
             Assert.AreEqual(0, Speech.RobotStrength);
-            Assert.AreEqual(0, PlayerPrefs.GetFloat($"{Game.Prefs}.robotStrength"));
             yield return Pick("Voice off");
             Assert.IsTrue(Speech.Muted);
-            Assert.AreEqual("Voice 08", Speech.Choice, "muting preserves the selected voice");
-
             yield return SceneManager.LoadSceneAsync("Main");
             game = Object.FindAnyObjectByType<Game>();
             while (!game.Ready) yield return null;
             Player.controls = () => input;
-            Assert.AreEqual("Voice 08", Speech.Choice);
             Assert.IsTrue(Speech.Muted);
-            File.WriteAllText(Speech.Tool + ".voices", "Áine (English (UK))   en_GB    # Hello\n");
-            yield return Pick(Game.Settings);
-            yield return Pick("ROBOT VOICE");
-            yield return Until(() => !game.Items.Contains("Finding installed voices…"));
-            StringAssert.Contains("UNAVAILABLE", game.Hint, "removed voices fall back without losing the saved choice");
-            Assert.IsTrue(game.Items.Contains("ROBOT EFFECT   ·   ON"));
+            Assert.IsTrue(Speech.Robot);
+            Assert.AreEqual(0, Speech.RobotStrength);
+            Assert.AreEqual("cmu_us_slt_arctic_hts", Speech.Choice);
         }
 
-        [UnityTest]
-        public IEnumerator WindowsVoicesUseInstalledNamesAndFallBackWhenRemoved()
+        [UnityTest] public IEnumerator FestivalDiscardsInterruptedSpeechAndPausesWithMenus()
         {
-            Speech.Tool = StandIn("powershell.exe", "if [ \"$3\" = -Command ]; then cat \"$0.voices\"; exit; fi\nif [ \"$9\" = Removed ]; then exit 1; fi\ncp \"$6\" \"$0.script\"\ncp \"$0.wav\" \"$8\"");
-            File.WriteAllText(Speech.Tool + ".voices", "\uFEFF{\"voices\":[{\"id\":\"American\",\"name\":\"American\",\"language\":\"en-US\"},{\"id\":\"British's $(voice)\",\"name\":\"British\",\"language\":\"en-GB\"}]}");
-            var installed = Speech.InstalledVoices();
-            yield return Until(() => installed.IsCompleted);
-            Assert.AreEqual("British's $(voice)", installed.Result[0].id);
-            Assert.AreEqual("American", installed.Result[1].id);
-            var wav = new byte[4430];
-            Encoding.ASCII.GetBytes("data").CopyTo(wav, 12);
-            System.BitConverter.GetBytes(4410).CopyTo(wav, 16);
-            File.WriteAllBytes(Speech.Tool + ".wav", wav);
-            Speech.Choice = installed.Result[0].id;
-            File.Delete(Speech.Tool + ".script");
-            game.Speech.Say("A preview from the selected voice.");
-            yield return Until(() => File.Exists(Speech.Tool + ".script") && !game.Speech.Speaking);
-            Assert.AreEqual(Speech.Choice, File.ReadAllLines(Speech.Tool + ".args").Last(), "voice names are arguments, never executable script text");
-            StringAssert.Contains("$speaker.SelectVoice($VoiceName)", File.ReadAllText(Speech.Tool + ".script"));
-            StringAssert.DoesNotContain(Speech.Choice, File.ReadAllText(Speech.Tool + ".script"));
-            Speech.Choice = "Removed";
-            game.Speech.Say("Use the default when a voice disappears.");
-            yield return Until(() => !game.Speech.Speaking);
-            Assert.AreEqual(8, File.ReadAllLines(Speech.Tool + ".args").Length, "the retry omits the removed voice");
-            File.WriteAllText(Speech.Tool + ".voices", "{\"voices\":[]}");
-            installed = Speech.InstalledVoices();
-            yield return Until(() => installed.IsCompleted);
-            Assert.IsEmpty(installed.Result);
-            Speech.Tool = "not-installed";
-            installed = Speech.InstalledVoices();
-            yield return Until(() => installed.IsCompleted);
-            Assert.IsEmpty(installed.Result, "missing speech services remain a text-only fallback");
+            using var started = new System.Threading.ManualResetEventSlim();
+            using var finish = new System.Threading.ManualResetEventSlim();
+            Speech.Render = (words, directory) =>
+            {
+                if (words == "Old line") { started.Set(); finish.Wait(10000); }
+                return Enumerable.Repeat(words == "Old line" ? 0.1f : 0.5f, 320000).ToArray();
+            };
+            try
+            {
+                game.Speech.Say("Old line");
+                yield return Until(() => started.IsSet);
+                game.Speech.Say("New line");
+                finish.Set();
+                AudioSource Voice() => game.GetComponents<AudioSource>().FirstOrDefault(source => source.clip != null && source.clip.name == "Speech");
+                yield return Until(() => Voice() != null);
+                var samples = new float[1]; Voice().clip.GetData(samples, 0);
+                Assert.AreEqual(0.5f, samples[0], "Only the replacement line reaches the audio source");
+                yield return Press(new Controls { menu = true });
+                Assert.IsTrue(game.Paused);
+                Assert.IsFalse(Voice().isPlaying);
+                game.Speech.Silence();
+                Assert.IsFalse(game.Speech.Speaking);
+                Assert.IsNull(Voice());
+            }
+            finally { finish.Set(); }
         }
 
         [UnityTest]
@@ -1402,13 +1339,12 @@ namespace Infinigame.Tests
             yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual(look * 1.25f, DesktopControls.Sensitivity, 1e-4f);
-            StringAssert.Contains("- AND =", game.Hint);
+            StringAssert.Contains("MOUSE LOOK SPEED", game.Hint);
             yield return Press(new Controls { down = true });
             yield return Press(new Controls { down = true });
             Assert.AreEqual("ROBOT VOICE   ·   ON", game.Items[4]);
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual("Voice", game.Page);
-            yield return Until(() => !game.Items.Contains("Finding installed voices…"));
             while (game.Items[game.Selected] != "Voice off") yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
             Assert.IsTrue(Speech.Muted);

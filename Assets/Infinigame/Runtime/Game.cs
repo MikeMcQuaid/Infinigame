@@ -128,10 +128,6 @@ namespace Infinigame
         // there, the name of one of the oracle's voices.
         public string Page { get; private set; }
         public int Selected { get; private set; }
-        const int VoicesPerPage = 5;
-        Speech.Voice[] speechVoices = { new Speech.Voice { id = "", name = "System voice", language = "" } };
-        int speechPage, speechRequest;
-        bool findingVoices;
         // When play last began from the title page.
         public float Began { get; private set; }
         // The list of controls, shown only when asked for.
@@ -152,12 +148,7 @@ namespace Infinigame
             {
                 $"Have {Page} write", $"MODEL   ·   {Oracle.Model(Voice).name.ToUpperInvariant()}", $"THINKING   ·   {Oracle.Effort(Voice).ToUpperInvariant()}",
             }.Concat(Oracle.Roads(Voice)).Concat(new[] { "Use the key on the clipboard", "Forget key and sign-in", "Back" }).ToArray()
-            : Page == "Voice" ? findingVoices ? new[] { "Finding installed voices…", "Back" }
-                : speechVoices.Skip(speechPage * VoicesPerPage).Take(VoicesPerPage)
-                    .Select(voice => voice.name + (string.IsNullOrEmpty(voice.language) ? "" : $"   ·   {voice.language}") + (voice.id == Speech.Choice ? "   ·   SELECTED" : ""))
-                    .Concat(speechPage > 0 ? new[] { "Previous voices" } : Array.Empty<string>())
-                    .Concat((speechPage + 1) * VoicesPerPage < speechVoices.Length ? new[] { "Next voices" } : Array.Empty<string>())
-                    .Concat(new[] { $"ROBOT EFFECT   ·   {(Speech.Robot ? "ON" : "OFF")}",  $"EFFECT STRENGTH   ·   {Speech.RobotStrength * 100:0}%", Speech.Muted ? "Voice on" : "Voice off", "Back" }).ToArray()
+            : Page == "Voice" ? new[] { "FESTIVAL SLT   ·   PREVIEW", $"ROBOT EFFECT   ·   {(Speech.Robot ? "ON" : "OFF")}", $"EFFECT STRENGTH   ·   {Speech.RobotStrength * 100:0}%", Speech.Muted ? "Voice on" : "Voice off", "Back" }
             : Page == Settings ? new[]
             {
                 $"DETAIL   ·   {QualitySettings.names[QualitySettings.GetQualityLevel()].ToUpperInvariant()}", $"MUSIC   ·   {(Music.Muted ? "OFF" : "ON")}",
@@ -171,10 +162,7 @@ namespace Infinigame
         // On a voice's page: how the player stands with it and what it has been asked for so far,
         // and what the highlighted item would do.
         public string Standing => Voice < 0 ? null : $"{signedIn[Voice]}{(Voice == Oracle.Voice ? "   ·   IN USE" : "")}   ·   {Oracle.Used(Voice)}";
-        public string Hint => Page == "Voice" ? findingVoices ? "LOOKING FOR VOICES ON THIS DEVICE"
-                : speechVoices.Length == 1 ? "NO VOICES FOUND · SYSTEM SPEECH IF AVAILABLE, OTHERWISE TEXT"
-                : !speechVoices.Any(voice => voice.id == Speech.Choice) ? "SAVED VOICE UNAVAILABLE · USING SYSTEM VOICE · CHOOSE A VOICE TO PREVIEW"
-                : $"CHOOSE TO PREVIEW AND SAVE · BRITISH VOICES FIRST · PAGE {speechPage + 1} OF {(speechVoices.Length + VoicesPerPage - 1) / VoicesPerPage}"
+        public string Hint => Page == "Voice" ? "OFFLINE ENGLISH VOICE · SAME SPEECH ON EVERY DEVICE · PREVIEW TO LISTEN"
             : Page == "Fleet orders" ? Frontier.FleetHint
             : Page == "Equipment" ? "DAMAGE RANK 3 ADDS CHAINING BEAMS · FIST KILLS RESTORE ENERGY · RAIL KILLS REPAIR ARMOUR"
             : Page == ColonyPage ? $"{Hermit.Name}: {Frontier.FactoryHint(Selected)}"
@@ -297,11 +285,7 @@ namespace Infinigame
             FrameLog.Automatic = PlayerPrefs.GetInt($"{Prefs}.automaticQuality", 1) == 1;
             Speech.RobotStrength = Mathf.Clamp01(PlayerPrefs.GetFloat($"{Prefs}.robotStrength", 1));
             Music.Muted = PlayerPrefs.GetInt($"{Prefs}.muted") == 1;
-            Speech.Choice = PlayerPrefs.GetString($"{Prefs}.voice", "Zarvox");
-            bool mac = Application.platform == RuntimePlatform.OSXPlayer || Application.platform == RuntimePlatform.OSXEditor;
-            Speech.Robot = PlayerPrefs.GetInt($"{Prefs}.robot", !mac && Speech.Choice == "Zarvox" ? 1 : 0) == 1;
-            // Older versions stored Mac voice names even on other devices.
-            if (!mac && (Speech.Choice == "Zarvox" || Speech.Choice == "Daniel (English (UK))" || Speech.Choice == "Eddy (English (UK))")) Speech.Choice = "";
+            Speech.Robot = PlayerPrefs.GetInt($"{Prefs}.robot", 0) == 1;
             Speech.Muted = PlayerPrefs.GetInt($"{Prefs}.silent") == 1;
             Subtitles = PlayerPrefs.GetInt($"{Prefs}.subtitles", 1) == 1;
             System = Add<SolarSystem>();
@@ -780,36 +764,16 @@ namespace Infinigame
             if (signedIn[voice].StartsWith("SIGNED IN")) Oracle.Voice = voice;
         }
 
-        async void ShowVoices()
-        {
-            Page = "Voice"; Selected = 0; findingVoices = true;
-            int request = ++speechRequest;
-            var installed = await Speech.InstalledVoices();
-            if (this == null || request != speechRequest) return;
-            speechVoices = new[] { speechVoices[0] }.Concat(installed).ToArray();
-            speechPage = math.max(0, Array.FindIndex(speechVoices, voice => voice.id == Speech.Choice)) / VoicesPerPage;
-            findingVoices = false;
-            if (Page == "Voice") Selected = 0;
-        }
-
         // Acts on the highlighted menu item.
         void Choose()
         {
             if (Page == "Voice" && Items[Selected] != "Back")
             {
-                if (findingVoices) return;
-                if (Selected < math.min(VoicesPerPage, speechVoices.Length - speechPage * VoicesPerPage))
-                {
-                    Speech.Choice = speechVoices[speechPage * VoicesPerPage + Selected].id;
-                    Speech.Muted = false;
-                }
-                else if (Items[Selected] == "Previous voices") { speechPage--; Selected = 0; return; }
-                else if (Items[Selected] == "Next voices") { speechPage++; Selected = 0; return; }
+                if (Selected == 0) Speech.Muted = false;
                 else if (Items[Selected].StartsWith("ROBOT EFFECT")) Speech.Robot = !Speech.Robot;
                 else if (Items[Selected].StartsWith("EFFECT STRENGTH")) Speech.RobotStrength = Speech.RobotStrength >= 1 ? 0 : Speech.RobotStrength + 0.25f;
                 else Speech.Muted = !Speech.Muted;
                 Speech.Silence();
-                PlayerPrefs.SetString($"{Prefs}.voice", Speech.Choice);
                 PlayerPrefs.SetInt($"{Prefs}.silent", Speech.Muted ? 1 : 0);
                 PlayerPrefs.SetInt($"{Prefs}.robot", Speech.Robot ? 1 : 0);
                 PlayerPrefs.SetFloat($"{Prefs}.robotStrength", Speech.RobotStrength);
@@ -894,7 +858,7 @@ namespace Infinigame
                 // quicker each time, then back round to the slowest
                 else if (Selected == 2) Look(DesktopControls.Sensitivity > 0.7f ? 0.08f : DesktopControls.Sensitivity * 1.25f);
                 else if (Selected == 3) Screen.fullScreen = !Screen.fullScreen;
-                else if (Selected == 4) ShowVoices();
+                else if (Selected == 4) { Page = "Voice"; Selected = 0; }
                 else if (Selected == 5) { Subtitles = !Subtitles; PlayerPrefs.SetInt($"{Prefs}.subtitles", Subtitles ? 1 : 0); }
                 else { FrameLog.Automatic = !FrameLog.Automatic; PlayerPrefs.SetInt($"{Prefs}.automaticQuality", FrameLog.Automatic ? 1 : 0); }
                 return;

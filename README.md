@@ -48,6 +48,8 @@ These follow [scripts to rule them all](https://github.com/github/scripts-to-rul
 | `script/build-steam-deck` | Packages a desktop build without automatic XR as `Build/Infinigame-SteamDeck.zip`, with Proton installation steps. |
 | `script/performance` | Reports the latest real Mac play session from `Logs/frames.log`, excluding menus. |
 | `script/build` | Builds `Build/Infinigame.app` for macOS. Unity's build log goes to `Logs/build.log`. |
+| `script/build-speech [macOS\|Windows\|iOS]` | Builds the offline Festival voice library; ordinary builds call this automatically. |
+| `script/test-speech` | Checks native speech without playing sound and writes `Build/Festival-preview.wav`. |
 | `script/test` | Compiles every assembly and runs the EditMode tests. Needs no Unity licence. |
 | `script/test --unity` | Also runs the EditMode and PlayMode tests inside Unity and saves pictures to `Logs/Screenshots`. |
 | `script/unity` | Runs the pinned editor against this project with any arguments. |
@@ -146,7 +148,7 @@ Three save slots retain equipment, missions, factories, war populations and the 
 
 ### Other devices
 
-Touch controls have a large Fire button, Lift and contextual Use, with secondary actions behind ···. Recall appears there once the ship link is available; locked equipment actions stay hidden. Use the separate visible Move and Look joysticks; iPad hardware keyboards work alongside touch. The Mobile detail tier is selected on iPhone and iPad. Accounts are held in the iOS Keychain. Companion output uses free local system voices on macOS, Windows and iOS, with independent subtitle and voice settings. Steam Deck uses text when speech services are unavailable under Proton. Voice input uses local Apple dictation when available or the Windows speech recogniser. No paid speech service is enabled.
+Touch controls have a large Fire button, Lift and contextual Use, with secondary actions behind ···. Recall appears there once the ship link is available; locked equipment actions stay hidden. Use the separate visible Move and Look joysticks; iPad hardware keyboards work alongside touch. The Mobile detail tier is selected on iPhone and iPad. Accounts are held in the iOS Keychain. All spoken dialogue uses the same bundled offline Festival SLT voice, including on Steam Deck, with independent subtitle and voice settings. Voice input uses local Apple dictation when available or the Windows speech recogniser. No paid speech service is enabled.
 
 On a Windows PC, the OpenXR path uses tracked controllers and a seated cockpit, with slower walking and snap turns for comfort. The suit HUD follows your view; in the ship it stays on the cockpit. The left wrist carries a touchable control screen. The left stick moves in the direction you look and the right stick snap-turns. Hold left A to jump or use restored thrusters and right A to descend. Clicking the left stick opens the pause menu. Move a tracked hand to punch; right trigger fires other weapons and right grip interacts. Left grip modifies the controls: trigger scans, left A opens the radio, left B opens the factory uplink, right B toggles the cloak and right stick click starts or finishes voice input. Without the modifier, right B changes weapon, left B toggles the map and right stick click starts autopilot. In dialogue, right A, left A and right grip ask the three displayed questions. Device builds and comfort still need testing on the intended iPhone, iPad and Valve Index; a macOS test run cannot establish that they work well on those devices.
 
@@ -181,7 +183,7 @@ Cloak reduces visual detection by ground sentries, costs 18 suit energy per seco
 
 Mind deaths leave broken violet remains and spreading surface pools. Burrow demolition has a 30 m damage radius and a 40 m fireball, compared with a normal nuclear torpedo's 60 m damage radius and 96 m fireball. Escape at least 35 m from the mind. Intact turrets and structures protect their foundations. A ship hitting an active shield bounces and takes hull damage.
 
-Shipyards unlock **Fleet orders** in the pause menu: request one to three escorts and choose Follow, Attack or Patrol. They keep up during autopilot and travel between worlds with you. Factories draw nearby ground patrols into visible fights while the wider war continues.
+Upgrading a shipyard immediately launches one escort set to Follow. Shipyards unlock **Fleet orders** in the pause menu: request one to three escorts and choose Follow, Attack or Patrol. They keep up during autopilot and travel between worlds with you. Factories draw nearby ground patrols into visible fights while the wider war continues.
 
 The citadel contains two relay minds, a larger final mind and spine turrets along a longer living maze. Kill the relay minds and turrets to drop the final field, then silence its last mind and escape. Moon engines assemble for five seconds, ignite for four and carry the moon towards impact for at least eighteen. Your ship follows behind three aft-facing engines. Use **Cheats > Moon engines built · replay finale** to start or restart the complete sequence. Impact becomes a black hole, the system falls in within twenty seconds and a four-second white supernova gives way to orbital arrival in the next system.
 

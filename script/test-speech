@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Check native speech independently of Unity, without playing any audio."""
+import array
+import ctypes
+import math
+import os
+from pathlib import Path
+import subprocess
+import time
+import wave
+
+os.chdir(Path(__file__).resolve().parent.parent)
+subprocess.run(["script/build-speech", "macOS"], check=True)
+library = ctypes.CDLL(str(Path("Build/Speech/macOS/libInfinigameSpeech.dylib").resolve()))
+library.InfinigameSynthesise.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)]
+library.InfinigameSynthesise.restype = ctypes.POINTER(ctypes.c_float)
+library.InfinigameSpeechFree.argtypes = [ctypes.POINTER(ctypes.c_float)]
+model = str(Path("Build/Speech/Voice").resolve()).encode()
+started = time.monotonic()
+for text, directory, expected in [
+    (b"You are not dead. Stay still while I restore your suit. Your first escort is launching now.", model, True),
+    (b"Luna: 12 aliens, 3 robots. Shields at 50 percent. Try the hand beam!", model, True),
+    (b"", model, False),
+    (b"Hello", b"missing-voice", False),
+    (b"a" * 2001, model, False),
+    (b"Ready to continue.", model, True),
+]:
+    count = ctypes.c_int()
+    samples = library.InfinigameSynthesise(text, directory, ctypes.byref(count))
+    try:
+        if not expected:
+            assert not samples and count.value == 0
+            continue
+        assert samples and 3200 < count.value < 32000 * 30
+        values = samples[:count.value]
+        assert all(math.isfinite(value) and -1 <= value <= 1 for value in values)
+        assert max(map(abs, values)) > 0.05, "The voice must produce audible samples"
+        if text.startswith(b"You are"):
+            with wave.open("Build/Festival-preview.wav", "wb") as preview:
+                preview.setparams((1, 2, 32000, 0, "NONE", "not compressed"))
+                preview.writeframes(array.array("h", (int(value * 32767) for value in values)).tobytes())
+    finally:
+        library.InfinigameSpeechFree(samples)
+print(f"Native speech checks passed in {time.monotonic() - started:.2f}s. Preview: Build/Festival-preview.wav")

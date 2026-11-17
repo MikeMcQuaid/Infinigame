@@ -6,7 +6,7 @@ A factory begins with eight robodogs, plus four per world difficulty rank. One m
 
 An active mind suppresses robot strength and replication: early patrols can be wiped out. After you kill the mind, an intact factory always rebuilds from zero and eventually wins the ground war, at every difficulty. Remaining aliens no longer replicate. You do not need to keep rebuilding the factory.
 
-A shipyard is an upgrade to that same factory, available only after its robots conquer the whole world. The shipyard is roughly twice the factory’s footprint. Its assembly lift raises an actual robot-piloted ship, which powers up and joins the fleet, starting with two ships. They replicate while hostile ships remain. Later fronts can overwhelm a young factory without the player's help.
+A shipyard is an upgrade to that same factory, available only after its robots conquer the whole world. The shipyard is roughly twice the factory’s footprint. Upgrading immediately puts one actual robot-piloted ship on the assembly lift. It rises, powers up and follows you by default, including during autopilot. Fleet orders starts at one escort; request more as the fleet grows. They replicate while hostile ships remain. Later fronts can overwhelm a young factory without the player's help.
 
 Use **Fleet orders** in the pause menu to choose one to three escorts. **Follow** holds formation and defends against nearby ships, **Attack** engages hostile ships within 2.5 km and **Patrol** returns them to their shipyard. Escorts keep up with autopilot and survive travel between worlds. This small personal wing can travel with you; autonomous population expansion remains limited to neighbouring planets.
 

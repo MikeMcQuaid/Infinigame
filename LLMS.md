@@ -23,43 +23,15 @@ The provider page shows the route in use, selected model, requests and token cou
 
 ## Voice choices
 
-Text generation and speaking are separate. **Settings > Robot voice** lists the voices installed on this device, with British English first and pages for longer lists. Choosing a voice enables speech, plays a preview and saves its identifier on this device. Reopen the page after installing more voices. Voice off preserves the selection; Robot effect is independent of the selected voice. Effect strength cycles from 0% to 100% in 25% steps, previews the result and is saved per device. On Mac and Windows it controls amplitude modulation; on iPhone/iPad it controls the native pitch reduction, so these effects do not sound identical. Robot subtitles have their own toggle in Settings. A removed voice falls back to the system default without forgetting the saved choice. New Mac preferences use **Zarvox**; other platforms use their system voice with the robot effect enabled.
+Every spoken line uses the bundled **Festival SLT** voice: tutorial, mission guidance, factory announcements and live LLM replies. It runs offline on macOS, Windows/SteamVR, Steam Deck through Proton and iPhone/iPad. No system voice, speech service, subscription or runtime download is needed. Existing saves use this voice too; voice mute and subtitle preferences are preserved.
 
-| Platform | Implemented now | Other local options |
-|---|---|---|
-| macOS | Every voice listed by the local `say` engine, plus System voice | Install voices in Accessibility > Read & Speak. Zarvox, Daniel, Eddy and other voices appear when installed. Robot effect adds light modulation. |
-| iPhone/iPad | Installed AVSpeechSynthesizer voices, selected by identifier, plus System voice | Enhanced and Premium variants are labelled. Robot effect lowers the pitch. Only voices Apple exposes to apps appear; Siri voices are not available through this API. |
-| Windows/SteamVR | Enabled SAPI voices through PowerShell, plus System voice | Each choice selects its installed name. Robot effect adds light modulation. Narrator-only voices are not necessarily exposed to SAPI. |
-| Steam Deck through Proton | Text replies and typed input when speech services are unavailable | No bundled speech engine. Nothing downloads a voice model or calls paid speech. |
+The acoustic model is the exact [cmu_us_slt_arctic_hts package distributed with Festival](https://www.cstr.ed.ac.uk/downloads/festival/2.1/festvox_cmu_us_slt_arctic_hts.tar.gz), using its original 32 kHz parameters. A small [Flite+HTS engine](https://hts-engine.sourceforge.net/) replaces Festival's larger Scheme front end. It uses the same model on every platform, although pronunciation and phrasing can differ slightly from desktop Festival. SLT is an American English voice. Accents and typographic punctuation are normalised for its English text front end.
 
-See [Apple's speech API and Siri limitation](https://developer.apple.com/videos/play/wwdc2020/10022/) and [Microsoft's selectable installed voices](https://learn.microsoft.com/en-us/dotnet/api/system.speech.synthesis.speechsynthesizer.selectvoice?view=netframework-4.8). Steam Deck keeps text when Windows speech services are unavailable under Proton. Voice discovery runs on opening the picker, with a timeout for desktop tools. Tests use fake catalogues and synthesis tools, never the real engines.
+**Settings > Robot voice** previews Festival SLT, toggles the robot effect, changes its strength in 25% steps or turns speech off. The modulation effect now uses the same Unity audio path on every device. Speech pauses with menus, while an explicit settings preview still plays. Robot subtitles have their own toggle. If synthesis fails, the existing text remains available; the game does not silently switch to a different voice.
 
-### Festival SLT HTS
+Synthesis runs off the game thread. New dialogue replaces pending speech and discards stale results. Tests replace `Speech.Render` with a stand-in and never invoke real synthesis. `script/test-speech` separately checks the native engine without playing audio and writes `Build/Festival-preview.wav` for listening. Build scripts compile and bundle the native engine and model automatically. `script/bootstrap` also prepares it for the Mac editor.
 
-`cmu_us_slt_arctic_hts` is a specific American English voice model for Festival's HTS synthesiser, not a Siri/system voice or an LLM. The [original voice package](https://www.cstr.ed.ac.uk/downloads/festival/2.1/festvox_cmu_us_slt_arctic_hts.tar.gz) includes a CMU licence permitting commercial use while retaining its notices and marking modifications. [Festival itself](https://www.cstr.ed.ac.uk/projects/festival/download.html) is a C++ speech engine with permissive terms. Its exact HTS model should be used when matching that sound; another engine's SLT voice is not necessarily identical.
-
-The simplest consistent implementation would render the authored story and tutorial lines to audio during development, then play the same clips on Mac, Windows, Deck, iPhone/iPad and VR. Dynamic companion replies would still use installed voices or text. Full live Festival speech everywhere would require native engine and voice packaging, including an iOS build; no engine is bundled yet. The game does not currently install Festival or list this HTS model in its voice picker. Rendering authored clips needs no LLM or paid speech service.
-
-### Portable robot speech candidates
-
-These are research candidates, not dependencies. None supplies Apple's exact Zarvox voice. A shared engine would generate speech locally, including new companion replies, without an LLM or a paid speech service.
-
-| Candidate | Fit and trade-offs |
-|---|---|
-| [SoLoud Speech](https://solhsa.com/soloud/speech.html) | Adjustable Klatt-style formant synthesis: the most directly mechanical option to audition, but its author warns that intelligibility is limited. Its C API can be wrapped for Unity and its null backend can supply samples to Unity audio. The engine uses zlib terms; its older rsynth-derived speech code has separate provenance notes in the [licence](https://solhsa.com/soloud/legal.html). |
-| [Flite](https://github.com/festvox/flite) | Small portable C engine, with [permissive runtime licensing](https://github.com/festvox/flite/blob/master/COPYING). Worth auditioning with a fixed voice and light modulation for clearer robot dialogue. The engine is portable, but a Unity native plugin, iOS cross-build and bundled voice choice still need validation. |
-| [eSpeak NG](https://github.com/espeak-ng/espeak-ng) | Compact formant speech with adjustable voices and many accents, including British English. Supports desktop platforms and has an [iOS project](https://github.com/espeak-ng/espeak-ng-ios-app). GPLv3-or-later licensing needs resolution before embedding it in the Unity player. |
-
-For one voice across Mac, iPhone, iPad, Windows, Steam Deck and SteamVR, a bundled engine would need native builds for each operating system and architecture. Deck's current Proton build would use the Windows library; SteamVR uses its host PC's library. Audition SoLoud and Flite before choosing: clarity during combat matters more than an exact resemblance to Zarvox.
-
-### Listen before choosing
-
-- [Zarvox recording](https://freesound.org/people/newagesoup/sounds/349317/): an example of Apple's mechanical voice, available to preview in the browser.
-- [Flite AWB sample](https://synesthesiam.github.io/opentts/samples/flite/en/cmu_us_awb/sample_1.wav): Scottish English. [Flite RMS sample](https://synesthesiam.github.io/opentts/samples/flite/en/cmu_us_rms/sample_1.wav): a US male voice. The [OpenTTS sample gallery](https://synesthesiam.github.io/opentts/#flite_en) has further Flite voices recorded by that project's author. These are unprocessed engine samples, not our robot effect.
-- [eSpeak sample](https://espeak.sourceforge.net/samples/raven.ogg): the classic engine's official recording. It illustrates the formant-synthesis sound, not every eSpeak NG voice or configuration.
-- SoLoud's [download](https://solhsa.com/soloud/downloads.html) includes its `megademo`; choose `speechfilter` to audition its formant speech and filters. A working hosted speech demo was not verified.
-
-For Daniel, Eddy and other installed Apple or Windows voices, the game's voice picker is the most accurate audition of what this device will actually use. No portable voice library has been added.
+Source archives, checksums, modifications and licences are recorded in [ThirdParty/Festival/README.md](ThirdParty/Festival/README.md). The voice's licence notices are included inside every app. The owner explicitly approved this bundled speech dependency; it is separate from the game's generated art and sound effects.
 
 ## Voice input and bounded state
 
