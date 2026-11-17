@@ -102,7 +102,7 @@ namespace Infinigame.Tests
             var rooms = Interior.Citadel();
             Assert.IsFalse(rooms.Visible(new float3(160, 0, 400), rooms.core, true));
             Assert.IsFalse(rooms.Visible(rooms.entrance, rooms.core, true));
-            var route = new[] { rooms.entrance, new float3(0, 0, -144), new float3(116, 0, -144), new float3(116, 0, -28), new float3(0, 0, -28), new float3(0, 0, 88), new float3(116, 0, 88), rooms.core };
+            var route = rooms.route;
             Assert.GreaterOrEqual(route.Length - 2, 6);
             for (int i = 1; i < route.Length; i++)
             {

@@ -38,6 +38,7 @@ namespace Infinigame.Core
     {
         public Wall[] walls;
         public float3 entrance, core, console;
+        public float3[] route = Array.Empty<float3>();
         public static Interior Outpost() => new Interior
         {
             entrance = new float3(0, 1, -12), core = new float3(0, 2, 19), console = new float3(4, 1, -9),
@@ -72,7 +73,8 @@ namespace Infinigame.Core
         public static Interior Citadel()
         {
             var cells = new HashSet<int2>();
-            int2[] turns = { new int2(0, 0), new int2(0, 2), new int2(2, 2), new int2(2, 4), new int2(0, 4), new int2(0, 6), new int2(2, 6), new int2(2, 8) };
+            int2[] turns = { new int2(0, 0), new int2(0, 2), new int2(2, 2), new int2(2, 4), new int2(0, 4), new int2(0, 6), new int2(2, 6), new int2(2, 8),
+                new int2(4, 8), new int2(4, 10), new int2(1, 10), new int2(1, 12), new int2(4, 12), new int2(4, 15), new int2(2, 15), new int2(2, 18) };
             for (int i = 1; i < turns.Length; i++)
             {
                 int2 at = turns[i - 1], step = (int2)math.sign(turns[i] - at);
@@ -91,7 +93,9 @@ namespace Infinigame.Core
                     walls.Add(new Wall(centre + new float3(side.x * 29, 0, side.y * 29), new float3(side.x != 0 ? 1 : 29, 30, side.y != 0 ? 1 : 29)));
                 }
             }
-            return new Interior { entrance = new float3(0, 0, -290), core = new float3(116, 0, 204), console = new float3(116, 0, 204), walls = walls.ToArray() };
+            var route = new List<float3> { new float3(0, 0, -290) };
+            foreach (var turn in turns) route.Add(new float3(turn.x * 58, 0, -260 + turn.y * 58));
+            return new Interior { entrance = route[0], core = route[^1], console = route[^1], route = route.ToArray(), walls = walls.ToArray() };
         }
         public float3 Move(float3 from, float3 velocity, float radius, float dt, bool open, out bool hit, float stepHeight = 0)
         {
@@ -166,6 +170,17 @@ namespace Infinigame.Core
         public float3 centre;
         public float radius;
         public bool active;
+        public bool Bounce(float3 from, ref float3 to, ref float3 velocity, float clearance)
+        {
+            var hull = this;
+            bool inside = math.distance(from, centre) < radius;
+            hull.radius = math.max(0.1f, radius + (inside ? -clearance : clearance));
+            if (!hull.Blocks(from, to - from, out float3 hit)) return false;
+            float3 normal = math.normalizesafe(hit - centre) * (inside ? -1 : 1);
+            to = hit + normal * 0.05f;
+            velocity = (velocity - 2 * math.dot(velocity, normal) * normal) * 0.55f;
+            return true;
+        }
         public bool Blocks(float3 from, float3 step, out float3 at)
         {
             at = from + step;

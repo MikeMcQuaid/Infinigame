@@ -39,6 +39,7 @@ namespace Infinigame
 
         Transform camp, figure;
         bool seated, unasked;
+        LineRenderer repair;
 
         // Pitches the camp on the freshly built home world, a short walk from the landing site.
         public void Settle()
@@ -80,6 +81,19 @@ namespace Infinigame
                 if (armour != null) armour.gameObject.SetActive(!game.Player.Has(Gear.Suit));
                 var helm = camp.Find("Workshop/Fluted great helm");
                 if (helm != null) helm.gameObject.SetActive(!game.Player.Has(Gear.Suit));
+            }
+            if (repair == null)
+            {
+                repair = new GameObject("Suit repair beam").AddComponent<LineRenderer>();
+                repair.transform.SetParent(transform, false); repair.positionCount = 2;
+                repair.sharedMaterial = Shapes.Material("Glow", new Color(0.08f, 0.35f, 0.95f));
+                repair.startWidth = 0.06f; repair.endWidth = 0.12f;
+            }
+            repair.enabled = game.Tutorial != null && game.Tutorial.Repairing && !game.Paused;
+            if (repair.enabled)
+            {
+                repair.SetPosition(0, camp.position + camp.up * 1.1f);
+                repair.SetPosition(1, (Vector3)(game.Player.Position - game.System.Anchor) + (Vector3)math.normalizesafe(game.Player.Position) * 0.8f);
             }
             if (figure == null || seated == Aboard || !(game.Player.Seat is Transform seat)) return;
             seated = Aboard;
@@ -123,11 +137,11 @@ namespace Infinigame
             game.Speech.Say(words);
         }
 
-        public string Briefing => game.Stage >= Campaign.Won ? game.Fall.destroyed ? "The mind has collapsed. Stay with me while the system falls into it." : "The core is gone, but the final mind is buried too deep for torpedoes. Our colonies must build engines on a moon." : game.Mission.brief;
+        public string Briefing => game.Stage >= Campaign.Won ? game.Fall.destroyed ? "The mind has collapsed. Stay with me while the system falls into it." : "The core is gone, but the final mind is buried too deep for torpedoes. Our colonies must build engines on a moon." : game.Stage == 3 ? game.Frontier.FactoryHint(0) : game.Stage == 5 || game.Stage == 6 ? "Break this world’s mind, then recover its equipment. " + game.Frontier.FactoryHint(0) : game.Mission.brief;
 
         // Authored replies keep the early story playable without an account.
         string Canned(string asked) => asked.IndexOf("factory", StringComparison.OrdinalIgnoreCase) >= 0 || asked.IndexOf("build", StringComparison.OrdinalIgnoreCase) >= 0
-            ? "Kill enough local aliens to seed a robodog factory. Kill the mind to remove its coordination and unlock our robots' full strength. Even if every patrol dies, the factory will rebuild them and win. Then upgrade it to a shipyard. The map shows populations and prerequisites."
+            ? game.Frontier.FactoryHint(game.Frontier.Local.shipyard ? 2 : game.Frontier.Local.factory && game.Frontier.Local.mindDead ? 1 : 0)
             : asked.IndexOf("world", StringComparison.OrdinalIgnoreCase) >= 0 || asked.IndexOf("presence", StringComparison.OrdinalIgnoreCase) >= 0
             ? "We are the Foundry, independent machines protecting what still lives. The presence grows bodies from a shared mind and consumes everything beyond itself. We must sever those minds and rebuild safe settlements."
             : asked.IndexOf("who", StringComparison.OrdinalIgnoreCase) >= 0 ? $"{Name}. An autonomous recovery machine. I can keep this channel open wherever you go."

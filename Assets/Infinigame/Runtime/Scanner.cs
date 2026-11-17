@@ -46,8 +46,8 @@ namespace Infinigame
             if (body.TryGetComponent(out Creatures creatures)) things.AddRange(creatures.Seen);
             if (system.Reference == SolarSystemDescriptor.Home) things.Add(game.Hermit.Likeness);
             foreach (var foe in game.Battle.Foes)
-                things.Add(new Scannable { name = foe.kind == FoeKind.Sentry ? "Presence " + foe.caste + (foe.caste == MotileCaste.Stalker ? ": six-legged close-range fighter" : foe.caste == MotileCaste.Breacher ? ": heavily armoured eight-legged charger" : ": four-legged mortar body that retreats before firing")
-                    : foe.kind == FoeKind.Mind ? "Presence mind: rooted controller; its death scatters this brood" : "Presence " + foe.kind,
+                things.Add(new Scannable { name = foe.stationary ? "Presence Spine turret: rooted defence; destroy it to lower the local shield" : foe.kind == FoeKind.Sentry ? "Presence " + foe.caste + (foe.caste == MotileCaste.Stalker ? ": six-legged close-range fighter" : foe.caste == MotileCaste.Breacher ? ": heavily armoured eight-legged charger" : ": four-legged mortar body that retreats before firing")
+                    : foe.kind == FoeKind.Mind ? "Presence mind: rooted controller; its death scatters this brood" : "Presence " + Combat.Name(foe),
                     foot = foe.position - math.normalizesafe(foe.position) * foe.size * 0.5f, height = foe.size * 2, girth = foe.size });
             game.Frontier.Collect(things);
             if (game.Player.Has(Gear.Ship) || game.Player.captive)

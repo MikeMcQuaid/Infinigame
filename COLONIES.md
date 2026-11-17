@@ -14,7 +14,7 @@ The content importer uses these identifiers. Costs are zero because access is ea
 
 | Building | Ore | Ice | Salvage | Explanation |
 |---|---|---|---|---|
-| Factory | 0 | 0 | 0 | Clear a foothold, then seed a robodog factory. Its robots replicate and hunt until this world is safe. Its rotating roof mount uses the suit weapon families. Kill the mind to unlock full robot strength. |
+| Factory | 0 | 0 | 0 | Clear a foothold, then build a robodog factory. Its robots replicate and hunt until this world is safe. Its rotating roof mount uses the suit weapon families. Kill the mind to unlock full robot strength. |
 | ShipFactory | 0 | 0 | 0 | Once the factory has conquered its whole world, upgrade it to a shipyard. Robot ships fight the living fleet and support one neighbouring planet. |
 
-After the citadel shield core falls, a shipyard that has also cleared its local hostile fleet can build moon engines. The moon travels towards the buried mind at interplanetary autopilot speed while your ship follows. Impact starts the singularity ending automatically. The unlocked cheats menu has a Moon engines ready option that supplies both conquests and the upgraded factory; select Build moon engines from its uplink to launch.
+After all three citadel minds fall, a shipyard that has also cleared its local hostile fleet can build moon engines. The engines assemble, ignite and send the moon towards the buried mind while your ship follows at a safe distance. Impact starts the singularity ending automatically. The unlocked cheats menu has a Moon engines ready option that supplies both conquests and the upgraded factory; select Build moon engines from its uplink to launch.

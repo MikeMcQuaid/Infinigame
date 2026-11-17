@@ -18,6 +18,7 @@ namespace Infinigame
         // Where to write, and how often. Tests set these; otherwise the command line or a default decides.
         public static string File;
         public static float Every = 5f;
+        public static bool Automatic = true;
 
         [NonSerialized] public Game game;
 
@@ -73,6 +74,11 @@ namespace Infinigame
 
         void Update()
         {
+            if (!Automatic && (LodSettings.Adaptive != 1 || resolution != 1))
+            {
+                LodSettings.Adaptive = resolution = 1; spare = 0;
+                if (!DeviceControls.VR && SystemInfo.supportsDynamicResolution) ScalableBufferManager.ResizeBuffers(1, 1);
+            }
             Fps = Mathf.Lerp(Fps, 1 / Mathf.Max(Time.unscaledDeltaTime, 0.001f), 0.04f);
             frames.Add(Time.unscaledDeltaTime * 1000f);
             FrameTimingManager.CaptureFrameTimings();
@@ -99,7 +105,7 @@ namespace Infinigame
                 frames[frames.Count - 1].ToString("0.0"), (main / math.max(timed, 1)).ToString("0.0"), (work / math.max(timed, 1)).ToString("0.0"), (render / math.max(timed, 1)).ToString("0.0"), (gpu / math.max(timed, 1)).ToString("0.0"),
                 QualitySettings.names[QualitySettings.GetQualityLevel()], $"{Screen.width}x{Screen.height}", system.ReferenceBody.name, doing, math.length(player.Velocity).ToString("0"),
                 body.PatchCount, Count<Scatter>(scatter => scatter.Drawn), Count<RingField>(rings => rings.Drawn), game.Battle.Foes.Count, game.Depth, game.Stage, (GC.GetTotalMemory(false) / 1048576).ToString(), game.Corpses.Count, HDROutputSettings.main.active, LodSettings.Adaptive.ToString("0.00"), ScalableBufferManager.widthScaleFactor.ToString("0.00")));
-            if (!Application.isBatchMode && (doing == "foot" || doing == "flying" || doing == "autopilot"))
+            if (Automatic && !Application.isBatchMode && (doing == "foot" || doing == "flying" || doing == "autopilot"))
             {
                 float budget = 1000 / refresh;
                 float median = At(0.5f), cpu = (float)(work / math.max(timed, 1)), graphics = (float)(gpu / math.max(timed, 1));

@@ -14,11 +14,12 @@ namespace Infinigame
     public class Speech : MonoBehaviour
     {
         public static bool Muted, Robot;
+        public static float RobotStrength = 1;
 #if UNITY_STANDALONE_WIN
         public static string Tool = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell/v1.0/powershell.exe");
 #elif UNITY_IOS && !UNITY_EDITOR
         public static string Tool = "native-ios";
-        [System.Runtime.InteropServices.DllImport("__Internal")] static extern void InfinigameSpeak(string text, string voice, bool robot);
+        [System.Runtime.InteropServices.DllImport("__Internal")] static extern void InfinigameSpeak(string text, string voice, float strength);
         [System.Runtime.InteropServices.DllImport("__Internal")] static extern IntPtr InfinigameVoices();
         [System.Runtime.InteropServices.DllImport("__Internal")] static extern void InfinigameVoiceFree(IntPtr text);
         [System.Runtime.InteropServices.DllImport("__Internal")] static extern bool InfinigameSpeaking();
@@ -114,13 +115,13 @@ $speaker.Dispose()" } : new[] { "-v", "?" }) start.ArgumentList.Add(argument);
             pending = 0; source.Stop();
             if (Muted || string.IsNullOrWhiteSpace(words)) return;
 #if UNITY_IOS && !UNITY_EDITOR
-            if (Tool == "native-ios" && !Application.isBatchMode) { InfinigameSpeak(words, Choice, Robot); return; }
+            if (Tool == "native-ios" && !Application.isBatchMode) { InfinigameSpeak(words, Choice, Robot ? RobotStrength : 0); return; }
 #endif
             if (!File.Exists(Tool)) return;
             pending = mine;
             string folder = Path.Combine(Application.temporaryCachePath, "speech");
             string voice = Choice, tool = Tool;
-            bool robot = Robot;
+            float strength = Robot ? Mathf.Clamp01(RobotStrength) : 0;
             float[] sound = null;
             int rate = 22050;
             try
@@ -176,8 +177,8 @@ $speaker.Dispose()");
             // he may have been given something else to say in the meantime
             if (this == null || mine != asked || sound == null || sound.Length == 0) return;
             if (Muted) return;
-            if (robot)
-                for (int i = 0; i < sound.Length; i++) sound[i] *= 0.82f + 0.18f * Mathf.Sin(i * 2 * Mathf.PI * 65 / rate);
+            if (strength > 0)
+                for (int i = 0; i < sound.Length; i++) sound[i] *= 1 - 0.35f * strength + 0.35f * strength * Mathf.Sin(i * 2 * Mathf.PI * 65 / rate);
             Destroy(source.clip);
             source.clip = AudioClip.Create("Speech", sound.Length, 1, rate, false);
             source.clip.SetData(sound, 0);

@@ -31,12 +31,12 @@ char *InfinigameVoices() {
     NSData *json = [NSJSONSerialization dataWithJSONObject:@{@"voices": voices} options:0 error:nil];
     return strdup([[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding].UTF8String);
 }
-void InfinigameSpeak(const char *text, const char *voice, bool robot) {
+void InfinigameSpeak(const char *text, const char *voice, float strength) {
     if (!speaker) speaker = [[AVSpeechSynthesizer alloc] init];
     [speaker stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
     AVSpeechUtterance *line = [AVSpeechUtterance speechUtteranceWithString:[NSString stringWithUTF8String:text]];
     if (voice && *voice) line.voice = [AVSpeechSynthesisVoice voiceWithIdentifier:[NSString stringWithUTF8String:voice]];
-    line.pitchMultiplier = robot ? 0.85 : 1.0;
+    line.pitchMultiplier = 1.0 - 0.3 * strength;
     line.rate = AVSpeechUtteranceDefaultSpeechRate * 0.92;
     [speaker speakUtterance:line];
 }

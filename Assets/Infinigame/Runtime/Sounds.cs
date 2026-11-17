@@ -18,7 +18,7 @@ namespace Infinigame
         readonly AudioClip[][] shots = new AudioClip[Mix.Shots.Length][];
         readonly AudioSource[] voices = new AudioSource[8];
         readonly AudioSource[] geiger = new AudioSource[3];
-        AudioSource engine, bike, whine, wind, rain, jetpack, beam, effects;
+        AudioSource engine, bike, whine, wind, rain, jetpack, beam, effects, charge, mind;
         AudioClip[] booms, bigBooms, thuds, steps, digs;
         AudioClip chime, warp, alarm, engage, hurt, reload, dryFire, nuke, last;
         float stride, riding, dose, lastFuel, lastHurt = float.MinValue;
@@ -36,6 +36,7 @@ namespace Infinigame
             rain = Loop(Synth.Rain);
             jetpack = Loop(Synth.Jetpack);
             beam = Loop(Synth.Beam);
+            charge = Loop(Synth.Charge); mind = Loop(Synth.Mind);
             bike = Loop(Synth.Bike);
             for (int i = 0; i < geiger.Length; i++)
             {
@@ -75,7 +76,7 @@ namespace Infinigame
 
             var player = game.Player;
             // a menu or the end of a run hushes the world, whose clock has stopped
-            bool live = !game.Paused && !game.Dead, airborne = live && player.flying && !player.ship.landed;
+            bool live = !game.Paused && !game.Dead && !game.Hermit.Talking && !game.Player.SystemView && !game.ShowControls, airborne = live && player.flying && !player.ship.landed;
             float speed = math.length(player.Velocity), cruise = math.saturate(speed / Tuning.ShipCruiseSpeed), space = math.saturate(speed / Tuning.ShipSpaceSpeed);
             float blend = 6f * Time.unscaledDeltaTime;
             // the turbine idles once the ship is off the ground and climbs in pitch and weight with speed
@@ -87,6 +88,14 @@ namespace Infinigame
             wind.pitch = 0.85f + 0.3f * cruise;
             rain.volume = Mathf.Lerp(rain.volume, live ? Mix.Rain * game.System.Rain : 0f, blend);
             beam.volume = Mathf.Lerp(beam.volume, live && game.Battle.Beaming ? Mix.Beam : 0f, 2 * blend);
+            charge.volume = live && game.Battle.Charging ? 0.22f + game.Battle.RailCharge * 0.16f : 0;
+            charge.pitch = 0.6f + game.Battle.RailCharge * 1.4f;
+            float nearestMind = 90; float3 mindAt = player.Position;
+            foreach (var foe in game.Battle.Foes)
+                if (foe.kind == FoeKind.Mind && foe.health > 0 && math.distance(foe.position, player.Position) < nearestMind)
+                { nearestMind = math.distance(foe.position, player.Position); mindAt = foe.position; }
+            mind.volume = live ? (1 - nearestMind / 90) * (game.Outpost.Visible(player.Position, mindAt) ? 0.5f : 0.2f) : 0;
+            mind.panStereo = math.dot(math.normalizesafe(mindAt - player.Position), (float3)Camera.main.transform.right) * 0.7f;
             // falling fuel means the jetpack is firing
             jetpack.volume = Mathf.Lerp(jetpack.volume, live && !player.flying && player.walker.fuel < lastFuel ? Mix.Jetpack : 0f, 3f * blend);
             lastFuel = player.walker.fuel;

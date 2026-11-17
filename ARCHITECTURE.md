@@ -16,7 +16,7 @@ The rule that keeps this useful: a question the game has to answer ("where is th
 
 ## Worlds
 
-- `SolarSystemDescriptor.Generate(seed)` makes the whole system from one seed: a star, eight planets, their moons, the asteroid belt and the raiders' station, as an array of `BodyDescriptor`. Sizes are to scale with each other, distances and periods are not. Names are the real ones.
+- `SolarSystemDescriptor.Generate(seed)` makes the whole system from one seed: a star, eight planets, their moons, the asteroid belt and the Presence citadel, as an array of `BodyDescriptor`. Sizes are to scale with each other, distances and periods are not. Names are the real ones.
 - A body's ground is a height function, `BodyDescriptor.GroundRadius(direction)`, built on `TerrainNoise`. There are no terrain colliders. Walking, flight, landing, bolts, meshes and tests all read the same function, so there is nothing to fall through or stream in. Volcanoes (`BodyDescriptor.volcanoes`) are cones the function raises. Everything that changes the ground afterwards is a `Blast` the function reads: craters from `Dig`, which char, melt or turn to lava by what the ground was made of (`Blasted`), and the level pads that `Level` leaves for a ship to land on. `Terrain.shader` colours each kind and lets molten rock cool by the clock.
 - Orbits and spin are on rails: `Orbit.Position(time)` and `BodyDescriptor.Rotation(time)` are pure functions of the system clock, in double precision.
 
@@ -62,7 +62,7 @@ The game can start each tool's own sign-in from the settings page. It never show
 
 ## Effects
 
-`Effects.cs` draws everything that burns, bursts, smokes or steams: explosions, hits on a hull, steam off water, mushroom clouds and factory lights. It is built from three kinds of thing, each drawn in one instanced call: puffs (`Resources/Puff.shader`), sparks (`Spark.shader`) and tumbling wreckage. `Battle` decides which effect a strike calls for. Raiders and drones are drawn with `Hull.shader`, which takes how battered each one is through `Instances.Add` and eats glowing holes in it to match.
+`Effects.cs` draws everything that burns, bursts, smokes or steams: explosions, hits on a hull, steam off water, mushroom clouds and factory lights. It is built from three kinds of thing, each drawn in one instanced call: puffs (`Resources/Puff.shader`), sparks (`Spark.shader`) and tumbling wreckage. `Battle` decides which effect a strike calls for. Harrowers and Skimmers are drawn with `Hull.shader`, which takes damage through `Instances.Add`. Organic wounds reveal violet tissue without the white-hot emission used for metal. `IchorPool` spreads and settles a small surface mesh against the terrain height function.
 
 `Corpses.cs` caches mesh sections and retains a bounded number of articulated remains. `Core/Ragdoll.cs` steps their joints against the same ground function as living bodies; runtime interior collision keeps them inside tunnels. Further hits separate sections, including spacecraft wreckage.
 
@@ -71,7 +71,7 @@ The game can start each tool's own sign-in from the settings page. It never show
 - `Hud.cs` builds one uGUI canvas in front of the camera, from code. It reads state and never changes it. Markers for worlds, foes and mission goals are placed each frame by `Mark`, which hides what a world is in the way of, keeps names from overlapping and holds a guide mark at the edge of the screen when its place is out of view.
 - `Core/Synth.cs` computes every sound effect as samples, and `Core/Riffs.cs` writes a song for each system. `Sounds.cs` and `Music.cs` play them. Audio files dropped into `Resources/Music` replace the synthesised song. `Playlist` schedules complete tracks with equal-power crossfades; `Music` uses two streaming decks per mood.
 - `Speech.cs` uses local Mac voices, Windows SAPI via PowerShell or iOS AVSpeechSynthesizer. `VoiceInput` handles held microphone input and partial transcripts. Tests substitute both speech and dictation.
-- `Models*.cs`, `MeshKit.cs` and `Shapes.cs` build every mesh and material: the ship and its cockpit, the robot and its factories, raiders, drones and the citadel. `Arms.cs` builds the powered gauntlets.
+- `Models*.cs`, `MeshKit.cs` and `Shapes.cs` build every mesh and material: the ship and its cockpit, the robot and its factories, Harrowers, Skimmers and the citadel. `Arms.cs` builds the powered gauntlets.
 - `DeviceControls.cs` merges touch, gamepad, keyboard and tracked controllers. Cockpit hit areas dispatch the same `Controls` intents as buttons. `ForearmConsole.cs` attaches a touchable construction and suit menu to the left tracked hand; interface contact suppresses motion punches.
 - `Cockpit.cs` drives the ship's instruments. `Models.Ship` names every part that moves or lights, `Player.Tick` fills a `Readings` struct with what the ship is doing, and `Cockpit.Show` eases each needle, lamp, switch and the stick to match. Nothing on the dash is decoration.
 

@@ -803,6 +803,20 @@ namespace Infinigame.Core
                 .Add(Tone(n, _ => 82.5f + side * 0.25f), 0.2f).Shape(Wander(n, 255, 8), 0.12f);
         });
 
+        public static float[] Charge() => Loop(side =>
+        {
+            int n = Samples(4);
+            return Fm(n, _ => 220 + side * 0.25f, 2, _ => 2.4f).Lap(x => x.Filter(BandPass(900, 0.8f)))
+                .Add(Tone(n, _ => 55 + side * 0.25f), 0.3f);
+        });
+        public static float[] Mind() => Loop(side =>
+        {
+            int n = Samples(8);
+            return Fm(n, _ => 83 + side * 0.25f, 0.5f, _ => 4).Lap(x => x.Filter(HighPass(75)).Filter(LowPass(550)))
+                .Add(Hiss(n, 719 + side, x => x.Pink().Filter(BandPass(330, 2))).Shape(Wander(n, 711, 2), 0.8f), 0.5f)
+                .Add(Tone(n, _ => 73 + side * 0.125f), 0.15f);
+        });
+
         public static float[] Engine() => Loop(side =>
         {
             int n = Samples(8f);

@@ -32,7 +32,7 @@ namespace Infinigame
         // one weapon to the next, in degrees.
         public const float Sweep = 120f, Detent = 40f;
         // The lamps of the ship's weapons, in the order of Combat.Guns.
-        public static readonly string[] Racks = { "1 CANNON", "2 MISSILE", "3 LANCE", "4 RAIL", "5 NUKE" };
+        public static readonly string[] Racks = { "1 CANNON", "2 MISSILE", "3 BEAM", "4 RAIL", "5 NUKE" };
 
         // What the instruments are lettered in, and a lamp that is not lit.
         internal static readonly Color Ink = new Color(0.55f, 0.95f, 1f), Dark = new Color(0.015f, 0.02f, 0.025f);
@@ -48,7 +48,7 @@ namespace Infinigame
         }
 
         readonly Dictionary<string, Part> parts = new Dictionary<string, Part>();
-        static readonly string[] controls = { "1 CANNON", "2 MISSILE", "3 LANCE", "4 RAIL", "5 NUKE", "ASSIST", "AUTO", "LAND", "Selector", "Stick/Trigger", "RangeScreen" };
+        static readonly string[] controls = { "1 CANNON", "2 MISSILE", "3 BEAM", "4 RAIL", "5 NUKE", "ASSIST", "AUTO", "LAND", "Selector", "Stick/Trigger", "RangeScreen" };
 
         public int ScreenControl(Vector2 point, Camera camera)
         {

@@ -23,7 +23,7 @@ The provider page shows the route in use, selected model, requests and token cou
 
 ## Voice choices
 
-Text generation and speaking are separate. **Settings > Robot voice** lists the voices installed on this device, with British English first and pages for longer lists. Choosing a voice enables speech, plays a preview and saves its identifier on this device. Reopen the page after installing more voices. Voice off preserves the selection; Robot effect is independent of the selected voice. Robot subtitles have their own toggle in Settings. A removed voice falls back to the system default without forgetting the saved choice. New Mac preferences use **Zarvox**; other platforms use their system voice with the robot effect enabled.
+Text generation and speaking are separate. **Settings > Robot voice** lists the voices installed on this device, with British English first and pages for longer lists. Choosing a voice enables speech, plays a preview and saves its identifier on this device. Reopen the page after installing more voices. Voice off preserves the selection; Robot effect is independent of the selected voice. Effect strength cycles from 0% to 100% in 25% steps, previews the result and is saved per device. On Mac and Windows it controls amplitude modulation; on iPhone/iPad it controls the native pitch reduction, so these effects do not sound identical. Robot subtitles have their own toggle in Settings. A removed voice falls back to the system default without forgetting the saved choice. New Mac preferences use **Zarvox**; other platforms use their system voice with the robot effect enabled.
 
 | Platform | Implemented now | Other local options |
 |---|---|---|
@@ -45,6 +45,15 @@ These are research candidates, not dependencies. None supplies Apple's exact Zar
 | [eSpeak NG](https://github.com/espeak-ng/espeak-ng) | Compact formant speech with adjustable voices and many accents, including British English. Supports desktop platforms and has an [iOS project](https://github.com/espeak-ng/espeak-ng-ios-app). GPLv3-or-later licensing needs resolution before embedding it in the Unity player. |
 
 For one voice across Mac, iPhone, iPad, Windows, Steam Deck and SteamVR, a bundled engine would need native builds for each operating system and architecture. Deck's current Proton build would use the Windows library; SteamVR uses its host PC's library. Audition SoLoud and Flite before choosing: clarity during combat matters more than an exact resemblance to Zarvox.
+
+### Listen before choosing
+
+- [Zarvox recording](https://freesound.org/people/newagesoup/sounds/349317/): an example of Apple's mechanical voice, available to preview in the browser.
+- [Flite AWB sample](https://synesthesiam.github.io/opentts/samples/flite/en/cmu_us_awb/sample_1.wav): Scottish English. [Flite RMS sample](https://synesthesiam.github.io/opentts/samples/flite/en/cmu_us_rms/sample_1.wav): a US male voice. The [OpenTTS sample gallery](https://synesthesiam.github.io/opentts/#flite_en) has further Flite voices recorded by that project's author. These are unprocessed engine samples, not our robot effect.
+- [eSpeak sample](https://espeak.sourceforge.net/samples/raven.ogg): the classic engine's official recording. It illustrates the formant-synthesis sound, not every eSpeak NG voice or configuration.
+- SoLoud's [download](https://solhsa.com/soloud/downloads.html) includes its `megademo`; choose `speechfilter` to audition its formant speech and filters. A working hosted speech demo was not verified.
+
+For Daniel, Eddy and other installed Apple or Windows voices, the game's voice picker is the most accurate audition of what this device will actually use. No portable voice library has been added.
 
 ## Voice input and bounded state
 

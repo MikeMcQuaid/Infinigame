@@ -37,3 +37,7 @@ Desktop close-view triangle counts from the checked render:
 | Presence vessel | 382,752 |
 
 These are the complete model counts, not triangles on screen every frame. Instancing shares each enemy mesh across its caste. The Mobile tier reduces the curved anatomy while preserving the caste silhouette.
+
+Recent sound additions include a rising rail-charge loop and a low, modulated mind presence that is muffled by tunnel walls and stops on death. Organic damage no longer uses white-hot metal emission. Minds collapse into separated violet sections; their blood spreads along the sampled terrain, follows slopes and settles with fading ripples. This is bounded surface flow, not a general fluid simulation.
+
+The next useful sound improvements are separate music, speech and effects volume controls; automatic music ducking during instructions; different near/far weapon layers; wet tissue impacts distinct from alloy impacts; and recognisable calls for each hostile caste. Add a quiet repair hum to the blue beam and brief robodog acknowledgements for deployment, target acquisition and victory. A headphone/night-time dynamic-range setting would help quiet listening without losing mission speech. These are proposals, not implemented settings.

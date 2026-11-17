@@ -134,7 +134,7 @@ namespace Infinigame.Tests
             ["chime"] = Chime, ["warp"] = Warp, ["alarm"] = Alarm, ["engage"] = Engage, ["thud"] = () => Thud(), ["hurt"] = Hurt,
             ["boom"] = () => Boom(false), ["big boom"] = () => Boom(true), ["nuke"] = Nuke,
             ["reload"] = Reload, ["dry fire"] = DryFire, ["dig"] = () => Dig(),
-            ["engine"] = Engine, ["beam"] = Beam, ["whine"] = Whine, ["wind"] = Wind, ["rain"] = Rain, ["jetpack"] = Jetpack, ["bike"] = Bike,
+            ["charge"] = Charge, ["mind"] = Mind, ["engine"] = Engine, ["beam"] = Beam, ["whine"] = Whine, ["wind"] = Wind, ["rain"] = Rain, ["jetpack"] = Jetpack, ["bike"] = Bike,
             ["geiger 0"] = () => Geiger(0), ["geiger 1"] = () => Geiger(1), ["geiger 2"] = () => Geiger(2),
             ["calm music"] = () => Riffs.Render(Song, false), ["heavy music"] = () => Riffs.Render(Song, true),
             ["another heavy song"] = () => Riffs.Render(Riffs.Compose(2), true),
@@ -165,7 +165,7 @@ namespace Infinigame.Tests
             }
         }
 
-        public static readonly string[] Loops = { "engine", "beam", "whine", "wind", "rain", "jetpack", "bike", "geiger 0", "geiger 1", "geiger 2", "calm music", "heavy music", "another heavy song" };
+        public static readonly string[] Loops = { "charge", "mind", "engine", "beam", "whine", "wind", "rain", "jetpack", "bike", "geiger 0", "geiger 1", "geiger 2", "calm music", "heavy music", "another heavy song" };
         // Sounds that are mostly the silence between their clicks.
         public static readonly string[] Clicks = { "reload", "dry fire", "geiger 0", "geiger 1", "geiger 2" };
         public static readonly int[] Firearms = { 3, 9 };

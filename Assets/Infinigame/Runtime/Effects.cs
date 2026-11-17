@@ -110,7 +110,7 @@ namespace Infinigame
         readonly int[] order = new int[Most];
         int puffCount, sparkCount, chunkCount, kindled;
         Mesh card, shard;
-        Material smoke, glare, iron, flesh;
+        Material smoke, glare, iron, flesh, ichor;
         MaterialPropertyBlock puffLooks, sparkLooks;
         Random rnd = new Random(7);
         float3 sunward = new float3(0, 1, 0);
@@ -125,6 +125,8 @@ namespace Infinigame
             glare = new Material(Resources.Load<Shader>("Spark")) { enableInstancing = true };
             iron = Shapes.Hull(new Color(0.3f, 0.26f, 0.24f), 0.7f);
             flesh = Shapes.Solid(Surface.Chitin, new Color(0.38f, 0.035f, 0.6f), true);
+            ichor = Shapes.Material("Props", new Color(0.32f, 0.015f, 0.48f));
+            ichor.SetFloat("_Smoothness", 0.7f);
             puffLooks = new MaterialPropertyBlock();
             sparkLooks = new MaterialPropertyBlock();
             for (int i = 0; i < glints.Length; i++)
@@ -184,12 +186,14 @@ namespace Infinigame
         public void Bleed(float3 position, float size)
         {
             var body = game.System.ReferenceBody;
-            if (body.kind != BodyKind.Rock) return;
-            float3 up = math.normalizesafe(position);
-            var pool = Shapes.Part(game.System.Bodies[game.System.Reference].transform, "Violet ichor pool", Shapes.Rock(3), flesh,
-                up * (body.GroundRadius(up) + 0.035f), new Vector3(size, 0.035f, size * 0.7f), false).transform;
+            if (body.kind != BodyKind.Rock && body.kind != BodyKind.Station) return;
+            float3 up = body.kind == BodyKind.Station ? new float3(0, 1, 0) : math.normalizesafe(position);
+            float3 floor = body.kind == BodyKind.Station ? new float3(position.x, -28.95f, position.z) : up * (body.GroundRadius(up) + 0.045f);
+            var pool = Shapes.Part(game.System.Bodies[game.System.Reference].transform, "Violet ichor pool", null,
+                ichor, floor, Vector3.one, false).transform;
             pool.localRotation = Quaternion.FromToRotation(Vector3.up, up);
-            pool.gameObject.AddComponent<IchorPool>(); stains.Add(pool);
+            var liquid = pool.gameObject.AddComponent<IchorPool>(); liquid.body = body; liquid.radius = size;
+            stains.Add(pool);
             while (stains.Count > 48) { if (stains[0] != null) Destroy(stains[0].gameObject); stains.RemoveAt(0); }
         }
         public void Flesh(float3 position, float3 normal, float size, float3 velocity)

@@ -54,7 +54,9 @@ namespace Infinigame
         public const float BootDuration = 12;
         public const string Settings = "Settings", Cheats = "Cheats", ColonyPage = "Factory uplink";
         // The rows of the settings page before those of the oracle's voices.
-        const int Dials = 6;
+        const int Dials = 7;
+        public bool MapSummary { get; private set; }
+        public float MapZoom { get; private set; } = 1;
         public static readonly string[] Menu = { "Resume", "Controls", Settings, Cheats, "Recentre VR", "New game", "Quit to title", "Quit to desktop" };
         public static readonly string[] Confirm = { "Keep playing", "Quit" }, Over = { "Try again" };
 
@@ -89,7 +91,7 @@ namespace Infinigame
         public bool Buried => save.stage == Campaign.Buried;
         public int Dug { get; private set; }
         // What the player is about, for the HUD.
-        public string Objective => save.stage >= Campaign.Won ? Fall.destroyed ? "SINGULARITY CASCADE  ·  HOLD ON" : Fall.active ? "MOON ENGINES BURNING" : "BUILD MOON ENGINES AT A FACTORY"
+        public string Objective => save.stage >= Campaign.Won ? Fall.destroyed ? "SINGULARITY CASCADE  ·  HOLD ON" : Fall.active ? Frontier.Ending : "BUILD MOON ENGINES AT A FACTORY"
             : $"{Mission.name.ToUpperInvariant()}  ·  {(Outpost.Fallen ? Outpost.Errand : Mission.task)}";
         public float Boot => Buried && !Title ? Mathf.Clamp(Time.unscaledTime - Began, 0, BootDuration) : BootDuration;
         // Where the mission in hand leads on the world the player is at, relative to its centre:
@@ -109,6 +111,7 @@ namespace Infinigame
         string pending, cheatCode = "";
         int pendingSlot;
         public bool CheatsUnlocked { get; private set; }
+        public bool GodMode { get; private set; }
         public bool Subtitles { get; private set; } = true;
         bool mapOpen, mapPressed;
         Vector2 lastPointer;
@@ -118,7 +121,7 @@ namespace Infinigame
         // there, the name of one of the oracle's voices.
         public string Page { get; private set; }
         public int Selected { get; private set; }
-        const int VoicesPerPage = 6;
+        const int VoicesPerPage = 5;
         Speech.Voice[] speechVoices = { new Speech.Voice { id = "", name = "System voice", language = "" } };
         int speechPage, speechRequest;
         bool findingVoices;
@@ -132,9 +135,9 @@ namespace Infinigame
         public string Tally { get; private set; }
         // The menu on screen, if any.
         public string[] Items => Dead ? Over : Confirming ? new[] { "Cancel", "Confirm" }
-            : Page == Cheats ? new[] { "Choose mission", "Moon engines ready", "Take every weapon and all gear", "Mend suit and hull", "Next system", "Back" }
+            : Page == Cheats ? new[] { "Choose mission", "Moon engines ready", "Take every weapon and all gear", "Mend suit and hull", "Next system", $"INVULNERABLE   ·   {(GodMode ? "ON" : "OFF")}", "Back" }
             : Page == "Missions" ? Campaign.Missions.Select((mission, i) => $"{i + 1}. {mission.name}").Append("Back").ToArray()
-            : Page == ColonyPage ? new[] { "Seed robodog factory", "Upgrade to shipyard", "Build moon engines", "Back" }
+            : Page == ColonyPage ? new[] { Frontier.Local.factory ? "Robodog factory built" : "Build robodog factory", Frontier.Local.shipyard ? "Shipyard built" : "Upgrade to shipyard", "Build moon engines", "Back" }
             : Voice >= 0 ? new[]
             {
                 $"Have {Page} write", $"MODEL   ·   {Oracle.Model(Voice).name.ToUpperInvariant()}", $"THINKING   ·   {Oracle.Effort(Voice).ToUpperInvariant()}",
@@ -144,11 +147,11 @@ namespace Infinigame
                     .Select(voice => voice.name + (string.IsNullOrEmpty(voice.language) ? "" : $"   ·   {voice.language}") + (voice.id == Speech.Choice ? "   ·   SELECTED" : ""))
                     .Concat(speechPage > 0 ? new[] { "Previous voices" } : Array.Empty<string>())
                     .Concat((speechPage + 1) * VoicesPerPage < speechVoices.Length ? new[] { "Next voices" } : Array.Empty<string>())
-                    .Concat(new[] { $"ROBOT EFFECT   ·   {(Speech.Robot ? "ON" : "OFF")}", Speech.Muted ? "Voice on" : "Voice off", "Back" }).ToArray()
+                    .Concat(new[] { $"ROBOT EFFECT   ·   {(Speech.Robot ? "ON" : "OFF")}",  $"EFFECT STRENGTH   ·   {Speech.RobotStrength * 100:0}%", Speech.Muted ? "Voice on" : "Voice off", "Back" }).ToArray()
             : Page == Settings ? new[]
             {
                 $"DETAIL   ·   {QualitySettings.names[QualitySettings.GetQualityLevel()].ToUpperInvariant()}", $"MUSIC   ·   {(Music.Muted ? "OFF" : "ON")}",
-                $"LOOK SPEED   ·   {DesktopControls.Sensitivity:0.00}", $"FULL SCREEN   ·   {(Screen.fullScreen ? "ON" : "OFF")}", $"ROBOT VOICE   ·   {(Speech.Muted ? "OFF" : "ON")}", $"ROBOT SUBTITLES   ·   {(Subtitles ? "ON" : "OFF")}",
+                $"LOOK SPEED   ·   {DesktopControls.Sensitivity:0.00}", $"FULL SCREEN   ·   {(Screen.fullScreen ? "ON" : "OFF")}", $"ROBOT VOICE   ·   {(Speech.Muted ? "OFF" : "ON")}", $"ROBOT SUBTITLES   ·   {(Subtitles ? "ON" : "OFF")}", $"AUTOMATIC QUALITY   ·   {(FrameLog.Automatic ? "ON" : "OFF")}",
             }
             // who can write for the scanner and the hermit: how the player stands with each, and the model it would use
             .Concat(Oracle.Voices.Select((voice, i) => $"{voice.ToUpperInvariant()}   ·   {signedIn[i]}   ·   {Oracle.Model(i).name.ToUpperInvariant()}{(i == Oracle.Voice ? "   ·   IN USE" : "")}"))
@@ -173,6 +176,7 @@ namespace Infinigame
                 3 => "OPTION-RETURN DOES THE SAME WHILE PLAYING",
                 4 => "CHOOSE A FREE LOCAL VOICE OR TURN SPEECH OFF",
                 5 => "SHOW ROBOT SUBTITLES · ESSENTIAL SUIT INSTRUCTIONS REMAIN VISIBLE",
+                6 => "ADJUST DETAIL AND RESOLUTION FROM MEASURED PERFORMANCE · TARGET 60 FPS",
                 _ when Selected < Dials + Oracle.Voices.Length => "SIGN IN, GIVE IT A KEY, PICK ITS MODEL AND HOW HARD IT THINKS   ·   THE ONE IN USE WRITES THE SCANNER'S JOURNAL AND THE HERMIT'S TALK",
                 _ => "",
             }
@@ -257,10 +261,7 @@ namespace Infinigame
             yield return null; yield return null;
             Narrative.Load(Resources.Load<TextAsset>("STORY").text, Resources.Load<TextAsset>("MISSIONS").text,
                 Resources.Load<TextAsset>("FACTIONS").text, Resources.Load<TextAsset>("COLONIES").text);
-            // in step with the screen, at 60 frames a second: every other refresh of a fast display
-            QualitySettings.vSyncCount = Screen.currentResolution.refreshRateRatio.value > 90 ? 2 : 1;
-            Application.targetFrameRate = DeviceControls.VR ? -1 : 60;
-            if (DeviceControls.VR) QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = 60;
             Cursor.lockState = CursorLockMode.Locked;
             // the slot played last is the one written last
             for (int slot = 1; slot < Slots; slot++)
@@ -270,6 +271,9 @@ namespace Infinigame
             DesktopControls.Sensitivity = save.look;
             Oracle.Load();
             QualitySettings.SetQualityLevel(PlayerPrefs.GetInt($"{Prefs}.detail", QualitySettings.GetQualityLevel()));
+            QualitySettings.vSyncCount = 0;
+            FrameLog.Automatic = PlayerPrefs.GetInt($"{Prefs}.automaticQuality", 1) == 1;
+            Speech.RobotStrength = Mathf.Clamp01(PlayerPrefs.GetFloat($"{Prefs}.robotStrength", 1));
             Music.Muted = PlayerPrefs.GetInt($"{Prefs}.muted") == 1;
             Speech.Choice = PlayerPrefs.GetString($"{Prefs}.voice", "Zarvox");
             bool mac = Application.platform == RuntimePlatform.OSXPlayer || Application.platform == RuntimePlatform.OSXEditor;
@@ -393,7 +397,7 @@ namespace Infinigame
             }
             if (Buried && DeviceControls.VR && !c.interfaceActive) c.fire = GetComponent<Arms>().MotionPunch;
             GetComponent<VoiceInput>().Hold(c.voice);
-            if (c.systemView && !mapPressed && !Paused && !Dead && !Hermit.Talking) { mapOpen = !mapOpen; ShowControls = false; }
+            if (c.systemView && !mapPressed && !Paused && !Dead && !Hermit.Talking) { mapOpen = !mapOpen; ShowControls = false; if (mapOpen) MapSelection = System.Reference; }
             mapPressed = c.systemView;
             if (c.menu && mapOpen) { mapOpen = false; c.menu = false; }
             bool map = mapOpen && !Paused && !Dead && !Hermit.Talking;
@@ -401,6 +405,13 @@ namespace Infinigame
             Time.timeScale = Paused || Dead || Hermit.Talking || ShowControls || map ? 0 : 1;
             if (map)
             {
+                int action = c.click ? hud.MapControlAt(c.pointer) : -1;
+                if (action == 0 || action == 1) MapSummary = action == 1;
+                if (c.toggleView) MapSummary = !MapSummary;
+                if (action == 2 || action == 3 || c.cycle != 0) MapZoom = Mathf.Clamp(MapZoom * (action == 2 || c.cycle < 0 ? 1.35f : 1 / 1.35f), 0.02f, 4);
+                if (action == 4) c.travel = true;
+                if (action == 5) { mapOpen = map = c.systemView = false; }
+                c.toggleView = false; c.cycle = 0;
                 if (c.up || c.down || !System.Charted(MapSelection))
                     for (int tries = 0; tries < System.Bodies.Length; tries++)
                     {
@@ -418,6 +429,7 @@ namespace Infinigame
             }
             else if (Hermit.Talking)
             {
+                if (c.click && hud.CloseConversationAt(c.pointer)) c.menu = true;
                 Hermit.Converse(c);
                 c = default;
             }
@@ -499,8 +511,9 @@ namespace Infinigame
                 pulled = c.fire;
             }
             Time.timeScale = Paused || Dead || Hermit.Talking || ShowControls || map ? 0 : 1;
-            Cursor.lockState = Paused || Dead || map || ShowControls || DeviceControls.Pointer ? CursorLockMode.None : CursorLockMode.Locked;
+            Cursor.lockState = Paused || Dead || map || ShowControls || Hermit.Talking || DeviceControls.Pointer ? CursorLockMode.None : CursorLockMode.Locked;
 
+            if (Fall.active && !Paused) c = default;
             int bound = Player.Destination;
             string held = Player.Weapon.name;
             bool landed = Player.ship.landed, hot = Player.Heat > Player.HeatLimit * 0.9f;
@@ -537,7 +550,7 @@ namespace Infinigame
             // a fight waits for a conversation, a menu or a look at the map
             if (!Paused && !Dead && !Hermit.Talking && !Player.SystemView && !ShowControls)
             {
-                if (!Frontier.Collapsing) { Outpost.Tick(); Battle.Tick(c); }
+                if (!Fall.active) { Outpost.Tick(); Battle.Tick(c); }
                 Frontier.Tick();
                 save.clock = System.Clock;
             }
@@ -676,6 +689,8 @@ namespace Infinigame
         void Detail(int tier)
         {
             QualitySettings.SetQualityLevel(tier);
+            QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = 60;
             PlayerPrefs.SetInt($"{Prefs}.detail", tier);
         }
 
@@ -745,11 +760,13 @@ namespace Infinigame
                 else if (Items[Selected] == "Previous voices") { speechPage--; Selected = 0; return; }
                 else if (Items[Selected] == "Next voices") { speechPage++; Selected = 0; return; }
                 else if (Items[Selected].StartsWith("ROBOT EFFECT")) Speech.Robot = !Speech.Robot;
+                else if (Items[Selected].StartsWith("EFFECT STRENGTH")) Speech.RobotStrength = Speech.RobotStrength >= 1 ? 0 : Speech.RobotStrength + 0.25f;
                 else Speech.Muted = !Speech.Muted;
                 Speech.Silence();
                 PlayerPrefs.SetString($"{Prefs}.voice", Speech.Choice);
                 PlayerPrefs.SetInt($"{Prefs}.silent", Speech.Muted ? 1 : 0);
                 PlayerPrefs.SetInt($"{Prefs}.robot", Speech.Robot ? 1 : 0);
+                PlayerPrefs.SetFloat($"{Prefs}.robotStrength", Speech.RobotStrength);
                 Speech.Say("I am here. We will build a way through this together.");
                 return;
             }
@@ -785,6 +802,7 @@ namespace Infinigame
                 pendingSlot = int.Parse(Items[Selected].Substring(12)) - 1;
                 pending = "delete"; Confirmation = $"Delete slot {pendingSlot + 1}? This cannot be undone."; Confirming = true; Selected = 0; return;
             }
+            if (Page == Cheats && Selected == 5) { GodMode = !GodMode; return; }
             if (Page == Cheats && Selected < 5)
             {
                 if (Selected == 0) { Page = "Missions"; Selected = math.min(Stage, Campaign.Citadel); return; }
@@ -822,7 +840,8 @@ namespace Infinigame
                 else if (Selected == 2) Look(DesktopControls.Sensitivity > 0.7f ? 0.08f : DesktopControls.Sensitivity * 1.25f);
                 else if (Selected == 3) Screen.fullScreen = !Screen.fullScreen;
                 else if (Selected == 4) ShowVoices();
-                else { Subtitles = !Subtitles; PlayerPrefs.SetInt($"{Prefs}.subtitles", Subtitles ? 1 : 0); }
+                else if (Selected == 5) { Subtitles = !Subtitles; PlayerPrefs.SetInt($"{Prefs}.subtitles", Subtitles ? 1 : 0); }
+                else { FrameLog.Automatic = !FrameLog.Automatic; PlayerPrefs.SetInt($"{Prefs}.automaticQuality", FrameLog.Automatic ? 1 : 0); }
                 return;
             }
             if (Page == Settings && Selected < Dials + Oracle.Voices.Length)

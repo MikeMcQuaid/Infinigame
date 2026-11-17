@@ -12,14 +12,15 @@ namespace Infinigame
         float elapsed, looked;
         float3 start;
         public string Hint => game.Buried ? game.Boot < Game.BootDuration ? "SUIT RECOVERY · MOTOR LOCK" : $"{DeviceControls.Fire} · PUNCH THROUGH THE RUBBLE  {game.Dug}/{Game.Digs}"
-            : game.Outpost.Demolition > 0 ? "DEMOLITION ARMED · LEAVE THE BURROW · GET 65 m FROM THE MIND"
+            : game.Outpost.Demolition > 0 ? "DEMOLITION ARMED · LEAVE THE BURROW · GET 35 m FROM THE MIND"
             : game.Stage == 2 ? game.Outpost.Fallen ? $"{DeviceControls.Use} · TAKE THE SHIELDED BATTERY" : !game.Outpost.Rooms.walls.Last().broken ? $"{DeviceControls.Fire} · PUNCH THE MARKED ENTRANCE" : $"{DeviceControls.Fire} · PUNCH THE MIND AND ITS GUARDS"
-            : game.Stage == 3 ? $"{DeviceControls.Key("B", "LT + DOWN", "BUILD", "WRIST BUILD")} · SEED A FACTORY · YOUR ROBOTS WILL FINISH THE WAR"
+            : game.Stage == 3 ? $"{DeviceControls.Key("B", "LT + DOWN", "BUILD", "WRIST BUILD")} · BUILD A FACTORY · YOUR ROBOTS WILL FINISH THE WAR"
             : game.Stage == 4 ? $"{DeviceControls.Key("SPACE", "RB", "LIFT", "LEFT A")} · CLIMB TO THE SHIP · {DeviceControls.Key("T", "D-PAD RIGHT", "RECALL", "RIGHT STICK")} · CALL IT TO YOU"
-            : game.Stage > 4 ? game.Outpost.OuterLeft > 0 ? $"DESTROY THE OUTER DEFENCES · {game.Outpost.OuterLeft} TURRETS / AIRCRAFT LEFT" : ""
+            : game.Stage > 4 ? game.Outpost.OuterLeft > 0 ? $"DESTROY THE DEFENCES · {game.Outpost.OuterLeft} TURRETS / AIRCRAFT LEFT" : ""
             : phase < 2 ? "COMPANION LINK · LISTEN · OPTICS AND LEGS REPAIRING"
             : phase == 2 ? $"{DeviceControls.Look} · LOOK AROUND · LEGS STILL REPAIRING"
             : phase == 3 ? $"{DeviceControls.Move} · WALK A FEW STEPS" : $"{DeviceControls.Fire} · PUNCH THE GROUND FIGHTER";
+        public bool Repairing => game.Stage == Campaign.Stranger && phase > 0 && phase < 3;
         public bool Locked => game.Stage == Campaign.Stranger && phase < 4;
         public void Reset() { phase = 0; elapsed = looked = 0; }
         public void Filter(ref Controls c)

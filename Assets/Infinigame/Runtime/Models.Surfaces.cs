@@ -6,9 +6,9 @@ namespace Infinigame
     {
         public static Transform RoomPanel(Vector3 half, bool door)
         {
-            var root = new GameObject(door ? "Door" : "Room").transform;
+            var root = new GameObject(door ? "Membrane" : "Living chamber").transform;
             var shell = new MeshKit();
-            shell.Box(Vector3.zero, half * 2, Mathf.Min(0.2f, Mathf.Min(half.x, Mathf.Min(half.y, half.z)) * 0.3f));
+            shell.Box(Vector3.zero, half * 2, Mathf.Min(1f, Mathf.Min(half.x, Mathf.Min(half.y, half.z)) * 0.3f));
             var ribs = new MeshKit();
             var panels = new MeshKit();
             bool along = half.x < half.z;
@@ -28,12 +28,12 @@ namespace Infinigame
                             Vector3 atVent = Flip(Point(-half.y * 0.55f + vent * 0.09f, 0.11f));
                             ribs.Box(atVent, along ? new Vector3(0.05f, 0.035f, 0.85f) : new Vector3(0.85f, 0.035f, 0.05f), 0.015f);
                         }
-                        ribs.Tube(MeshKit.Path(20, Flip(Point(-half.y, 0)), Flip(Point(-half.y * 0.35f, 0.22f)), Flip(Point(half.y * 0.5f, 0.12f)), Flip(Point(half.y, 0))), 0.11f, 16, 0.045f);
+                        ribs.Tube(MeshKit.Path(20, Flip(Point(-half.y, 0)), Flip(Point(-half.y * 0.35f, 0.22f)), Flip(Point(half.y * 0.5f, 0.12f)), Flip(Point(half.y, 0))), 0.65f, 16, 0.2f);
                     }
                 }
-            Add(root, "Structural shell", shell, Paint(new Color(0.32f, 0.29f, 0.26f), 0.2f, 0.45f));
-            Add(root, "Inset service panels", panels, Paint(new Color(0.38f, 0.4f, 0.4f), 0.55f, 0.32f));
-            Add(root, "Grown ribs", ribs, Paint(new Color(0.4f, 0.24f, 0.16f), 0.05f, 0.55f));
+            Add(root, "Living membrane", shell, Shapes.Solid(Surface.Chitin, new Color(0.28f, 0.08f, 0.23f), true));
+            Add(root, "Chitin scales", panels, Shapes.Solid(Surface.Chitin, new Color(0.38f, 0.12f, 0.3f), true));
+            Add(root, "Grown ribs", ribs, Shapes.Solid(Surface.Chitin, new Color(0.45f, 0.055f, 0.28f), true));
             return root;
         }
     }

@@ -45,7 +45,7 @@ namespace Infinigame.Tests
             Game.Prefs = "infinigame-test";
             // most tests want the whole game open to them: every mission but the last done, and all that those win
             Game.Start = Campaign.Citadel;
-            foreach (string kept in new[] { "detail", "muted", "silent", "voice", "robot", "subtitles" }) PlayerPrefs.DeleteKey($"{Game.Prefs}.{kept}");
+            foreach (string kept in new[] { "detail", "muted", "silent", "voice", "robot", "subtitles", "robotStrength", "automaticQuality" }) PlayerPrefs.DeleteKey($"{Game.Prefs}.{kept}");
             foreach (string kept in new[] { "test-save.json", "test-save2.json", "test-save3.json", Oracle.Store }) File.Delete(Path.Combine(Application.persistentDataPath, kept));
             // no test may spend a real player's plan: the oracle answers from a script, and until a
             // test supplies stand-ins there are no tools for it to run
@@ -527,6 +527,10 @@ namespace Infinigame.Tests
             game.Battle.Bolts.Add(Combat.Fire(new float3(160, 0, 600), new float3(0, 0, -1), float3.zero, 1000, 800, false, 60));
             yield return Seconds(0.5f);
             Assert.AreEqual(target.health, game.Battle.Foes.Last(foe => foe.kind == FoeKind.Mind).health);
+            Assert.AreEqual(3, game.Outpost.Left);
+            game.Award(FoeKind.Mind);
+            Assert.IsFalse(game.Outpost.Fallen);
+            game.Award(FoeKind.Mind);
             game.Award(FoeKind.Mind);
             Assert.IsTrue(game.Outpost.Fallen);
             Assert.Greater(game.Outpost.Escape, 0);
@@ -1183,7 +1187,7 @@ namespace Infinigame.Tests
             // the settings page says how the player stands with each, and which model it would use
             yield return Choose(Game.Settings);
             yield return Until(() => !game.Items.Any(item => item.Contains("CHECKING")));
-            CollectionAssert.AreEqual(new[] { "CLAUDE   ·   NOT SIGNED IN   ·   HAIKU 5.5   ·   IN USE", "CHATGPT   ·   NOT SIGNED IN   ·   GPT-6 LUNA", "Back" }, game.Items.Skip(6));
+            CollectionAssert.AreEqual(new[] { "CLAUDE   ·   NOT SIGNED IN   ·   HAIKU 5.5   ·   IN USE", "CHATGPT   ·   NOT SIGNED IN   ·   GPT-6 LUNA", "Back" }, game.Items.Skip(7));
 
             // ChatGPT's page: a model and how hard it thinks, then two ways to sign in, both in the player's own browser
             for (int i = 0; i < 7; i++) yield return Press(new Controls { down = true });
@@ -1320,10 +1324,14 @@ namespace Infinigame.Tests
             Object.Destroy(picture); Object.Destroy(target);
             yield return Pick("Next voices");
             Assert.IsFalse(game.Items.Any(item => item.StartsWith("Áine")));
+            yield return Pick("Next voices");
             yield return Pick("Voice 08");
             Assert.AreEqual("Voice 08", Speech.Choice);
             yield return Pick("ROBOT EFFECT");
             Assert.AreEqual(1, PlayerPrefs.GetInt($"{Game.Prefs}.robot"));
+            yield return Pick("EFFECT STRENGTH");
+            Assert.AreEqual(0, Speech.RobotStrength);
+            Assert.AreEqual(0, PlayerPrefs.GetFloat($"{Game.Prefs}.robotStrength"));
             yield return Pick("Voice off");
             Assert.IsTrue(Speech.Muted);
             Assert.AreEqual("Voice 08", Speech.Choice, "muting preserves the selected voice");
@@ -1382,7 +1390,7 @@ namespace Infinigame.Tests
             int tiers = QualitySettings.names.Length, tier = QualitySettings.GetQualityLevel();
             float look = DesktopControls.Sensitivity;
             yield return Choose(Game.Settings);
-            Assert.AreEqual(9, game.Items.Length, "detail, music, look speed, full screen, voice, subtitles, the two who can write and the way back");
+            Assert.AreEqual(10, game.Items.Length, "graphics, audio, controls, automatic quality, model providers and back");
             Assert.AreEqual($"DETAIL   ·   {QualitySettings.names[tier].ToUpperInvariant()}", game.Items[0]);
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual((tier + 1) % tiers, QualitySettings.GetQualityLevel());

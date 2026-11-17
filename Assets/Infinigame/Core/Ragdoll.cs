@@ -25,7 +25,7 @@ namespace Infinigame.Core
         {
             for (int i = 0; i < positions.Length; i++)
             {
-                velocities[i] += body.GravityAt(positions[i]) * dt;
+                velocities[i] += (body.kind == BodyKind.Station ? new float3(0, -9, 0) : body.GravityAt(positions[i])) * dt;
                 positions[i] += velocities[i] * dt;
             }
             for (int pass = 0; pass < 4; pass++)

@@ -27,10 +27,11 @@ namespace Infinigame
         public static string Key(string keyboard, string pad, string touch, string vr) => VR ? vr : Touch ? touch : DesktopControls.UsingPad ? pad : keyboard;
         public static string Fire => Key("CLICK", "RT", "TAP FIRE", "PUNCH / TRIGGER");
         public static string Use => Key("F", "X", "USE", "RIGHT GRIP");
-        public static string Move => Key("W A S D", "LEFT STICK", "LEFT DRAG", "LEFT STICK");
-        public static string Look => Key("MOUSE", "RIGHT STICK", "RIGHT DRAG", "TURN YOUR HEAD");
-        Vector2 origin;
-        int finger = -1;
+        public static string Move => Key("W A S D", "LEFT STICK", "LEFT JOYSTICK", "LEFT STICK");
+        public static string Look => Key("MOUSE", "RIGHT STICK", "RIGHT JOYSTICK", "TURN YOUR HEAD");
+        readonly Image[] joysticks = new Image[2], thumbs = new Image[2];
+        readonly Vector2[] deflections = new Vector2[2];
+        readonly int[] fingers = { -1, -1 };
         bool trigger, grip, menu, primary, secondary, turning, navigating, leftPrimary, leftSecondary, stick;
         TouchScreenKeyboard keyboard;
         readonly List<XRInputSubsystem> inputs = new List<XRInputSubsystem>();
@@ -47,6 +48,7 @@ namespace Infinigame
         void Start()
         {
             if ((Application.isMobilePlatform || VR || Deck) && !PlayerPrefs.HasKey($"{Game.Prefs}.detail")) QualitySettings.SetQualityLevel(VR ? 1 : 0);
+            QualitySettings.vSyncCount = 0; Application.targetFrameRate = 60;
             Touch = Application.isMobilePlatform;
             if (VR)
             {
@@ -164,10 +166,10 @@ namespace Infinigame
             }
             var screen = Touchscreen.current;
             currentTouches.Clear();
-            bool moving = false;
+            deflections[0] = deflections[1] = Vector2.zero;
             if (screen != null) foreach (var touch in screen.touches)
             {
-                if (!touch.press.isPressed) { if (touch.touchId.ReadValue() == finger) finger = -1; continue; }
+                if (!touch.press.isPressed) continue;
                 Touch = true;
                 Vector2 at = touch.position.ReadValue();
                 int id = touch.touchId.ReadValue();
@@ -176,17 +178,19 @@ namespace Infinigame
                 c.click |= pressed;
                 bool button = ScreenActions(at, pressed, ref c);
                 if (button || game.Paused || game.Hermit.Talking || game.Dead || game.Player.SystemView) continue;
-                if (at.x < Screen.width * 0.4f)
+                for (int stickIndex = 0; stickIndex < 2; stickIndex++)
                 {
-                    if (finger < 0) { finger = touch.touchId.ReadValue(); origin = at; }
-                    if (touch.touchId.ReadValue() == finger) { moving = true; c.move += Vector2.ClampMagnitude((at - origin) / (Screen.height * 0.12f), 1); }
+                    if (pressed && fingers[stickIndex] < 0 && StickArea(stickIndex).Contains(at)) fingers[stickIndex] = id;
+                    if (fingers[stickIndex] != id) continue;
+                    deflections[stickIndex] = Vector2.ClampMagnitude((at - StickArea(stickIndex).center) / (60 * Unit), 1);
+                    if (stickIndex == 0) c.move += deflections[stickIndex];
+                    else c.look += new Vector2(deflections[1].x, deflections[1].y) * (110 * Time.unscaledDeltaTime);
                 }
-                else c.look += touch.delta.ReadValue() * 0.12f;
             }
             if (game.Paused || game.Dead || game.Hermit.Talking || game.ShowControls || game.Player.SystemView || c.menu || c.systemView || c.select != 0 || c.cycle != 0 || tappedWeapon != game.Player.Weapon.name) touchFireUntil = 0;
             c.fire |= Time.time < touchFireUntil;
             (touching, currentTouches) = (currentTouches, touching);
-            if (!moving) finger = -1;
+            for (int i = 0; i < 2; i++) if (!touching.Contains(fingers[i])) fingers[i] = -1;
             c.lift = c.jump ? 1 : c.lift;
             return c;
         }
@@ -194,7 +198,7 @@ namespace Infinigame
         {
             c.fire = true;
             var weapon = game.Player.Weapon; tappedWeapon = weapon.name;
-            touchFireUntil = Time.time + (weapon.rail ? 0.6f : weapon.beam ? 0.35f : 0);
+            touchFireUntil = Time.time + (weapon.rail ? weapon.charge + 0.05f : weapon.beam ? 0.35f : 0);
         }
         bool ScreenActions(Vector2 at, bool pressed, ref Controls c)
         {
@@ -231,6 +235,12 @@ namespace Infinigame
             return false;
         }
         float Unit => Mathf.Clamp(Screen.safeArea.height / 720f, 0.8f, 2.5f);
+        Rect StickArea(int index)
+        {
+            float size = 140 * Unit;
+            var centre = new Vector2(index == 0 ? Screen.safeArea.xMin + 140 * Unit : Screen.safeArea.xMax - 285 * Unit, Screen.safeArea.yMin + 170 * Unit);
+            return new Rect(centre - Vector2.one * size * 0.5f, Vector2.one * size);
+        }
         Rect Area(int index)
         {
             Rect safe = Screen.safeArea;
@@ -238,7 +248,7 @@ namespace Infinigame
             Vector2 centre = index switch
             {
                 0 => new Vector2(safe.xMax - 92 * u, safe.yMin + 128 * u),
-                1 => new Vector2(safe.xMax - 205 * u, safe.yMin + 76 * u),
+                1 => new Vector2(safe.xMax - 205 * u, safe.yMin + 55 * u),
                 2 => new Vector2(safe.xMax - 90 * u, safe.yMin + 260 * u),
                 3 => new Vector2(safe.xMin + 48 * u, safe.yMin + 48 * u),
                 4 => new Vector2(safe.xMax - 45 * u, safe.yMax - 42 * u),
@@ -249,11 +259,17 @@ namespace Infinigame
                 12 => new Vector2(safe.xMin + 384 * u, safe.yMin + 48 * u),
                 _ => new Vector2(safe.xMin + (48 + (index - 6) % 3 * 90) * u, safe.yMin + (132 + (index - 6) / 3 * 84) * u),
             };
+            if (index >= 6 && expanded) centre = new Vector2(safe.center.x + ((index - 6) % 4 - 1.5f) * 90 * u, safe.center.y + (1 - (index - 6) / 4) * 90 * u);
             float size = (index == 0 ? 104 : 72) * u;
             return new Rect(centre - Vector2.one * size * 0.5f, Vector2.one * size);
         }
-        bool Visible(int i) => !game.Paused && !game.Dead && !game.Hermit.Talking && (!game.ShowControls || i == 4) && (!game.Player.SystemView || i == 5 || i == 4 || i == 8)
-            && (i < 6 || i == 6 || i == 8 || i == 10 || i == 12 || expanded) && (i != 15 || game.Player.Seated) && (i != 10 || !game.Player.flying && game.Player.Powered) && (i != 1 || !game.Buried) && (i != 2 || game.Player.Prompt != null || game.Outpost.Near || game.Hermit.Near);
+        bool Visible(int i) => (!game.Fall.active && !game.Tutorial.Locked || i == 4) && !game.Paused && !game.Dead && !game.Hermit.Talking && (!game.ShowControls || i == 4)
+            && (!game.Player.SystemView || i == 5 || i == 4) && (i < 6 || i == 6 || expanded)
+            && (i != 8 || game.Player.Has(Gear.Ship) || game.Stage == 4)
+            && (i != 13 || !game.Player.flying && game.Player.Has(Gear.Stealth))
+            && (i != 15 || game.Player.Seated) && (i != 10 || !game.Player.flying && game.Player.Powered)
+            && (i != 6 || game.Player.Powered) && (i != 14 || game.Player.Has(Gear.Thrusters) || game.Player.flying)
+            && (i != 1 || !game.Buried) && (i != 2 || game.Player.Prompt != null || game.Outpost.Near || game.Hermit.Near);
         void LateUpdate()
         {
             if (touchCanvas == null)
@@ -267,6 +283,19 @@ namespace Infinigame
                 for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++) texture.SetPixel(x, y, new Color(1, 1, 1, Mathf.Clamp01(31.5f - Vector2.Distance(new Vector2(x, y), new Vector2(31.5f, 31.5f)))));
                 texture.Apply();
                 var circle = Sprite.Create(texture, new Rect(0, 0, 64, 64), Vector2.one * 0.5f);
+                for (int i = 0; i < 2; i++)
+                {
+                    joysticks[i] = new GameObject(i == 0 ? "Move joystick" : "Look joystick", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
+                    joysticks[i].transform.SetParent(host.transform, false); joysticks[i].sprite = circle;
+                    joysticks[i].color = new Color(0.03f, 0.12f, 0.17f, 0.65f);
+                    thumbs[i] = new GameObject("Thumb", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
+                    thumbs[i].transform.SetParent(joysticks[i].transform, false); thumbs[i].sprite = circle;
+                    thumbs[i].color = new Color(0.35f, 0.85f, 1, 0.6f);
+                    var name = new GameObject("Stick label", typeof(RectTransform), typeof(Text)).GetComponent<Text>();
+                    name.transform.SetParent(thumbs[i].transform, false); name.font = font; name.text = i == 0 ? "MOVE" : "LOOK";
+                    name.fontSize = 12; name.alignment = TextAnchor.MiddleCenter; name.color = Color.white;
+                    name.rectTransform.sizeDelta = new Vector2(54, 32);
+                }
                 for (int i = 0; i < labels.Length; i++)
                 {
                     var plate = new GameObject("Touch " + i, typeof(RectTransform), typeof(Image));
@@ -276,14 +305,24 @@ namespace Infinigame
                     var label = new GameObject("Label", typeof(RectTransform), typeof(Text));
                     label.transform.SetParent(plate.transform, false);
                     labels[i] = label.GetComponent<Text>(); labels[i].font = font;
-                    labels[i].alignment = TextAnchor.MiddleCenter; labels[i].horizontalOverflow = HorizontalWrapMode.Overflow;
+                    labels[i].alignment = TextAnchor.MiddleCenter; labels[i].horizontalOverflow = HorizontalWrapMode.Wrap;
+                    labels[i].resizeTextForBestFit = true; labels[i].resizeTextMinSize = 11;
                     labels[i].color = new Color(0.55f, 0.92f, 1);
                     labels[i].rectTransform.anchorMin = Vector2.zero; labels[i].rectTransform.anchorMax = Vector2.one;
-                    labels[i].rectTransform.offsetMin = labels[i].rectTransform.offsetMax = Vector2.zero;
-                    labels[i].text = new[] { "FIRE", "LIFT", "USE", "···", "MENU", "MAP", "WEAPON", "MIC", "RECALL", "SCAN", "BUILD", "VIEW", "ROBOT", "CLOAK", "DOWN", "ASSIST" }[i];
+                    labels[i].rectTransform.offsetMin = new Vector2(8, 8); labels[i].rectTransform.offsetMax = new Vector2(-8, -8);
+                    labels[i].text = new[] { "FIRE", "LIFT", "USE", "···", "MENU", "MAP", "ARMS", "MIC", "RECALL", "SCAN", "BUILD", "VIEW", "ROBOT", "CLOAK", "DOWN", "ASSIST" }[i];
                 }
             }
             touchCanvas.enabled = HudActions && !VR;
+            for (int i = 0; i < 2; i++)
+            {
+                bool show = !game.Paused && !game.Hermit.Talking && !game.ShowControls && !game.Player.SystemView && !game.Buried && !game.Dead && !game.Fall.active;
+                joysticks[i].enabled = show; thumbs[i].gameObject.SetActive(show);
+                var rect = joysticks[i].rectTransform; rect.anchorMin = rect.anchorMax = rect.pivot = Vector2.zero;
+                rect.anchoredPosition = StickArea(i).position; rect.sizeDelta = StickArea(i).size;
+                thumbs[i].rectTransform.sizeDelta = Vector2.one * (60 * Unit);
+                thumbs[i].rectTransform.anchoredPosition = deflections[i] * (40 * Unit);
+            }
             labels[8].text = game.Player.flying ? "AUTO" : "RECALL";
             for (int i = 0; i < labels.Length; i++)
             {
@@ -292,7 +331,7 @@ namespace Infinigame
                 var rect = plates[i].rectTransform;
                 rect.anchorMin = rect.anchorMax = Vector2.zero; rect.pivot = Vector2.zero;
                 rect.anchoredPosition = area.position; rect.sizeDelta = area.size;
-                labels[i].fontSize = Mathf.RoundToInt((i == 0 ? 22 : 17) * Unit);
+                labels[i].resizeTextMaxSize = labels[i].fontSize = Mathf.RoundToInt((i == 0 ? 22 : 17) * Unit);
             }
         }
         void OnDestroy() { if (touchCanvas != null) Destroy(touchCanvas.gameObject); }

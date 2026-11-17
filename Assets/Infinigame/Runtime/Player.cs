@@ -129,7 +129,7 @@ namespace Infinigame
         public float HeatLimit => flying ? Climate.HullLimit + (Has(Gear.Plating) ? 300f : 0f) : Has(Gear.Suit) ? Suit.HeatLimit : Climate.SuitLimit;
         public bool Dead => health <= 0f || hull <= 0f;
         // In the pilot's seat, looking out through the canopy.
-        public bool Seated => flying && !chase && !SystemView;
+        public bool Seated => flying && !chase && !SystemView && !game.Fall.active;
         public bool ThirdPerson => !flying && chase && !DeviceControls.VR;
 
         // What the interact key would do right now, for the HUD. Landing is offered once there is ground
@@ -204,7 +204,7 @@ namespace Infinigame
         // Takes this much off the hull in flight, or off the player on foot, and remembers why.
         public void Hurt(float amount, string cause)
         {
-            if (amount <= 0f || Dead) return;
+            if (game.GodMode || game.Fall.active || amount <= 0f || Dead) return;
             if (flying) hull -= amount;
             else
             {
@@ -257,16 +257,17 @@ namespace Infinigame
                 || system.Descriptor.bodies[world].kind == BodyKind.Station && game.Stage < Campaign.Citadel) return "DESTINATION NOT CHARTED";
             if (!Has(Gear.Shield) && system.Descriptor.Planet(world) != SolarSystemDescriptor.Home) return "RADIATION SHIELD REQUIRED";
             Destination = world; landing = false;
-            return $"AUTOPILOT · {system.Descriptor.bodies[world].name.ToUpperInvariant()} · RELEASE TAB TO DEPART";
+            return $"AUTOPILOT · {system.Descriptor.bodies[world].name.ToUpperInvariant()} · CLOSE MAP TO DEPART";
         }
 
         // One frame, driven by the game so that menus and conversations can hold the player still.
         public void Tick(Controls c)
         {
+            float3 shipBefore = ship.position;
             SystemView = c.systemView;
             // while looking at the whole system the player holds still
             if (SystemView || Time.timeScale == 0f) c = default;
-            system.ShowOrbits = SystemView && !PlanetView;
+            system.ShowOrbits = SystemView && !PlanetView && !game.MapSummary;
             system.Clear = PlanetView;
             // a map of the ground is no use through cloud
             if (system.Bodies[system.Reference].transform.Find("Clouds") is Transform clouds) clouds.gameObject.SetActive(!PlanetView);
@@ -343,7 +344,7 @@ namespace Infinigame
                 }
                 if (ship.landed) landing = false;
                 float crash = Combat.Crash(ship.impact);
-                Hurt(crash, Body.kind == BodyKind.Sun ? $"Flew into {Body.name}" : Body.kind == BodyKind.Station ? "Flew into the raiders' citadel" : $"Crashed on {Body.name}");
+                Hurt(crash, Body.kind == BodyKind.Sun ? $"Flew into {Body.name}" : Body.kind == BodyKind.Station ? "Flew into the Presence citadel" : $"Crashed on {Body.name}");
                 // a hard enough landing leaves its mark on the ground
                 if (crash > 0f) system.Bodies[system.Reference].Dig(ship.position, math.clamp(0.08f * ship.impact, 2f, 12f));
                 // the autopilot threads the rocks of a belt or a ring itself
@@ -418,6 +419,12 @@ namespace Infinigame
                     if (flying) { ship.position = resolved; Hurt(Combat.Graze(math.length(ship.velocity), hull), "Struck a tunnel wall"); ship.velocity *= 0.3f; }
                     else { walker.position = resolved; walker.velocity = (resolved - before) / math.max(frame, 1e-4f); walker.grounded = true; }
                 }
+            }
+            if (frame > 0 && game.Outpost.Shield.Bounce(shipBefore, ref ship.position, ref ship.velocity, Combat.ShipRadius))
+            {
+                ship.landed = landing = false; Destination = -1;
+                if (flying) Hurt(20, "Struck a shield"); else if (!game.GodMode) hull = math.max(1, hull - 20);
+                game.Outpost.Flash(); game.Notify("SHIELD CONTACT · DESTROY ITS DEFENCES");
             }
             walker.impact = ship.impact = 0f;
             // heat: a star cooks a ship that comes close, a giant one that sinks into it, and a furnace world anyone who steps outside
@@ -496,15 +503,15 @@ namespace Infinigame
                 // sight with room to spare: a few hundred metres for a walk, right back for the far side of the world
                 float3 over = math.normalize(Position), axis = math.normalizesafe(over + math.normalizesafe(beacon), over);
                 float apart = Body.radius * math.acos(math.clamp(math.dot(over, math.normalizesafe(beacon, over)), -1f, 1f));
-                view.transform.SetPositionAndRotation(system.Bodies[system.Reference].transform.position + (Vector3)(axis * (Body.radius + math.min(2.2f * apart + 260f, 4f * Body.radius))),
+                view.transform.SetPositionAndRotation(system.Bodies[system.Reference].transform.position + (Vector3)(axis * (Body.radius + math.min(2.2f * apart + 260f, 4f * Body.radius) * game.MapZoom)),
                     Quaternion.LookRotation(-axis, flying ? math.rotate(ship.rotation, new float3(0, 0, 1)) : walker.forward));
             }
             else if (SystemView)
             {
                 // high above the sun, looking down on every orbit at once, steady against the stars
-                float reach = (float)bodies.Max(body => body.orbit.parent == 0 ? body.orbit.radius : 0) * 1.9f;
+                float reach = (float)bodies.Max(body => body.orbit.parent == 0 ? body.orbit.radius : 0) * 1.9f * game.MapZoom;
                 // set to one side, so the system sits clear of the table of its worlds
-                view.transform.SetPositionAndRotation(system.Bodies[0].transform.position + system.SceneRotation * new Vector3(-reach * 0.42f, reach, -reach * 0.35f),
+                view.transform.SetPositionAndRotation((game.MapZoom < 0.6f ? system.Bodies[game.MapSelection].transform.position : system.Bodies[0].transform.position) + system.SceneRotation * new Vector3(0, reach, -reach * 0.35f),
                     system.SceneRotation * Quaternion.LookRotation(new Vector3(0f, -1f, 0.35f)));
             }
             else if (flying)

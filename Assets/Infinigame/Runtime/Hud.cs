@@ -71,7 +71,10 @@ namespace Infinigame
         Text helpHint;
         Text escapeText;
         CanvasGroup escape;
-        Text chartFoot;
+        Text chartFoot, talkClose, heldWeapon;
+        CanvasGroup mapBar, weaponCard;
+        Text[] mapButtons;
+        WeaponGlyph weaponGlyph;
         RectTransform promptCap, statusPlate, promptPlate, captionPlate, missionPlate;
         Marker[] markers;
         // where this frame's marker names have been put, and the sides of its mark a name may go to, in order of preference
@@ -149,14 +152,26 @@ namespace Infinigame
             radar = Group(root, new Vector2(1f, 0f), new Vector2(-56f, 48f), new Vector2(320f, 190f));
             new GameObject("Globe radar").AddComponent<Radar>().game = game;
 
+            weaponCard = Group(root, new Vector2(0, 0.5f), new Vector2(56, 35), new Vector2(265, 100));
+            Stretch(Fill(weaponCard.transform, centre, Vector2.zero, Vector2.zero, Plate, panel));
+            heldWeapon = Label(weaponCard.transform, topLeft, new Vector2(15, -10), new Vector2(235, 26), 16, TextAnchor.UpperLeft, Ink);
+            weaponGlyph = new GameObject("Weapon outline", typeof(RectTransform), typeof(WeaponGlyph)).GetComponent<WeaponGlyph>();
+            weaponGlyph.transform.SetParent(weaponCard.transform, false); weaponGlyph.color = Ink; weaponGlyph.material = overlay; weaponGlyph.raycastTarget = false;
+            weaponGlyph.rectTransform.anchorMin = weaponGlyph.rectTransform.anchorMax = Vector2.zero;
+            weaponGlyph.rectTransform.pivot = Vector2.zero; weaponGlyph.rectTransform.anchoredPosition = new Vector2(15, 12); weaponGlyph.rectTransform.sizeDelta = new Vector2(180, 50);
+            mapBar = Group(root, top, new Vector2(0, -70), new Vector2(1300, 66));
+            Stretch(Fill(mapBar.transform, centre, Vector2.zero, Vector2.zero, Plate, panel));
+            string[] mapActions = { "MAP", "SUMMARY", "ZOOM −", "ZOOM +", "AUTOPILOT", "CONTINUE" };
+            mapButtons = new Text[mapActions.Length];
+            for (int i = 0; i < mapActions.Length; i++) mapButtons[i] = Label(mapBar.transform, centre, new Vector2((i - 2.5f) * 210, 0), new Vector2(200, 58), 22, TextAnchor.MiddleCenter, Ink, mapActions[i]);
             // The system map's table: every world at a glance.
-            chart = Group(root, topLeft, new Vector2(56f, -150f), new Vector2(1120f, 420f));
+            chart = Group(root, topLeft, new Vector2(56f, -150f), new Vector2(1328f, 420f));
             Stretch(Fill(chart.transform, centre, Vector2.zero, Vector2.zero, new Color(0.02f, 0.035f, 0.06f, 1), panel));
-            float[] columns = { 24f, 190f, 340f, 440f, 540f, 650f, 750f, 850f, 920f, 1000f };
+            float[] columns = { 24f, 240f, 420f, 530f, 685f, 840f, 985f, 1130f, 0f, 0f };
             chartColumns = new Text[columns.Length];
             for (int i = 0; i < columns.Length; i++)
             {
-                chartColumns[i] = Label(chart.transform, topLeft, new Vector2(columns[i], -22f), new Vector2(170f, 360f), 14, TextAnchor.UpperLeft, i == 0 ? Ink : Dim);
+                chartColumns[i] = Label(chart.transform, topLeft, new Vector2(columns[i], -22f), new Vector2(i == 0 ? 210 : i == 1 ? 175 : 150, 360f), 18, TextAnchor.UpperLeft, i == 0 ? Ink : Dim);
                 chartColumns[i].lineSpacing = 1.45f;
             }
             chartFoot = Label(chart.transform, Vector2.zero, new Vector2(24f, 18f), new Vector2(1050f, 16f), 12, TextAnchor.LowerLeft, Dim);
@@ -218,6 +233,7 @@ namespace Infinigame
 
             talk = Group(root, bottom, new Vector2(0f, 64f), new Vector2(1080f, 274f));
             Stretch(Fill(talk.transform, centre, Vector2.zero, Vector2.zero, Glass, panel));
+            talkClose = Label(talk.transform, new Vector2(1, 1), new Vector2(-30, -18), new Vector2(130, 45), 20, TextAnchor.MiddleRight, Ink, "CLOSE ×");
             speaker = Label(talk.transform, topLeft, new Vector2(38f, -26f), new Vector2(1000f, 36f), 13, TextAnchor.UpperLeft, Accent);
             line = Label(talk.transform, topLeft, new Vector2(38f, -78f), new Vector2(1004f, 124f), 23, TextAnchor.UpperLeft, Ink);
             line.lineSpacing = 1.12f;
@@ -257,7 +273,7 @@ namespace Infinigame
                 menuItems[i] = Label(menu.transform, centre, new Vector2(0f, 64f - 60f * i), new Vector2(900f, 50f), 30, TextAnchor.MiddleCenter, Ink);
             menuKeys = Label(menu.transform, bottom, new Vector2(0f, 64f), new Vector2(1200f, 18f), 12, TextAnchor.LowerCenter, Dim);
 
-            foreach (var group in new[] { prompt, banner, card, talk, menu, controls, news, radar, chart, brief, asking, caption }) group.alpha = 0f;
+            foreach (var group in new[] { prompt, banner, card, talk, menu, controls, news, radar, chart, brief, asking, caption, mapBar, weaponCard }) group.alpha = 0f;
             cheatGlyph.transform.SetAsLastSibling();
         }
 
@@ -385,8 +401,14 @@ namespace Infinigame
             pointer = canvas.worldCamera.WorldToScreenPoint(end);
             return hit;
         }
+        public int MapControlAt(Vector2 pointer)
+        {
+            for (int i = 0; i < mapButtons.Length; i++) if (RectTransformUtility.RectangleContainsScreenPoint(mapButtons[i].rectTransform, pointer, canvas.worldCamera)) return i;
+            return -1;
+        }
         public int MapItemAt(Vector2 pointer)
         {
+            if (!game.MapSummary) return -1;
             var label = chartColumns[0];
             if (!RectTransformUtility.RectangleContainsScreenPoint(label.rectTransform, pointer, canvas.worldCamera)) return -1;
             RectTransformUtility.ScreenPointToLocalPointInRectangle(label.rectTransform, pointer, canvas.worldCamera, out Vector2 local);
@@ -394,6 +416,8 @@ namespace Infinigame
             int row = Mathf.FloorToInt((top - local.y) / (label.font.lineHeight * label.fontSize / label.font.fontSize * label.lineSpacing)) - 1;
             return row >= 0 && row < chartWorlds.Count ? chartWorlds[row] : -1;
         }
+        public bool CloseConversationAt(Vector2 pointer) => !RectTransformUtility.RectangleContainsScreenPoint(talk.GetComponent<RectTransform>(), pointer, canvas.worldCamera)
+            || RectTransformUtility.RectangleContainsScreenPoint(talkClose.rectTransform, pointer, canvas.worldCamera);
         public bool CheatAt(Vector2 pointer) => RectTransformUtility.RectangleContainsScreenPoint(cheatGlyph.rectTransform, pointer, canvas.worldCamera);
         public int MenuItemAt(Vector2 pointer)
         {
@@ -405,7 +429,7 @@ namespace Infinigame
 
         void LateUpdate()
         {
-            canvas.enabled = !game.Frontier.Collapsing && (!game.Buried || game.Boot >= 4);
+            canvas.enabled = !game.Buried || game.Boot >= 4;
             if (!canvas.enabled) return;
             var player = game.Player;
             var system = game.System;
@@ -413,7 +437,7 @@ namespace Infinigame
             var scanner = game.Scanner;
             var hermit = game.Hermit;
             float now = Time.unscaledTime;
-            bool playing = !game.Paused && !game.Dead && !hermit.Talking && !player.SystemView && !game.ShowControls, planetView = player.PlanetView;
+            bool playing = !game.Paused && !game.Dead && !hermit.Talking && !player.SystemView && !game.ShowControls && !game.Fall.active, planetView = player.PlanetView;
             // places are marked while playing and on the map of the world they are on
             bool charting = playing || (planetView && !game.Paused && !game.Dead);
             var worlds = system.Descriptor.bodies;
@@ -447,6 +471,12 @@ namespace Infinigame
             vital.rectTransform.sizeDelta = new Vector2(220f * math.saturate(left), 6f);
             vital.color = Color.Lerp(Harm, Ink, math.smoothstep(0.25f, 0.5f, left));
             // what is in hand, and for a firearm what is left in it
+            heldWeapon.text = player.Armed ? player.Weapon.name.ToUpperInvariant() : "UNARMED";
+            weaponGlyph.Show(player.Weapon);
+            Show(weaponCard, playing && !game.Buried && !game.GetComponent<DeviceControls>().Expanded);
+            bool touchLayout = DeviceControls.HudActions && !DeviceControls.VR;
+            weaponCard.GetComponent<RectTransform>().anchorMin = weaponCard.GetComponent<RectTransform>().anchorMax = touchLayout ? new Vector2(0, 1) : new Vector2(0, 0.5f);
+            weaponCard.GetComponent<RectTransform>().anchoredPosition = touchLayout ? new Vector2(56, -235) : new Vector2(56, 35);
             vitalName.text = $"{(player.flying ? "HULL" : "SUIT")}     " + (!player.Armed ? "UNARMED" : player.Weapon.name.ToUpperInvariant()
                 + (player.flying ? "" : $"   {player.energy:0} ENERGY"));
             vital.enabled = vitalTrack.enabled = vitalName.enabled = playing;
@@ -455,7 +485,8 @@ namespace Infinigame
             statusPlate.sizeDelta = new Vector2(Mathf.Max(place.preferredWidth, readout.enabled ? readout.preferredWidth : 0f, 290f) + 40f, readout.enabled ? 148f : playing ? 82f : 62f);
             statusPlate.anchoredPosition = new Vector2(-20f, readout.enabled ? -18f : playing ? 48f : 68f);
             // from the pilot's seat the dash says all of this itself
-            status.GetComponent<RectTransform>().anchoredPosition = new Vector2(56, DeviceControls.HudActions && !DeviceControls.VR ? 220 : 48);
+            status.GetComponent<RectTransform>().anchorMin = status.GetComponent<RectTransform>().anchorMax = touchLayout ? new Vector2(0, 1) : Vector2.zero;
+            status.GetComponent<RectTransform>().anchoredPosition = new Vector2(56, touchLayout ? -150 : 48);
             Show(status, !game.Paused && !game.Dead && !player.Seated && !game.ShowControls && !game.GetComponent<DeviceControls>().Expanded);
             reticle.enabled = playing;
             // sunk into a giant, its cloud closes over the view
@@ -473,10 +504,10 @@ namespace Infinigame
             run.GetComponent<RectTransform>().anchoredPosition = new Vector2(-56, mobile ? -190 : -48);
             runText.rectTransform.sizeDelta = new Vector2(1000, mobile ? 72 : 36);
             helpHint.text = ControlName("H") + " · CONTROLS";
-            charge.rectTransform.sizeDelta = new Vector2(game.Outpost.World < 0 ? 0f : 220f * (1f - (float)game.Outpost.Left / math.max(1, game.Mission.count)), 3f);
+            charge.rectTransform.sizeDelta = new Vector2(game.Outpost.World < 0 ? 0f : 220f * (1f - (float)game.Outpost.Left / (game.System.ReferenceBody.kind == BodyKind.Station ? 3 : 1)), 3f);
             Show(run, playing);
-            escapeText.text = game.Outpost.Demolition > 0 ? $"BURROW DEMOLITION · ESCAPE {math.ceil(game.Outpost.Demolition):0}s" : $"CORE COLLAPSE · ESCAPE {math.ceil(game.Outpost.Escape):0}s";
-            Show(escape, playing && (game.Outpost.Demolition > 0 || game.Stage == Campaign.Citadel && game.Outpost.Escape > 0));
+            escapeText.text = game.Fall.active ? game.Frontier.Ending : game.Outpost.Demolition > 0 ? $"BURROW DEMOLITION · ESCAPE {math.ceil(game.Outpost.Demolition):0}s" : $"CORE COLLAPSE · ESCAPE {math.ceil(game.Outpost.Escape):0}s";
+            Show(escape, !game.Paused && (game.Fall.active || playing && (game.Outpost.Demolition > 0 || game.Stage == Campaign.Citadel && game.Outpost.Escape > 0)));
             if (game.Stage == Campaign.Citadel && game.Outpost.Escape > 0) runText.text = $"ESCAPE · {math.ceil(game.Outpost.Escape):0} SECONDS";
 
             Show(radar, playing, 4f);
@@ -484,7 +515,7 @@ namespace Infinigame
             // the mission in hand in full
             if (briefed != game.Stage) (briefed, briefSince) = (game.Stage, now);
             bool briefing = !game.Buried && game.Stage < Campaign.Won && !game.Paused && !game.Dead && !hermit.Talking
-                && player.SystemView;
+                && player.SystemView && game.MapSummary;
             if (briefing)
             {
                 var mission = game.Mission;
@@ -531,7 +562,7 @@ namespace Infinigame
             Show(hint, now - game.Began < 14f && playing && !game.ShowControls, 1f);
 
             // what the interact key would do
-            string action = playing ? game.Prompt : null;
+            string action = playing && !game.Tutorial.Locked ? game.Prompt : null;
             if (action != null)
             {
                 promptText.text = action;
@@ -608,8 +639,8 @@ namespace Infinigame
                 draft.text = hermit.Thinking ? "" : $"<color=#6bdcfa>›</color>  {hermit.Draft}{((int)(now * 2f) % 2 == 0 ? "▏" : "")}";
                 // until something is typed, the questions that a number key asks
                 talkKeys.text = DeviceControls.VR ? "RIGHT A · FIRST QUESTION    LEFT A · SECOND    GRIP · THIRD    RIGHT B · LEAVE"
-                    : hermit.Draft.Length > 0 ? $"{DeviceControls.Key("RETURN", "A", "KEYBOARD DONE", "RIGHT A")}   SAY IT        {ControlName("Esc")}   LEAVE"
-                    : string.Join("     ", Hermit.Questions.Select((question, i) => $"{i + 1}   {question.ToUpperInvariant()}")) + $"        OR TYPE        {ControlName("Esc")}   LEAVE";
+                    : hermit.Draft.Length > 0 ? $"{DeviceControls.Key("RETURN", "A", "KEYBOARD DONE", "RIGHT A")}   SAY IT        {DeviceControls.Key("ESC", "B", "CLOSE ×", "RIGHT B")}   LEAVE"
+                    : string.Join("     ", Hermit.Questions.Select((question, i) => $"{i + 1}   {question.ToUpperInvariant()}")) + $"        OR TYPE        {DeviceControls.Key("ESC", "B", "CLOSE ×", "RIGHT B")}   LEAVE";
             }
             Show(talk, hermit.Talking && !game.Paused, 6f);
 
@@ -639,7 +670,7 @@ namespace Infinigame
                     menuItems[i].fontSize = items.Length > 11 ? 22 : 30;
                     menuItems[i].rectTransform.sizeDelta = new Vector2(1100, items.Length > 11 ? 30 : items.Length > 9 ? 40 : 50);
                     menuItems[i].text = items[i];
-                    menuItems[i].color = i == game.Selected ? Ink : Dim;
+                    menuItems[i].color = game.Page == Game.ColonyPage && i < 3 && !game.Frontier.CanBuild(i) ? new Color(0.35f, 0.4f, 0.43f) : i == game.Selected ? Ink : Dim;
                 }
                 var chosen = menuItems[game.Selected];
                 menuBar.rectTransform.anchoredPosition = chosen.rectTransform.anchoredPosition - new Vector2(chosen.preferredWidth / 2f + 22f, 0f);
@@ -652,7 +683,7 @@ namespace Infinigame
                 var rows = Enumerable.Range(1, worlds.Length - 1).Where(i => system.Charted(i)
                     && (worlds[i].kind != BodyKind.Station || game.Stage >= Campaign.Citadel)).ToList();
                 int selected = rows.IndexOf(game.MapSelection);
-                if (selected >= 12) rows = rows.Skip(selected - 11).Take(12).ToList(); else rows = rows.Take(12).ToList();
+                if (selected >= 9) rows = rows.Skip(selected - 8).Take(9).ToList(); else rows = rows.Take(9).ToList();
                 chartWorlds.Clear(); chartWorlds.AddRange(rows);
                 string Column(string head, Func<int, string> cell) => head + "\n" + string.Join("\n", rows.Select(cell));
                 chartColumns[0].text = Column("DESTINATION", row => (row == game.MapSelection ? "› " : "  ") + (worlds[row].kind == BodyKind.Station ? "CITADEL" : worlds[row].name.ToUpperInvariant()));
@@ -664,10 +695,12 @@ namespace Infinigame
                 chartColumns[6].text = Column("MIND", row => game.Frontier.State(row).mindDead ? "SILENT" : "ACTIVE");
                 chartColumns[7].text = Column("WAR", row => game.Frontier.State(row).aliens <= 0 && game.Frontier.State(row).alienShips <= 0 ? "WON" : "ACTIVE");
                 chartColumns[8].text = "";
-                chartColumns[9].text = Column("DISTANCE", row => Distance(math.max(0f, Vector3.Distance(player.Position - system.Anchor, system.Bodies[row].transform.position) - worlds[row].radius)));
+                chartColumns[9].text = "";
                 chartFoot.text = $"PAUSED · {ControlName("W A S D")} SELECT · {ControlName("T")} AUTOPILOT · {ControlName("Tab")} CONTINUE · {game.GetComponent<FrameLog>().Status}";
             }
-            Show(chart, player.SystemView && !game.Paused && !game.Dead, 6f);
+            Show(chart, player.SystemView && game.MapSummary && !game.Paused && !game.Dead, 6f);
+            Show(mapBar, player.SystemView && !game.Paused && !game.Dead, 10);
+            mapButtons[0].color = game.MapSummary ? Dim : Ink; mapButtons[1].color = game.MapSummary ? Ink : Dim;
 
             if (game.ShowControls) stats.text = $"{ControlName("Esc")} TO CLOSE · {game.GetComponent<FrameLog>().Status}";
             Show(controls, game.ShowControls && !game.Paused, 8f);
@@ -676,14 +709,14 @@ namespace Infinigame
             used = 0;
             labels.Clear();
             // over the map, names keep off the table of worlds and the mission's card as well as off each other
-            if (player.SystemView && !planetView) labels.Add(new Rect(56f, 510f, 1120f, 420f));
+            if (player.SystemView && game.MapSummary && !planetView) labels.Add(new Rect(56f, 510f, 1328f, 420f));
             if (briefing) labels.Add(new Rect(56f, 226f, 780f, 262f));
             var view = canvas.worldCamera;
             Vector3 eye = view.transform.position, ground = system.Bodies[system.Reference].transform.position, self = player.Position - system.Anchor;
             Vector2 middle = ((RectTransform)canvas.transform).rect.size / 2f;
             // how far off another world is means something only from space: from the ground they are names in the sky
             bool inSpace = player.InSpace;
-            if (!game.Paused && !game.Dead && !hermit.Talking && !game.Buried)
+            if (!game.Paused && !game.Dead && !hermit.Talking && !game.Buried && !(player.SystemView && game.MapSummary))
             {
                 // The world the mission is on stands out from the rest: or the planet it circles, from where a moon has no mark of its own.
                 var outpost = game.Outpost;
@@ -721,7 +754,7 @@ namespace Infinigame
                     if (inSpace && foe.kind != FoeKind.Raider || away > (inSpace ? 2500 : player.Powered ? 160 : 25)) continue;
                     if (!outpost.Visible((float3)eye + system.Anchor, foe.position)) continue;
                     Vector3 at = foe.position - system.Anchor, lead = at + (Vector3)((foe.velocity - player.Velocity) * (away / math.max(1, player.Weapon.speed)));
-                    if (foe.kind != FoeKind.Base) Mark(at, foe.kind == FoeKind.Raider ? "RAIDER" : foe.kind == FoeKind.Mind ? "MIND" : foe.stationary ? "TURRET" : foe.kind == FoeKind.Sentry ? foe.caste.ToString().ToUpperInvariant() : "DRONE", Distance(away), Harm, true, -1, false, math.saturate(foe.health / Combat.Health(foe.kind, game.Threat, foe.caste)));
+                    if (foe.kind != FoeKind.Base) Mark(at, Combat.Name(foe).ToUpperInvariant(), Distance(away), Harm, true, -1, false, math.saturate(foe.health / math.max(1, foe.maximumHealth)));
                     if (player.flying && foe.kind == FoeKind.Raider && away < 2500f && Vector3.Distance(view.WorldToScreenPoint(at), view.WorldToScreenPoint(lead)) > 14f)
                         Mark(lead, "", "", Accent);
                 }

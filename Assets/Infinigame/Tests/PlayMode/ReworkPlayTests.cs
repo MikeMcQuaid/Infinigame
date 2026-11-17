@@ -106,8 +106,9 @@ namespace Infinigame.Tests
             Assert.Greater(Player.energy, 90);
             yield return Press(new Controls { select = 5 });
             Assert.IsTrue(Player.Weapon.sweep);
-            input.fire = true; yield return Seconds(0.2f); input = default;
-            Assert.IsTrue(Object.FindObjectsByType<LineRenderer>().Any(line => line.name == "Hemisphere ray" && line.enabled));
+            input.fire = true;
+            yield return Until(() => Object.FindObjectsByType<LineRenderer>().Any(line => line.name == "Hemisphere ray" && line.enabled));
+            input = default;
             yield return ReworkShot("114-hemisphere-lasers");
         }
 
@@ -203,6 +204,7 @@ namespace Infinigame.Tests
             game.Fall.began = Solar.Clock - game.Fall.duration;
             yield return Seconds(1);
             Assert.IsTrue(game.Frontier.Collapsing);
+            Assert.IsTrue(GameObject.Find("HUD").GetComponent<Canvas>().enabled, "The ending keeps its phase captions visible");
             yield return Seconds(12);
             yield return ReworkShot("117-singularity");
             for (float waited = 0; game.Frontier.Whiteout <= 0 && waited < 45; waited += Time.unscaledDeltaTime) yield return null;

@@ -75,13 +75,14 @@ namespace Infinigame.Core
     [Serializable]
     public class Moonfall
     {
+        public const float Assembly = 5, Ignition = 4, Consumption = 20, Supernova = 4;
         public int moon = -1, world = -1;
         public double began, duration = 90;
         public bool active, destroyed;
         // The target keeps moving while the moon leaves its orbit; the initial position is exact.
         public double3 Position(SolarSystemDescriptor system, double time)
         {
-            double t = math.saturate((time - began) / duration);
+            double t = math.saturate((time - began - Assembly - Ignition) / math.max(1, duration - Assembly - Ignition));
             return math.lerp(system.OrbitalPosition(moon, time), system.OrbitalPosition(world, time), t * t * (3 - 2 * t));
         }
         public bool Finished(double time) => active && time >= began + duration;

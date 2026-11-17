@@ -75,6 +75,7 @@ namespace Infinigame
             if (Mouse.current != null && Cursor.lockState != CursorLockMode.Locked)
             {
                 c.pointer = Mouse.current.position.ReadValue();
+                c.cycle = (int)Mathf.Sign(Mouse.current.scroll.ReadValue().y) * (Mouse.current.scroll.ReadValue().y == 0 ? 0 : 1);
                 c.click = Mouse.current.leftButton.wasPressedThisFrame;
             }
             if (Mouse.current != null && Cursor.lockState == CursorLockMode.Locked)

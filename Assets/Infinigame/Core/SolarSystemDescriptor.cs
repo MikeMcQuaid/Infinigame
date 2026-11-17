@@ -62,6 +62,7 @@ namespace Infinigame.Core
         public string name, summary;
         public bool destroyed;
         public float blight;
+        public readonly List<float4> foundations = new List<float4>();
         public readonly List<Burrow> burrows = new List<Burrow>();
         public bool Dry(float3 point)
         {
@@ -153,6 +154,8 @@ namespace Infinigame.Core
         {
             if (kind != BodyKind.Rock) return;
             direction = math.normalize(direction);
+            foreach (var foundation in foundations)
+                if (math.distance(direction, math.normalizesafe(foundation.xyz)) * radius < size + foundation.w) return;
             var blast = new Blast { crater = new float4(direction, size), scar = Blasted(direction), born = now, level = float.MinValue };
             float3 east = math.normalize(math.cross(direction, math.abs(direction.y) < 0.9f ? new float3(0, 1, 0) : new float3(1, 0, 0))), north = math.cross(direction, east);
             float centre = GroundRadius(direction) - radius;
@@ -562,7 +565,7 @@ namespace Infinigame.Core
             bodies[0].ringPeriod = beltYear;
             Add(new BodyDescriptor
             {
-                summary = "the raiders' base: a spiked iron citadel hanging in the asteroid belt", kind = BodyKind.Station, radius = 260f, soiRadius = 2600f,
+                summary = "the presence's citadel: a vast living labyrinth in the asteroid belt", kind = BodyKind.Station, radius = 900f, soiRadius = 3600f,
                 ground = new float3(0.08f, 0.07f, 0.08f), au = 2.8f,
                 orbit = new Orbit { parent = 0, radius = (beltInner + beltOuter) / 2, period = beltYear, phase = rnd.NextDouble(0, 2 * math.PI_DBL) },
             });

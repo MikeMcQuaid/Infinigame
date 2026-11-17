@@ -2,7 +2,20 @@
 
 Run `script/play`, spend several minutes walking, fighting, expanding a factory and flying between worlds, then quit. Run `script/performance`. The script reads the latest real player session from `Logs/frames.log`, excluding title, pause and map samples. Logs remain local and ignored by Git.
 
-## Latest Mac session, 16 November 2026 at 20:03:23
+## Latest Mac session, 17 November 2026 at 11:14:08
+
+Apple M5 Max, 5120 × 2880 at 60 Hz, PC detail and **Burst active**. The log records `vsync every 2`, despite the 60 FPS application target. The quality preset was applied after the frame limiter and restored half-refresh VSync.
+
+| Activity | Windows | FPS | Window p95, ms | CPU work, ms | GPU, ms |
+|---|---:|---:|---:|---:|---:|
+| On foot | 32 | 28.5 | 49.5 | 34.0 | 10.9 |
+| Flying | 61 | 29.0 | 34.3 | 33.9 | 8.1 |
+
+The largest Earth flight stall was 9.566 seconds; a generated-world stall was 3.466 seconds and an Earth walking stall was 1.933 seconds. These still need profiling if they recur. The roughly 29 FPS result is consistent with the unintended 30 Hz cap. CPU frame timing can include pacing waits, so it does not by itself prove 34 ms of useful CPU work.
+
+The application now sets a fixed 60 FPS target and clears the quality preset's VSync override after every preset change. **Settings > Automatic quality** enables or disables the measured controller below. Turning it off restores the selected preset's normal terrain distance and full rendering resolution. There is no frame-rate picker. VR presentation remains governed by the headset compositor. No global detail budget was raised on the strength of this log; a fresh, matching Burst-enabled play session is needed to measure the improvement.
+
+## Earlier Mac session, 16 November 2026 at 20:03:23
 
 Apple M5 Max, 2992 × 1878, 120 Hz display with every second refresh targeted, PC detail, **Burst active**, HDR inactive. Medians of five-second windows:
 

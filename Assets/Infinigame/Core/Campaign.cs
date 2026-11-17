@@ -42,7 +42,7 @@ namespace Infinigame.Core
             Gear.Suit => "POWERED ARMOUR", Gear.Thrusters => "SUIT THRUSTERS", Gear.Beams => "GAUNTLET BEAMS", Gear.Stealth => "A CLOAK", Gear.Capacitor => "A CAPACITOR",
             Gear.Orbiter => "AN ORBITAL DRIVE", Gear.Shield => "A RADIATION SHIELD", Gear.Missiles => "SEEKER MISSILES", Gear.Plating => "HEAT PLATING", Gear.Mender => "A HULL MENDER",
             Gear.Rail => "A RAIL GAUNTLET", Gear.Armour => "HEAVY PLATE", Gear.Bulkheads => "BULKHEADS", Gear.Nukes => "NUCLEAR TORPEDOES", Gear.GateParts => "MOON ENGINE PLANS",
-            Gear.Nova => "HEMISPHERE LASERS", Gear.ShipRail => "SHIP RAILGUN", Gear.Ship => "YOUR SHIP", Gear.BackMissiles => "BACK MISSILES", _ => gear.ToString().ToUpperInvariant(),
+            Gear.Lance => "TWIN BEAMS", Gear.Nova => "HEMISPHERE LASERS", Gear.ShipRail => "SHIP RAILGUN", Gear.Ship => "YOUR SHIP", Gear.BackMissiles => "BACK MISSILES", _ => gear.ToString().ToUpperInvariant(),
         };
 
         // What a mission wins, for the news of it: "A, B AND C".

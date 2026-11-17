@@ -58,20 +58,22 @@ namespace Infinigame
                 return (mesh, centre);
             }).ToArray();
         }
-        public void Add(Mesh mesh, Material material, float3 at, Quaternion rotation, float3 velocity, float radius)
+        public void Add(Mesh mesh, Material material, float3 at, Quaternion rotation, float3 velocity, float radius, float scale = 1, bool crumble = false)
         {
             Prepare(mesh);
             while (bodies.Count >= (LodSettings.Tier == 0 ? 16 : 40)) Remove(0);
             var sections = pieces[mesh];
-            var points = sections.Select(section => at + (float3)(rotation * section.centre)).ToArray();
-            var parts = sections.Select(section => Shapes.Part(transform, "Wreck / remains", section.mesh, material, Vector3.zero, Vector3.one).transform).ToArray();
+            var points = sections.Select(section => at + (float3)(rotation * section.centre * scale)).ToArray();
+            var parts = sections.Select(section => Shapes.Part(transform, "Wreck / remains", section.mesh, material, Vector3.zero, Vector3.one * scale).transform).ToArray();
             foreach (var part in parts)
             {
                 part.rotation = rotation;
                 if (material.HasProperty("_Organic") && material.GetFloat("_Organic") > 0)
                 { var stain = new MaterialPropertyBlock(); stain.SetFloat("_Damage", 0.28f); part.GetComponent<Renderer>().SetPropertyBlock(stain); }
             }
-            bodies.Add(new Body { world = game.System.Reference, joints = new Ragdoll(points, velocity), parts = parts, rotation = rotation, radius = radius });
+            var joints = new Ragdoll(points, crumble ? float3.zero : velocity);
+            if (crumble) for (int i = 0; i < joints.joined.Length; i++) joints.joined[i] = false;
+            bodies.Add(new Body { world = game.System.Reference, joints = joints, parts = parts, rotation = rotation, radius = radius });
         }
         public void Strike(float3 from, float3 step, float damage, float radius = 0.7f)
         {
