@@ -23,16 +23,28 @@ The provider page shows the route in use, selected model, requests and token cou
 
 ## Voice choices
 
-Text generation and speaking are separate. The game uses free local system speech on Mac, Windows and Apple mobile devices. Robot subtitles have a separate toggle. New preferences default to **Zarvox**, an intentionally synthetic robot voice; an existing saved choice is preserved. On Mac, Settings > Robot voice offers Zarvox, Daniel and Eddy in British English, System voice and Voice off. Other platforms offer their available system voice modes. An unavailable named voice falls back to the system voice.
+Text generation and speaking are separate. **Settings > Robot voice** lists the voices installed on this device, with British English first and pages for longer lists. Choosing a voice enables speech, plays a preview and saves its identifier on this device. Reopen the page after installing more voices. Voice off preserves the selection; Robot effect is independent of the selected voice. Robot subtitles have their own toggle in Settings. A removed voice falls back to the system default without forgetting the saved choice. New Mac preferences use **Zarvox**; other platforms use their system voice with the robot effect enabled.
 
 | Platform | Implemented now | Other local options |
 |---|---|---|
-| macOS | Zarvox, Daniel, Eddy and the system voice | Download a voice in Accessibility > Read & Speak, select it as the system voice and choose System voice in the game. Fred, Ralph and Trinoids are other synthetic character choices where installed. |
-| iPhone/iPad | British AVSpeechSynthesizer output and native input | Robot or natural pitch, using the installed British system voice. |
-| Windows/SteamVR | Local SAPI output through PowerShell, OS dictation input | Uses an installed British voice when available, otherwise the default. Robot mode adds light modulation. Narrator-only voices are not necessarily exposed to SAPI. |
-| Steam Deck through Proton | Text replies and typed input | Local speech would need a separate Linux/Proton bridge. Nothing downloads a voice model or calls paid speech. |
+| macOS | Every voice listed by the local `say` engine, plus System voice | Install voices in Accessibility > Read & Speak. Zarvox, Daniel, Eddy and other voices appear when installed. Robot effect adds light modulation. |
+| iPhone/iPad | Installed AVSpeechSynthesizer voices, selected by identifier, plus System voice | Enhanced and Premium variants are labelled. Robot effect lowers the pitch. Only voices Apple exposes to apps appear; Siri voices are not available through this API. |
+| Windows/SteamVR | Enabled SAPI voices through PowerShell, plus System voice | Each choice selects its installed name. Robot effect adds light modulation. Narrator-only voices are not necessarily exposed to SAPI. |
+| Steam Deck through Proton | Text replies and typed input when speech services are unavailable | No bundled speech engine. Nothing downloads a voice model or calls paid speech. |
 
-See [Apple's Mac voice settings](https://support.apple.com/en-euro/guide/mac-help/mchlp2290/27/mac/27) and [Microsoft's Narrator voice settings](https://support.microsoft.com/en-us/accessibility/windows/narrator/chapter-7-customizing-narrator). Steam Deck keeps text when the Windows speech backend is unavailable under Proton. Pre-recorded lines or a paid service remain optional future choices.
+See [Apple's speech API and Siri limitation](https://developer.apple.com/videos/play/wwdc2020/10022/) and [Microsoft's selectable installed voices](https://learn.microsoft.com/en-us/dotnet/api/system.speech.synthesis.speechsynthesizer.selectvoice?view=netframework-4.8). Steam Deck keeps text when Windows speech services are unavailable under Proton. Voice discovery runs on opening the picker, with a timeout for desktop tools. Tests use fake catalogues and synthesis tools, never the real engines.
+
+### Portable robot speech candidates
+
+These are research candidates, not dependencies. None supplies Apple's exact Zarvox voice. A shared engine would generate speech locally, including new companion replies, without an LLM or a paid speech service.
+
+| Candidate | Fit and trade-offs |
+|---|---|
+| [SoLoud Speech](https://solhsa.com/soloud/speech.html) | Adjustable Klatt-style formant synthesis: the most directly mechanical option to audition, but its author warns that intelligibility is limited. Its C API can be wrapped for Unity and its null backend can supply samples to Unity audio. The engine uses zlib terms; its older rsynth-derived speech code has separate provenance notes in the [licence](https://solhsa.com/soloud/legal.html). |
+| [Flite](https://github.com/festvox/flite) | Small portable C engine, with [permissive runtime licensing](https://github.com/festvox/flite/blob/master/COPYING). Worth auditioning with a fixed voice and light modulation for clearer robot dialogue. The engine is portable, but a Unity native plugin, iOS cross-build and bundled voice choice still need validation. |
+| [eSpeak NG](https://github.com/espeak-ng/espeak-ng) | Compact formant speech with adjustable voices and many accents, including British English. Supports desktop platforms and has an [iOS project](https://github.com/espeak-ng/espeak-ng-ios-app). GPLv3-or-later licensing needs resolution before embedding it in the Unity player. |
+
+For one voice across Mac, iPhone, iPad, Windows, Steam Deck and SteamVR, a bundled engine would need native builds for each operating system and architecture. Deck's current Proton build would use the Windows library; SteamVR uses its host PC's library. Audition SoLoud and Flite before choosing: clarity during combat matters more than an exact resemblance to Zarvox.
 
 ## Voice input and bounded state
 

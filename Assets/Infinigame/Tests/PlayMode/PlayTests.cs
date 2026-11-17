@@ -45,7 +45,7 @@ namespace Infinigame.Tests
             Game.Prefs = "infinigame-test";
             // most tests want the whole game open to them: every mission but the last done, and all that those win
             Game.Start = Campaign.Citadel;
-            foreach (string kept in new[] { "detail", "muted", "silent", "voice", "subtitles" }) PlayerPrefs.DeleteKey($"{Game.Prefs}.{kept}");
+            foreach (string kept in new[] { "detail", "muted", "silent", "voice", "robot", "subtitles" }) PlayerPrefs.DeleteKey($"{Game.Prefs}.{kept}");
             foreach (string kept in new[] { "test-save.json", "test-save2.json", "test-save3.json", Oracle.Store }) File.Delete(Path.Combine(Application.persistentDataPath, kept));
             // no test may spend a real player's plan: the oracle answers from a script, and until a
             // test supplies stand-ins there are no tools for it to run
@@ -1274,6 +1274,109 @@ namespace Infinigame.Tests
         }
 
         [UnityTest]
+        public IEnumerator InstalledVoicesCanBePagedPreviewedAndRemembered()
+        {
+            Speech.Tool = StandIn("voice-picker", "if [ \"$1\" = -v ] && [ \"$2\" = '?' ]; then cat \"$0.voices\"; exit; fi\nwhile [ $# -gt 0 ]; do case \"$1\" in -o) output=\"$2\";; -f) cp \"$2\" \"$0.words\";; esac; shift; done\ncp \"$0.wav\" \"$output\"");
+            File.WriteAllText(Speech.Tool + ".voices", "Áine (English (UK))   en_GB    # Hello\n" + string.Join("\n", Enumerable.Range(0, 12).Select(i => $"Voice {i:00}   en_US    # Hello")));
+            var wav = new byte[4430];
+            Encoding.ASCII.GetBytes("data").CopyTo(wav, 12);
+            System.BitConverter.GetBytes(4410).CopyTo(wav, 16);
+            File.WriteAllBytes(Speech.Tool + ".wav", wav);
+            File.Delete(Speech.Tool + ".words");
+
+            IEnumerator Pick(string prefix)
+            {
+                int at = System.Array.FindIndex(game.Items, item => item.StartsWith(prefix));
+                Assert.GreaterOrEqual(at, 0, prefix + " is offered");
+                while (game.Selected != at) yield return Press(new Controls { down = true });
+                yield return Press(new Controls { confirm = true });
+            }
+
+            yield return Choose(Game.Settings);
+            yield return Pick("ROBOT VOICE");
+            yield return Until(() => !game.Items.Contains("Finding installed voices…"));
+            Assert.LessOrEqual(game.Items.Length, 11, "installed voices fit the menu instead of overflowing it");
+            StringAssert.StartsWith("Áine", game.Items[1], "British voices come first after the system default");
+            yield return Pick("Áine");
+            yield return Until(() => File.Exists(Speech.Tool + ".words"));
+            Assert.AreEqual("Áine (English (UK))", Speech.Choice);
+            Assert.AreEqual(Speech.Choice, PlayerPrefs.GetString($"{Game.Prefs}.voice"));
+            CollectionAssert.Contains(File.ReadAllLines(Speech.Tool + ".args"), Speech.Choice, "the selected identifier reaches the synthesiser unchanged");
+            StringAssert.Contains("SELECTED", game.Items[1]);
+            var next = Object.FindObjectsByType<UnityEngine.UI.Text>().Single(label => label.text == "Next voices");
+            Vector3 edge = next.rectTransform.TransformPoint(new Vector3(0, next.rectTransform.rect.yMax - 1));
+            Assert.AreEqual(System.Array.IndexOf(game.Items, "Next voices"), game.GetComponent<Hud>().MenuItemAt(RectTransformUtility.WorldToScreenPoint(Camera.main, edge)), "touching the top of a row must not choose its neighbour");
+            var target = new RenderTexture(1280, 720, 24);
+            Camera.main.targetTexture = target;
+            yield return null;
+            Camera.main.Render();
+            RenderTexture.active = target;
+            var picture = new Texture2D(target.width, target.height, TextureFormat.RGB24, false);
+            picture.ReadPixels(new Rect(0, 0, target.width, target.height), 0, 0);
+            Directory.CreateDirectory("Logs/Screenshots");
+            File.WriteAllBytes("Logs/Screenshots/voice-picker.png", picture.EncodeToPNG());
+            RenderTexture.active = null;
+            Camera.main.targetTexture = null;
+            Object.Destroy(picture); Object.Destroy(target);
+            yield return Pick("Next voices");
+            Assert.IsFalse(game.Items.Any(item => item.StartsWith("Áine")));
+            yield return Pick("Voice 08");
+            Assert.AreEqual("Voice 08", Speech.Choice);
+            yield return Pick("ROBOT EFFECT");
+            Assert.AreEqual(1, PlayerPrefs.GetInt($"{Game.Prefs}.robot"));
+            yield return Pick("Voice off");
+            Assert.IsTrue(Speech.Muted);
+            Assert.AreEqual("Voice 08", Speech.Choice, "muting preserves the selected voice");
+
+            yield return SceneManager.LoadSceneAsync("Main");
+            game = Object.FindAnyObjectByType<Game>();
+            while (!game.Ready) yield return null;
+            Player.controls = () => input;
+            Assert.AreEqual("Voice 08", Speech.Choice);
+            Assert.IsTrue(Speech.Muted);
+            File.WriteAllText(Speech.Tool + ".voices", "Áine (English (UK))   en_GB    # Hello\n");
+            yield return Pick(Game.Settings);
+            yield return Pick("ROBOT VOICE");
+            yield return Until(() => !game.Items.Contains("Finding installed voices…"));
+            StringAssert.Contains("UNAVAILABLE", game.Hint, "removed voices fall back without losing the saved choice");
+            Assert.IsTrue(game.Items.Contains("ROBOT EFFECT   ·   ON"));
+        }
+
+        [UnityTest]
+        public IEnumerator WindowsVoicesUseInstalledNamesAndFallBackWhenRemoved()
+        {
+            Speech.Tool = StandIn("powershell.exe", "if [ \"$3\" = -Command ]; then cat \"$0.voices\"; exit; fi\nif [ \"$9\" = Removed ]; then exit 1; fi\ncp \"$6\" \"$0.script\"\ncp \"$0.wav\" \"$8\"");
+            File.WriteAllText(Speech.Tool + ".voices", "\uFEFF{\"voices\":[{\"id\":\"American\",\"name\":\"American\",\"language\":\"en-US\"},{\"id\":\"British's $(voice)\",\"name\":\"British\",\"language\":\"en-GB\"}]}");
+            var installed = Speech.InstalledVoices();
+            yield return Until(() => installed.IsCompleted);
+            Assert.AreEqual("British's $(voice)", installed.Result[0].id);
+            Assert.AreEqual("American", installed.Result[1].id);
+            var wav = new byte[4430];
+            Encoding.ASCII.GetBytes("data").CopyTo(wav, 12);
+            System.BitConverter.GetBytes(4410).CopyTo(wav, 16);
+            File.WriteAllBytes(Speech.Tool + ".wav", wav);
+            Speech.Choice = installed.Result[0].id;
+            File.Delete(Speech.Tool + ".script");
+            game.Speech.Say("A preview from the selected voice.");
+            yield return Until(() => File.Exists(Speech.Tool + ".script") && !game.Speech.Speaking);
+            Assert.AreEqual(Speech.Choice, File.ReadAllLines(Speech.Tool + ".args").Last(), "voice names are arguments, never executable script text");
+            StringAssert.Contains("$speaker.SelectVoice($VoiceName)", File.ReadAllText(Speech.Tool + ".script"));
+            StringAssert.DoesNotContain(Speech.Choice, File.ReadAllText(Speech.Tool + ".script"));
+            Speech.Choice = "Removed";
+            game.Speech.Say("Use the default when a voice disappears.");
+            yield return Until(() => !game.Speech.Speaking);
+            Assert.AreEqual(8, File.ReadAllLines(Speech.Tool + ".args").Length, "the retry omits the removed voice");
+            File.WriteAllText(Speech.Tool + ".voices", "{\"voices\":[]}");
+            installed = Speech.InstalledVoices();
+            yield return Until(() => installed.IsCompleted);
+            Assert.IsEmpty(installed.Result);
+            Speech.Tool = "not-installed";
+            installed = Speech.InstalledVoices();
+            yield return Until(() => installed.IsCompleted);
+            Assert.IsEmpty(installed.Result, "missing speech services remain a text-only fallback");
+        }
+
+        [UnityTest]
         public IEnumerator SettingsChangeHowTheGameLooksAndSoundsAndAreRemembered()
         {
             int tiers = QualitySettings.names.Length, tier = QualitySettings.GetQualityLevel();
@@ -1297,7 +1400,8 @@ namespace Infinigame.Tests
             Assert.AreEqual("ROBOT VOICE   ·   ON", game.Items[4]);
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual("Voice", game.Page);
-            for (int i = 0; i < 4; i++) yield return Press(new Controls { down = true });
+            yield return Until(() => !game.Items.Contains("Finding installed voices…"));
+            while (game.Items[game.Selected] != "Voice off") yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
             Assert.IsTrue(Speech.Muted);
             yield return Press(new Controls { menu = true });

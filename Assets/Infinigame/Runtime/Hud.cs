@@ -624,6 +624,7 @@ namespace Infinigame
                 menuSub.text = game.Dead ? game.Epitaph.ToUpperInvariant() : game.Confirming ? "Choose Confirm to proceed or Cancel to return."
                     : cheats ? $"THE MISSION IN HAND IS {mission}"
                     : voice ? game.Standing
+                    : game.Page == "Voice" ? "LOCAL SPEECH · NO ACCOUNT OR SUBSCRIPTION"
                     : settings ? "HOW THE GAME LOOKS AND SOUNDS, AND WHO WRITES FOR IT THROUGH YOUR OWN ACCOUNT"
                     : game.Title ? "CHOOSE A SLOT TO PLAY   ·   EACH KEEPS A GAME AND A JOURNAL OF ITS OWN"
                     : $"THE {worlds[0].name.ToUpperInvariant()} SYSTEM   ·   {mission}   ·   DEPTH {game.Depth}   ·   {game.Journal.Count} JOURNAL ENTRIES";
@@ -636,7 +637,7 @@ namespace Infinigame
                     // a long page is set closer
                     menuItems[i].rectTransform.anchoredPosition = new Vector2(0f, 64f - (items.Length > 11 ? 32f : items.Length > 9 ? 42f : items.Length > 7 ? 52f : 60f) * i);
                     menuItems[i].fontSize = items.Length > 11 ? 22 : 30;
-                    menuItems[i].rectTransform.sizeDelta = new Vector2(1100, items.Length > 11 ? 30 : 50);
+                    menuItems[i].rectTransform.sizeDelta = new Vector2(1100, items.Length > 11 ? 30 : items.Length > 9 ? 40 : 50);
                     menuItems[i].text = items[i];
                     menuItems[i].color = i == game.Selected ? Ink : Dim;
                 }

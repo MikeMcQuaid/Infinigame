@@ -21,11 +21,21 @@ static void StopCapture() {
     [request endAudio];
 }
 extern "C" {
-void InfinigameSpeak(const char *text, bool robot) {
+char *InfinigameVoices() {
+    NSMutableArray *voices = [NSMutableArray array];
+    for (AVSpeechSynthesisVoice *voice in [AVSpeechSynthesisVoice speechVoices]) {
+        NSString *name = voice.quality > AVSpeechSynthesisVoiceQualityEnhanced ? [voice.name stringByAppendingString:@" (Premium)"]
+            : voice.quality == AVSpeechSynthesisVoiceQualityEnhanced ? [voice.name stringByAppendingString:@" (Enhanced)"] : voice.name;
+        [voices addObject:@{@"id": voice.identifier, @"name": name, @"language": voice.language}];
+    }
+    NSData *json = [NSJSONSerialization dataWithJSONObject:@{@"voices": voices} options:0 error:nil];
+    return strdup([[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding].UTF8String);
+}
+void InfinigameSpeak(const char *text, const char *voice, bool robot) {
     if (!speaker) speaker = [[AVSpeechSynthesizer alloc] init];
     [speaker stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
     AVSpeechUtterance *line = [AVSpeechUtterance speechUtteranceWithString:[NSString stringWithUTF8String:text]];
-    line.voice = [AVSpeechSynthesisVoice voiceWithLanguage:@"en-GB"];
+    if (voice && *voice) line.voice = [AVSpeechSynthesisVoice voiceWithIdentifier:[NSString stringWithUTF8String:voice]];
     line.pitchMultiplier = robot ? 0.85 : 1.0;
     line.rate = AVSpeechUtteranceDefaultSpeechRate * 0.92;
     [speaker speakUtterance:line];

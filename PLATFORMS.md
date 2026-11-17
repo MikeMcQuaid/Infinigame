@@ -49,7 +49,7 @@ Tap Fire for every touch weapon. Beams fire a short burst; railguns charge and r
 
 ## Voice and accessibility
 
-Settings has independent **Robot voice** and **Robot subtitles** controls. Essential tutorial and danger text remains visible with subtitles off. Mac uses installed voices, Windows uses local SAPI speech through PowerShell and iPhone/iPad uses Apple's speech synthesiser. The robot option adds a synthetic tone. Deck falls back to text when Windows speech services are unavailable under Proton.
+Settings has independent **Robot voice** and **Robot subtitles** controls. Open Robot voice to select and preview an installed voice, toggle the robot effect or turn speech off. The selection is saved per device; reopen the picker after installing more voices. Essential tutorial and danger text remains visible with subtitles off. Mac uses installed voices, Windows uses local SAPI speech through PowerShell and iPhone/iPad uses Apple's speech synthesiser. Deck falls back to text when Windows speech services are unavailable under Proton. See [LLMS.md](LLMS.md#voice-choices) for platform limitations and portable speech candidates.
 
 Hold **Y**, touch **Mic**, gamepad **LT + R3** or Index **left grip + right-stick click**. Release to send. Partial text appears in the HUD when the recogniser supplies it, and the reply stays in the HUD. This does not open the conversation menu. Keyboard Return still opens typed conversation. Native speech requires a device build and microphone permission.
 
