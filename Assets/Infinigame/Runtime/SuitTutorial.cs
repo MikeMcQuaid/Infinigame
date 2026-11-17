@@ -17,7 +17,7 @@ namespace Infinigame
             : game.Stage == Campaign.SecondBurrow ? "BEAM CUTS TERRAIN · DIG A FLANKING ROUTE · RECOVER SURFACE THRUSTERS"
             : game.Stage == Campaign.ThirdBurrow ? "SURFACE FLIGHT LIMIT 65 m · RECOVER THE ORBITAL BOOSTER"
             : game.Stage == Campaign.Recovery ? $"{DeviceControls.Key("SPACE", "RB", "LIFT", "LEFT A")} · CLIMB TO THE SHIP{(game.Player.InSpace ? " · " + DeviceControls.Key("T", "D-PAD RIGHT", "RECALL", "WRIST RECALL") + " · CALL IT TO YOU" : "")}"
-            : game.Stage > Campaign.Recovery ? game.Outpost.OuterLeft > 0 ? $"DESTROY THE DEFENCES · {game.Outpost.OuterLeft} TURRETS / AIRCRAFT LEFT" : ""
+            : game.Stage > Campaign.Recovery ? game.Stage < Campaign.Citadel && game.Outpost.World == game.System.Reference && !game.Outpost.Fallen ? game.Outpost.Instruction : ""
             : phase < 3 ? "COMPANION LINK · LISTEN · OPTICS AND LEGS REPAIRING"
             : phase == 3 ? $"{DeviceControls.Look} · LOOK AROUND · LEGS STILL REPAIRING"
             : phase == 4 ? $"{DeviceControls.Move} · WALK A FEW STEPS" : $"{DeviceControls.Fire} · PUNCH THE GROUND FIGHTER";

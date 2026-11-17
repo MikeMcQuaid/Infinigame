@@ -8,6 +8,10 @@ An active mind suppresses robot strength and replication: early patrols can be w
 
 A shipyard is an upgrade to that same factory, available only after its robots conquer the whole world. The shipyard is roughly twice the factory’s footprint. Its assembly lift raises an actual robot-piloted ship, which powers up and joins the fleet, starting with two ships. They replicate while hostile ships remain. Later fronts can overwhelm a young factory without the player's help.
 
+Use **Fleet orders** in the pause menu to choose one to three escorts. **Follow** holds formation and defends against nearby ships, **Attack** engages hostile ships within 2.5 km and **Patrol** returns them to their shipyard. Escorts keep up with autopilot and survive travel between worlds. This small personal wing can travel with you; autonomous population expansion remains limited to neighbouring planets.
+
+Nearby surface patrols gather around your factories while aliens remain, and hostile ships contest the deployed robot fleet. These are actual combatants using the shared damage and shield rules. Once a front is conquered, its population stops spawning enemies.
+
 Only player-established shipyards send neighbouring support. They cannot relay it further. A distant planet requires another foothold. Populations are saved and advance during active play, not while paused or while the game is closed.
 
 The content importer uses these identifiers. Costs are zero because access is earned in combat.

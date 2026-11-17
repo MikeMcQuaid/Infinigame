@@ -12,9 +12,22 @@ namespace Infinigame.Core
         public float[] exposure = new float[10];
     }
 
+    public enum EscortOrder { Follow, Attack, Patrol }
+    [Serializable] public class EscortOrders
+    {
+        public int count = 2;
+        public EscortOrder order;
+    }
+
     // Populations represent the whole world; nearby units are a bounded sample of that war.
     public static class War
     {
+        public static float Pressure(int deaths) => 1 / (1 + math.max(0, deaths) * 0.18f);
+        public static float3 Follow(float3 position, float3 target, float3 leaderVelocity, float dt)
+        {
+            float gap = math.distance(position, target);
+            return position + math.normalizesafe(target - position) * math.min(gap, math.max(120, math.length(leaderVelocity) + math.min(Autopilot.Speed, gap * 0.8f)) * dt);
+        }
         public static Front Create(int world, int depth, int rank) => new Front
         {
             world = world, depth = depth, rank = rank,
@@ -42,20 +55,20 @@ namespace Infinigame.Core
             if (ship) { front.shipKills += count; if (front.alienShips > 0) front.alienShips = math.max(1, front.alienShips - count); }
             else { front.kills += count; if (front.aliens > 0) front.aliens = math.max(1, front.aliens - count); }
         }
-        public static void Step(Front front, float seconds)
+        public static void Step(Front front, float seconds, float pressure = 1)
         {
             // Small fixed slices make losses and replication independent of frame rate.
             while (seconds > 0)
             {
                 float dt = math.min(1, seconds); seconds -= dt;
                 for (int weapon = 0; front.exposure != null && weapon < front.exposure.Length; weapon++) front.exposure[weapon] = math.max(0, front.exposure[weapon] - dt * 0.5f);
-                float growth = 0.004f + front.rank * 0.0005f + (front.depth - 1) * 0.001f;
+                float growth = (0.004f + front.rank * 0.0005f + (front.depth - 1) * 0.001f) * pressure;
                 if (front.aliens > 0)
                 {
                     float hostile = front.aliens, friendly = front.dogs;
                     front.aliens = math.max(0, hostile + dt * (front.mindDead ? -friendly * 0.65f : hostile * growth * (1 - hostile / 4000) - friendly * 0.015f));
                     // An intact factory can restart its assembly line after losing every patrol.
-                    front.dogs = math.max(0, friendly + dt * ((front.factory ? math.max(2, friendly) * (front.mindDead ? 0.09f : 0.008f) : 0) - (front.mindDead ? 0 : hostile * 0.002f)));
+                    front.dogs = math.max(0, friendly + dt * ((front.factory ? math.max(2, friendly) * (front.mindDead ? 0.09f : 0.008f) : 0) - (front.mindDead ? 0 : hostile * 0.002f * pressure)));
                     if (!front.factory || !front.mindDead) front.aliens = math.max(1, front.aliens);
                     else if (front.aliens < 0.5f) front.aliens = 0;
                 }
@@ -63,7 +76,7 @@ namespace Infinigame.Core
                 {
                     float hostile = front.alienShips, friendly = front.ships;
                     front.alienShips = math.max(0, hostile + dt * (hostile * growth * (1 - hostile / 800) - friendly * 0.08f));
-                    front.ships = math.max(0, friendly + dt * ((front.shipyard ? math.max(1, friendly) * 0.02f : 0) - hostile * 0.002f));
+                    front.ships = math.max(0, friendly + dt * ((front.shipyard ? math.max(1, friendly) * 0.02f : 0) - hostile * 0.002f * pressure));
                     if (!front.shipyard && friendly <= 0) front.alienShips = math.max(1, front.alienShips);
                     else if (front.alienShips < 0.5f) front.alienShips = 0;
                 }

@@ -20,6 +20,15 @@ namespace Infinigame
         public bool Fallen => World >= 0 && Left == 0;
         public bool Near => Fallen && game.Stage != Campaign.Citadel && World == game.System.Reference && !game.Player.flying && math.distance(game.Player.Position, Prize) < 6f;
         public string Errand => game.Stage == Campaign.Citadel ? "ESCAPE THROUGH THE TUNNEL ENTRANCE" : $"TAKE {Campaign.Spoils(game.Stage)}";
+        public bool Entering => stage == Campaign.FirstBurrow && !Rooms.walls.Last().broken
+            || !new Burrow { origin = Position, rotation = rotation }.Contains(game.Player.Position) || Local(game.Player.Position).z < -20;
+        public string Instruction => Fallen ? Errand : stage == Campaign.Citadel ? game.Mission.task : OuterLeft > 0
+            ? $"BREAK THE SHIELD · TURRETS: {game.Battle.Foes.Count(foe => foe.outerGuard && foe.stationary && foe.health > 0)} · SHIPS: {game.Battle.Foes.Count(foe => foe.outerGuard && !foe.stationary && foe.health > 0)}"
+            : Entering ? "ENTER THE MARKED BURROW · DIG THROUGH BLOCKAGES"
+            : $"FOLLOW THE TUNNEL · DESTROY {Left} {(Left == 1 ? "MIND" : "MINDS")}";
+        public float3 Waypoint => OuterLeft > 0 ? game.Battle.Foes.Where(foe => foe.outerGuard && foe.health > 0).OrderBy(foe => math.distancesq(foe.position, game.Player.Position)).First().position
+            : Entering ? Place(Rooms.entrance)
+            : game.Battle.Foes.Where(foe => foe.kind == FoeKind.Mind && foe.health > 0).OrderBy(foe => math.distancesq(foe.position, game.Player.Position)).Select(foe => foe.position).DefaultIfEmpty(Core).First();
         public Interior Rooms { get; private set; }
         public bool Open { get; private set; }
         public Shield Shield => new Shield { centre = game.Stage == Campaign.Citadel && Rooms != null ? Core : Position, radius = game.Stage == Campaign.Citadel ? 22 : 45, active = World == game.System.Reference && !Fallen && (game.Stage == Campaign.Citadel ? Left > 1 || game.Battle.Foes.Any(foe => foe.stationary && foe.health > 0) : OuterLeft > 0) };
@@ -41,7 +50,7 @@ namespace Infinigame
         quaternion rotation;
         Transform fort, crate, door, shell, prizeShield;
         Material shimmer;
-        bool spawned;
+        bool spawned, explainedShield;
         readonly List<Foe> waiting = new List<Foe>();
         float flash;
         readonly List<Transform> walls = new List<Transform>();
@@ -66,7 +75,7 @@ namespace Infinigame
             }
             else if (fort != null && stage < game.Stage) Keep();
             else if (fort != null) Destroy(fort.gameObject);
-            spawned = Open = false;
+            spawned = Open = explainedShield = false;
             waiting.Clear();
             Left = Campaign.Minds(game.Stage);
             Escape = 0;
@@ -180,7 +189,7 @@ namespace Infinigame
         {
             if (world != World) return;
             waiting.Clear();
-            waiting.AddRange(game.Battle.Foes.Where(foe => foe.kind == FoeKind.Mind || foe.kind == FoeKind.Sentry || foe.outerGuard));
+            waiting.AddRange(game.Battle.Foes.Where(foe => foe.health > 0 && (foe.kind == FoeKind.Mind || foe.kind == FoeKind.Sentry || foe.outerGuard)));
             spawned = false;
         }
         public void Flash() => flash = 1f;
@@ -290,10 +299,24 @@ namespace Infinigame
                 }
                 return;
             }
+            if (spawned && !explainedShield && stage >= Campaign.Tower && stage < Campaign.Citadel && OuterLeft == 0)
+            {
+                explainedShield = true;
+                game.Hermit.Remark("The shield is down. Land at the marked burrow entrance. Follow the descending tunnel and shoot or punch through any blockage. The violet mind is at the far end. Destroy it, then take the equipment behind it.");
+                game.Notify("SHIELD DOWN · ENTER THE MARKED BURROW");
+            }
             for (int i = 0; i < game.Battle.Foes.Count; i++)
             {
                 var foe = game.Battle.Foes[i];
-                if (foe.kind == FoeKind.Mind) { foe.protectedCore = stage == Campaign.Citadel ? math.distance(foe.position, Core) < 30 && Shield.active : OuterLeft > 0; game.Battle.Foes[i] = foe; }
+                if (foe.kind == FoeKind.Mind)
+                {
+                    if (stage != Campaign.Citadel)
+                    {
+                        float3 up = math.normalizesafe(foe.position);
+                        foe.position = up * (game.System.ReferenceBody.GroundRadius(up) + 1.5f);
+                    }
+                    foe.protectedCore = stage == Campaign.Citadel ? math.distance(foe.position, Core) < 30 && Shield.active : OuterLeft > 0; game.Battle.Foes[i] = foe;
+                }
             }
             if (spawned || math.distance(game.Player.Position, Position) > (game.Stage == Campaign.Citadel ? 1800 : 600)) return;
             spawned = true;
@@ -328,7 +351,9 @@ namespace Infinigame
                 for (int i = 0; i < Campaign.Minds(stage); i++)
                 {
                     float z = i == Campaign.Minds(stage) - 1 ? 32 : Campaign.Minds(stage) == 2 ? 17 : i == 0 ? -2 : 20;
-                    game.Battle.Add(FoeKind.Mind, Place(new float3(0, Interior.TunnelFloor(z) + 1, z)));
+                    float3 at = Place(new float3(0, Interior.TunnelFloor(z) + 1, z));
+                    float3 up = math.normalizesafe(at);
+                    game.Battle.Add(FoeKind.Mind, up * (game.System.ReferenceBody.GroundRadius(up) + 1.5f));
                 }
             if (stage >= Campaign.Tower && stage < Campaign.Citadel)
                 for (int i = 0; i < Campaign.OuterDefences(stage); i++)

@@ -34,6 +34,12 @@ Text generation and speaking are separate. **Settings > Robot voice** lists the 
 
 See [Apple's speech API and Siri limitation](https://developer.apple.com/videos/play/wwdc2020/10022/) and [Microsoft's selectable installed voices](https://learn.microsoft.com/en-us/dotnet/api/system.speech.synthesis.speechsynthesizer.selectvoice?view=netframework-4.8). Steam Deck keeps text when Windows speech services are unavailable under Proton. Voice discovery runs on opening the picker, with a timeout for desktop tools. Tests use fake catalogues and synthesis tools, never the real engines.
 
+### Festival SLT HTS
+
+`cmu_us_slt_arctic_hts` is a specific American English voice model for Festival's HTS synthesiser, not a Siri/system voice or an LLM. The [original voice package](https://www.cstr.ed.ac.uk/downloads/festival/2.1/festvox_cmu_us_slt_arctic_hts.tar.gz) includes a CMU licence permitting commercial use while retaining its notices and marking modifications. [Festival itself](https://www.cstr.ed.ac.uk/projects/festival/download.html) is a C++ speech engine with permissive terms. Its exact HTS model should be used when matching that sound; another engine's SLT voice is not necessarily identical.
+
+The simplest consistent implementation would render the authored story and tutorial lines to audio during development, then play the same clips on Mac, Windows, Deck, iPhone/iPad and VR. Dynamic companion replies would still use installed voices or text. Full live Festival speech everywhere would require native engine and voice packaging, including an iOS build; no engine is bundled yet. The game does not currently install Festival or list this HTS model in its voice picker. Rendering authored clips needs no LLM or paid speech service.
+
 ### Portable robot speech candidates
 
 These are research candidates, not dependencies. None supplies Apple's exact Zarvox voice. A shared engine would generate speech locally, including new companion replies, without an LLM or a paid speech service.

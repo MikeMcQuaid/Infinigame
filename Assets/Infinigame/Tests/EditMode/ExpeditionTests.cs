@@ -7,6 +7,41 @@ namespace Infinigame.Tests
 {
     public class ExpeditionTests
     {
+        [Test] public void EveryDeathEasesPressureWithoutChangingIndividualEnemyHealth()
+        {
+            Assert.AreEqual(1, War.Pressure(0));
+            for (int deaths = 1; deaths < 30; deaths++)
+                Assert.That(War.Pressure(deaths), Is.GreaterThan(0).And.LessThan(War.Pressure(deaths - 1)));
+            var usual = War.Create(1, 1, 1);
+            var eased = War.Create(1, 1, 1);
+            War.Step(usual, 60);
+            War.Step(eased, 60, War.Pressure(4));
+            Assert.Less(eased.aliens, usual.aliens);
+            Assert.Less(eased.alienShips, usual.alienShips);
+        }
+        [Test] public void EscortsCatchUpWithAnAutopilotedLeaderWithoutOvershooting()
+        {
+            float3 follower = new float3(0, 0, -600), leader = float3.zero;
+            float3 velocity = new float3(0, 0, Autopilot.Speed);
+            for (int i = 0; i < 300; i++)
+            {
+                leader += velocity / 30;
+                follower = War.Follow(follower, leader, velocity, 1f / 30);
+            }
+            Assert.Less(math.distance(follower, leader), 20);
+            Assert.LessOrEqual(follower.z, leader.z);
+            Assert.AreEqual(leader, War.Follow(follower, leader, float3.zero, 10));
+        }
+        [Test] public void BeamsReachMindsInDryTunnelsBelowSeaLevel()
+        {
+            var body = new BodyDescriptor { radius = 100, kind = BodyKind.Rock, terrain = new TerrainParams { seaDepth = 1 } };
+            float3 from = new float3(0, 83, 0), target = new float3(0, 83, 5);
+            body.Tunnel(new float3(0, 80, 0), 15);
+            body.burrows.Add(new Burrow { origin = new float3(0, 100, 0), rotation = quaternion.identity });
+            var foes = new System.Collections.Generic.List<Foe> { Combat.Spawn(FoeKind.Mind, target, new float3(0, 0, -1), 1, 1) };
+            Combat.Ray(foes, body, from, math.normalizesafe(target - from), 8, 200, false, default, null);
+            Assert.LessOrEqual(foes[0].health, 0);
+        }
         [Test] public void LevelsCarryExperienceAndPurchasesRequireSalvage()
         {
             var progress = new Progression { experience = 140 };

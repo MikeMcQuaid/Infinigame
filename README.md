@@ -161,7 +161,7 @@ Storms wander the home world and it rains under them; at night its poles glow. T
 
 Tab opens a paused war map with alien, robodog and fleet populations, foothold kill counts and factory status. Use Up/Down to select a destination and T to set autopilot, then press Tab again to depart. Controls also pause the game. Surface enemy health bars appear at close range, with wider detection after suit power is restored; orbital markers stay off the surface HUD.
 
-The title screen offers Delete slot actions with confirmation. New game also asks before replacing a slot. Type `idgaf` on the title screen to reveal Cheats for the current session. Its mission picker can move forwards or backwards through the thirteen stages; **Moon engines built · replay finale** starts the full ending immediately and can restart it.
+The title screen offers Delete slot actions with confirmation. New game also asks before replacing a slot. Type `idgaf` on the title or pause menu, or click its small ◇ icon, to toggle Cheats. Repeating either action hides Cheats and switches off invulnerability. Its mission picker can move forwards or backwards through the thirteen stages; **Moon engines built · replay finale** starts the full ending immediately and can restart it.
 
 HDR output activates on a supported display, using detected brightness with SDR fallback. See [PERFORMANCE.md](PERFORMANCE.md) for measured Mac performance and how to collect the next comparison. The suit rail gauntlet requires hold/release; VR fists require moving a tracked hand. First-person legs and torso stay visible, with independent VR hands. Bodies remain as articulated, breakable wrecks within a bounded memory budget.
 
@@ -180,6 +180,8 @@ A weapon outline and name appear on the left of the visor. Hold and release eith
 Cloak reduces visual detection by ground sentries, costs 18 suit energy per second and ends when firing or entering the ship. Noise still matters; it is not invulnerability. The cheat menu now has a separate Invulnerable toggle.
 
 Mind deaths leave broken violet remains and spreading surface pools. Burrow demolition has a 30 m damage radius and a 40 m fireball, compared with a normal nuclear torpedo's 60 m damage radius and 96 m fireball. Escape at least 35 m from the mind. Intact turrets and structures protect their foundations. A ship hitting an active shield bounces and takes hull damage.
+
+Shipyards unlock **Fleet orders** in the pause menu: request one to three escorts and choose Follow, Attack or Patrol. They keep up during autopilot and travel between worlds with you. Factories draw nearby ground patrols into visible fights while the wider war continues.
 
 The citadel contains two relay minds, a larger final mind and spine turrets along a longer living maze. Kill the relay minds and turrets to drop the final field, then silence its last mind and escape. Moon engines assemble for five seconds, ignite for four and carry the moon towards impact for at least eighteen. Your ship follows behind three aft-facing engines. Use **Cheats > Moon engines built · replay finale** to start or restart the complete sequence. Impact becomes a black hole, the system falls in within twenty seconds and a four-second white supernova gives way to orbital arrival in the next system.
 

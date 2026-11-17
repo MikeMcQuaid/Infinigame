@@ -60,7 +60,7 @@ namespace Infinigame
         Text[] menuItems;
         Text lesson, transcript, cheatGlyph;
         readonly List<(Text label, string key)> helpKeys = new List<(Text, string)>();
-        Image fuel, fuelTrack, vital, vitalTrack, charge, reticle, menuBar, flash, murk, beacon, askMark;
+        Image fuel, fuelTrack, vital, vitalTrack, charge, chargeTrack, reticle, menuBar, flash, murk, beacon, askMark;
         Sprite dot;
         // each of the oracle's voices' own badge, where the project has been given one
         Sprite[] badges;
@@ -79,6 +79,7 @@ namespace Infinigame
         Marker[] markers;
         // where this frame's marker names have been put, and the sides of its mark a name may go to, in order of preference
         readonly List<Rect> labels = new List<Rect>();
+        readonly Vector3[] markerCorners = new Vector3[4];
         static readonly Vector2[] Places = { Vector2.up, Vector2.right, Vector2.left, Vector2.down, new Vector2(1f, 1f), new Vector2(-1f, 1f), new Vector2(1f, -1f), new Vector2(-1f, -1f) };
         float fps, bannerSince = float.MinValue, cardHeight, briefSince = float.MinValue;
         int bannerBody = -1, used, briefed = -1;
@@ -146,7 +147,7 @@ namespace Infinigame
             run = Group(root, Vector2.one, new Vector2(-56f, -48f), new Vector2(420f, 30f));
             missionPlate = Fill(run.transform, Vector2.one, new Vector2(10, 8), new Vector2(1020, 50), Plate, panel).rectTransform;
             runText = Label(run.transform, Vector2.one, Vector2.zero, new Vector2(1000f, 36f), 13, TextAnchor.UpperRight, Dim);
-            Fill(run.transform, Vector2.one, new Vector2(0f, -26f), new Vector2(220f, 3f), Faint);
+            chargeTrack = Fill(run.transform, Vector2.one, new Vector2(0f, -26f), new Vector2(220f, 3f), Faint);
             charge = Fill(run.transform, Vector2.one, new Vector2(0f, -26f), new Vector2(220f, 3f), Accent);
 
             radar = Group(root, new Vector2(1f, 0f), new Vector2(-56f, 48f), new Vector2(320f, 190f));
@@ -507,14 +508,15 @@ namespace Infinigame
             flash.color = new Color(Harm.r, Harm.g, Harm.b, game.Dead ? 0.3f : 0.4f * math.saturate(1f - (Time.time - player.HurtAt) / 0.6f) + 0.25f * math.saturate(1f - left * 4f));
 
             // the mission in hand, and how much of its guard has fallen
-            runText.text = game.Objective; runText.color = Accent;
+            runText.text = game.Objective.Replace("  ·  ", "\n"); runText.color = Accent;
             bool mobile = Application.isMobilePlatform || DeviceControls.Touch || DeviceControls.Deck || DeviceControls.VR;
             runText.fontSize = mobile ? 30 : 17;
-            missionPlate.sizeDelta = new Vector2(Mathf.Min(1000, runText.preferredWidth) + 20, mobile ? 86 : 50);
+            missionPlate.sizeDelta = new Vector2(Mathf.Min(1000, runText.preferredWidth) + 20, runText.preferredHeight + 22);
+            charge.rectTransform.anchoredPosition = chargeTrack.rectTransform.anchoredPosition = new Vector2(0, -runText.preferredHeight - 6);
             run.GetComponent<RectTransform>().anchoredPosition = new Vector2(-56, mobile ? -190 : -48);
-            runText.rectTransform.sizeDelta = new Vector2(1000, mobile ? 72 : 36);
+            runText.rectTransform.sizeDelta = new Vector2(1000, 72);
             helpHint.text = ControlName("H") + " · CONTROLS";
-            charge.rectTransform.sizeDelta = new Vector2(game.Outpost.World < 0 ? 0f : 220f * (1f - (float)game.Outpost.Left / (game.System.ReferenceBody.kind == BodyKind.Station ? 3 : 1)), 3f);
+            charge.rectTransform.sizeDelta = new Vector2(game.Outpost.World < 0 ? 0f : 220f * (1f - (float)game.Outpost.Left / Campaign.Minds(game.Stage)), 3f);
             Show(run, playing);
             escapeText.text = game.Fall.active ? game.Frontier.Ending : game.Outpost.Demolition > 0 ? $"BURROW DEMOLITION · ESCAPE {math.ceil(game.Outpost.Demolition):0}s" : $"CORE COLLAPSE · ESCAPE {math.ceil(game.Outpost.Escape):0}s";
             Show(escape, !game.Paused && (game.Fall.active || playing && (game.Outpost.Demolition > 0 || game.Stage == Campaign.Citadel && game.Outpost.Escape > 0)));
@@ -719,6 +721,15 @@ namespace Infinigame
             // markers: other worlds, the ship when you have walked away from it, the camp, the last thing scanned
             used = 0;
             labels.Clear();
+            foreach (var group in new[] { weaponCard, run, status, caption })
+            {
+                if (group.alpha < 0.5f) continue;
+                var panel = group == run ? missionPlate : group == status ? statusPlate : group == caption ? captionPlate : group.GetComponent<RectTransform>();
+                panel.GetWorldCorners(markerCorners);
+                Vector2 low = RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, markerCorners[0]) / canvas.scaleFactor;
+                Vector2 high = RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, markerCorners[2]) / canvas.scaleFactor;
+                labels.Add(UnityEngine.Rect.MinMaxRect(Mathf.Min(low.x, high.x) - 6, Mathf.Min(low.y, high.y) - 6, Mathf.Max(low.x, high.x) + 6, Mathf.Max(low.y, high.y) + 6));
+            }
             // over the map, names keep off the table of worlds and the mission's card as well as off each other
             if (player.SystemView && game.MapSummary && !planetView) labels.Add(new Rect(56f, 510f, 1328f, 420f));
             if (briefing) labels.Add(new Rect(56f, 226f, 780f, 262f));
@@ -762,8 +773,8 @@ namespace Infinigame
                 if (charting && outpost.World == system.Reference && outpost.Fallen)
                     Mark(ground + (Vector3)(outpost.Prize + math.normalizesafe(outpost.Prize) * 3f), Campaign.Name(game.Mission.wins[0]) + (game.Mission.wins.Length > 1 ? " AND MORE" : ""),
                         Distance(math.distance(player.Position, outpost.Prize)), Accent, false, -1, true);
-                else if (charting && outpost.World == system.Reference && game.Stage < Campaign.Citadel)
-                    Mark(ground + (Vector3)((game.Goal ?? outpost.Position) + math.normalize(outpost.Position) * 3f), game.Stage == 2 && !outpost.Rooms.walls.Last().broken ? $"{DeviceControls.Fire} · PUNCH HERE" : game.Mission.name.ToUpperInvariant(), Distance(math.distance(player.Position, game.Goal ?? outpost.Position)), Accent, false, -1, true);
+                else if (charting && outpost.World == system.Reference && outpost.OuterLeft == 0 && game.Stage < Campaign.Citadel)
+                    Mark(ground + (Vector3)((game.Goal ?? outpost.Position) + math.normalize(outpost.Position) * 3f), game.Stage == 2 && !outpost.Rooms.walls.Last().broken ? $"{DeviceControls.Fire} · PUNCH HERE" : outpost.Entering ? "BURROW ENTRANCE · LAND HERE" : "MIND · FOLLOW THE TUNNEL", Distance(math.distance(player.Position, game.Goal ?? outpost.Position)), Accent, false, -1, true);
                 float3 walker = player.walker.position;
                 if (charting && !player.flying && (player.Has(Gear.Ship) || player.captive) && math.distance(walker, player.ship.position) > 25f)
                     Mark(player.ship.position - system.Anchor, player.captive ? "UNMANNED SHIP" : "SHIP", Distance(math.distance(walker, player.ship.position)), Ink, false, -1, true);
@@ -779,6 +790,12 @@ namespace Infinigame
                 {
                     float away = math.distance(foe.position, player.Position);
                     if (!playing) break;
+                    if (foe.health <= 0) continue;
+                    if (foe.outerGuard && outpost.World == system.Reference && away < 1500)
+                    {
+                        Mark(foe.position - system.Anchor, foe.stationary ? "SHIELD TURRET" : "SHIELD SHIP", Distance(away), Accent, true, -1, true, math.saturate(foe.health / math.max(1, foe.maximumHealth)));
+                        continue;
+                    }
                     if (inSpace && foe.kind != FoeKind.Raider || away > (inSpace ? 2500 : player.Powered ? 160 : 25)) continue;
                     if (!outpost.Visible((float3)eye + system.Anchor, foe.position)) continue;
                     Vector3 at = foe.position - system.Anchor, lead = at + (Vector3)((foe.velocity - player.Velocity) * (away / math.max(1, player.Weapon.speed)));

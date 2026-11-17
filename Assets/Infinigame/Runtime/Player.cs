@@ -327,7 +327,7 @@ namespace Infinigame
                     for (int sample = 1; visible && sample < 12; sample++)
                     {
                         float3 point = math.lerp(eye, at, sample / 12f);
-                        visible = math.length(point) >= Ship.Surface(Body, math.normalizesafe(point));
+                        visible = math.length(point) >= Combat.Surface(Body, point);
                     }
                     if (visible)
                     {

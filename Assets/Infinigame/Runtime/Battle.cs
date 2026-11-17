@@ -148,7 +148,7 @@ namespace Infinigame
             {
                 var foe = Foes[i];
                 // drones belong to the ground they hover over, and the base to its own place
-                if (foe.kind != FoeKind.Raider)
+                if (foe.kind != FoeKind.Raider || foe.outerGuard)
                 {
                     Foes.RemoveAt(i);
                     continue;
@@ -266,7 +266,7 @@ namespace Infinigame
                         for (int sample = 1; clear && sample < 12; sample++)
                         {
                             float3 point = math.lerp(muzzle, at, sample / 12f);
-                            clear = math.length(point) >= Ship.Surface(body, math.normalizesafe(point));
+                            clear = math.length(point) >= Combat.Surface(body, point);
                         }
                         if (clear) forward = Combat.Turn(forward, math.normalizesafe(at - muzzle), math.radians(flying ? 12 : 10));
                     }
@@ -412,8 +412,11 @@ namespace Infinigame
                     var front = game.Frontier.State(system.Reference, game.Frontier.Region(system.Reference, foe.position));
                     foe.clever = !front.mindDead && (game.Stage > 2 || game.Presence.played > 600);
                     if (front.mindDead) foe.shield = 0;
+                    if (foe.patrol && front.factory) foe.scattered = false;
                     bool hunting = !foe.friendly && !foe.scattered;
                     float3 quarry = game.Frontier.Target(foe.position, self);
+                    if (foe.outerGuard && foe.kind == FoeKind.Raider && math.distance(foe.position, game.Outpost.Position) > 220)
+                        quarry = game.Outpost.Place(new float3(0, 45, -70));
                     foe.recoil = math.max(0, foe.recoil - dt * 4);
                     foe.attack = math.max(0, foe.attack - dt * 5);
                     if (foe.kind == FoeKind.Sentry)
@@ -489,6 +492,7 @@ namespace Infinigame
                             }
                             foe.shield = 0; // A personal field must drop before its owner can fire out.
                             foe.attack = 1;
+                            shot.damage *= game.Pressure;
                             Bolts.Add(shot);
                             game.Sounds.Shot(foe.kind == FoeKind.Raider ? 6 : foe.kind == FoeKind.Base ? 8 : 7,
                                 0.45f / (1 + math.lengthsq(foe.position - self) / 2500));
@@ -595,7 +599,7 @@ namespace Infinigame
                     game.Sounds.Boom(math.saturate(1f - away / 2500f), foe.kind != FoeKind.Drone);
                     game.Award(foe.kind, credited);
                 }
-                else if (foe.kind == FoeKind.Mind || foe.kind == FoeKind.Sentry || (foe.kind == FoeKind.Base ? there : !(foe.kind == FoeKind.Raider ? away > 6000f || (ashore > 25f && !player.Has(Gear.BackMissiles)) : away > 350f))) continue;
+                else if (foe.outerGuard || foe.kind == FoeKind.Mind || foe.kind == FoeKind.Sentry || (foe.kind == FoeKind.Base ? there : !(foe.kind == FoeKind.Raider ? away > 6000f || (ashore > 25f && !player.Has(Gear.BackMissiles)) : away > 350f))) continue;
                 Foes.RemoveAt(i);
             }
             for (int i = bursts.Count - 1; i >= 0; i--)
@@ -619,7 +623,7 @@ namespace Infinigame
                 if (foe.kind == FoeKind.Raider) raiders++;
                 else if (foe.kind == FoeKind.Drone) drones++;
             // foes come sooner the further the game has gone
-            float keen = 1f + 0.15f * (game.Threat - 1);
+            float keen = (1f + 0.15f * (game.Threat - 1)) * game.Pressure;
 
             // the base sends its raiders out from its own hull while a ship is in reach
             if (atBase && aloft && raiders < math.min(2 + game.Depth, 6) && math.length(self) < 2400f && (launch -= frame) <= 0f)

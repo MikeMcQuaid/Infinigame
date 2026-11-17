@@ -261,6 +261,8 @@ namespace Infinigame.Core
         // Moves every bolt a step, takes health from the foes that the player's bolts hit and
         // drops the spent ones. Returns the damage done to the player, a sphere of this size and
         // motion. Where bolts ended against something goes into struck.
+        // Dry burrows can lie below sea level without water stopping their weapons.
+        public static float Surface(BodyDescriptor body, float3 position) => body.Dry(position) ? body.GroundRadius(math.normalizesafe(position)) : Ship.Surface(body, math.normalizesafe(position));
         public static float NuclearDamage(BodyDescriptor body, float3 blast, float3 target, float radius)
         {
             float atmosphere = body.radius + math.max(body.radius * 0.12f, body.terrain.MaxHeight * 1.45f);
@@ -313,7 +315,7 @@ namespace Infinigame.Core
                         at = foe.position - math.normalizesafe(step) * math.min(foe.size, math.distance(bolt.position, foe.position));
                     }
                 // the ground stops what misses
-                if (!hit) hit = ground = math.length(at) < Ship.Surface(body, math.normalize(at));
+                if (!hit) hit = ground = math.length(at) < Surface(body, at);
                 if (hit) struck?.Add(new Strike { at = at, blast = bolt.blast, ground = ground, level = bolt.level, foe = struckFoe, shield = blocked, hostile = bolt.hostile, robot = bolt.robot });
                 if (hit && !blocked && !bolt.hostile && bolt.blast >= 5f)
                     // a big enough bang catches whatever else is near, less the further off it is
@@ -361,7 +363,7 @@ namespace Infinigame.Core
             for (float distance = 0.5f; distance <= reach; distance += 0.5f)
             {
                 float3 at = from + direction * distance;
-                if (math.length(at) >= Ship.Surface(body, math.normalizesafe(at))) continue;
+                if (math.length(at) >= Surface(body, at)) continue;
                 reach = distance;
                 end = at;
                 struck?.Add(new Strike { at = at, ground = true, foe = -1, blast = 0.2f });
