@@ -104,13 +104,16 @@ namespace Infinigame.Tests
             var foe = game.Battle.Foes[^1]; foe.health = foe.maximumHealth = 1000; foe.patrol = true;
             game.Battle.Foes[^1] = foe;
             bool sawLaser = false;
+            LineRenderer laser = null;
             for (float until = Time.time + 9; Time.time < until;)
             {
-                sawLaser |= Object.FindObjectsByType<Transform>().Where(part => part.name == "Robodog patrol").Any(part => part.GetComponentsInChildren<LineRenderer>().Any(beam => beam.enabled));
+                if (laser == null) laser = GameObject.Find("Robodog patrol")?.GetComponentInChildren<LineRenderer>();
+                sawLaser |= laser != null && laser.enabled;
                 yield return null;
             }
             Assert.IsTrue(sawLaser, "The visible patrol, independent of the factory turret, engages nearby aliens");
             Assert.Less(game.Battle.Foes.Single(enemy => enemy.seed == foe.seed).health, 1000);
+            if (!Application.isEditor) Debug.Log("Factory encounter frame samples\n" + System.IO.File.ReadAllText(FrameLog.File));
         }
 
         [UnityTest] public IEnumerator PlaytesterShipyardEscortsFollowAndAcceptOrders()

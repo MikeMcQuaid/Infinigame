@@ -31,6 +31,14 @@ namespace Infinigame
             new LodSettings(64, 3.4f, 0.5f, 10, 160, 2f, 3f),
         };
 
+        // Hysteresis prevents a moving camera from switching meshes every frame at a boundary.
+        public static int SentryDetail(float pixels, int previous)
+        {
+            if (pixels >= (previous == 0 ? 130 : 165)) return 0;
+            if (pixels >= (previous == 2 ? 46 : 34)) return 1;
+            return 2;
+        }
+
         public static int Tier => Mathf.Clamp(QualitySettings.GetQualityLevel(), 0, Tiers.Length - 1);
         public static float Adaptive = 1;
         public static LodSettings Current

@@ -554,6 +554,13 @@ namespace Infinigame
             return hull;
         }
 
+        public static Material SentryShell()
+        {
+            var material = Hull(new Color(0.81f, 0.77f, 0.84f), 1.2f);
+            material.SetFloat("_Organic", 1);
+            return material;
+        }
+
         public static Material Cutout(Texture2D texture)
         {
             var material = new Material(Resources.Load<Shader>("Foliage")) { enableInstancing = true };

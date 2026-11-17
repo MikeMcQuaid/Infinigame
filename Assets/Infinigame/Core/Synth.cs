@@ -5,6 +5,8 @@ using Random = Unity.Mathematics.Random;
 
 namespace Infinigame.Core
 {
+    public enum EncounterCue { Emitter, Threat, Collapse, ShellHit, Footfall }
+
     public enum Wave { Sine, Saw, Square }
 
     // One second-order filter, the audio cookbook's biquad, with its own memory.
@@ -444,6 +446,45 @@ namespace Infinigame.Core
         // One thing dragged along another: a hiss about one pitch that swells and dies, rough with catching and letting go.
         public static float[] Scrape(float seconds, float hertz, uint seed) =>
             Burst(seconds, seed, BandPass(hertz, 1.2f), seconds / 2f).Shape(Wander(Samples(seconds), seed + 1, 90f), 0.7f);
+
+        public static float[] Encounter(EncounterCue cue, int take)
+        {
+            var rnd = new Random(1307u + 193u * (uint)take);
+            float pitch = rnd.NextFloat(0.89f, 1.12f);
+            var (left, right) = Blank(cue == EncounterCue.Emitter ? 0.22f : 0.58f);
+            if (cue == EncounterCue.Emitter)
+            {
+                Place(left, right, Clack(690 * pitch, rnd.NextUInt()), 0.45f);
+                Place(left, right, Thump(0.12f, 1630 * pitch, 260, 26), 0.68f, at: 0.012f);
+                Place(left, right, Scrape(0.10f, 820 * pitch, rnd.NextUInt()), 0.24f, at: 0.07f);
+            }
+            else if (cue == EncounterCue.Threat)
+            {
+                var throat = Tone(Samples(0.36f), t => pitch * (76 + 90 * t + 7 * math.sin(t * 83)), Wave.Saw);
+                Place(left, right, throat.Filter(BandPass(650 * pitch, 1.6f)).Level().Shape(t => Hit(t, 0.07f, 0.32f)), 0.72f);
+                Place(left, right, Scrape(0.27f, 1270 * pitch, rnd.NextUInt()), 0.55f, at: 0.045f);
+                Place(left, right, Clack(950 * pitch, rnd.NextUInt()), 0.28f, at: 0.23f);
+            }
+            else if (cue == EncounterCue.Footfall)
+            {
+                Place(left, right, Thump(0.13f, 110 * pitch, 60, 28), 0.65f);
+                Place(left, right, Clack(970 * pitch, rnd.NextUInt()), 0.41f, at: 0.009f);
+                Place(left, right, Scrape(0.07f, 430 * pitch, rnd.NextUInt()), 0.28f, at: 0.02f);
+            }
+            else if (cue == EncounterCue.ShellHit)
+            {
+                Place(left, right, Clack(1250 * pitch, rnd.NextUInt()), 0.6f);
+                Place(left, right, Burst(0.14f, rnd.NextUInt(), BandPass(310 * pitch, 0.72f)), 0.7f, at: 0.012f);
+            }
+            else
+            {
+                Place(left, right, Thump(0.3f, 170 * pitch, 47, 21), 0.80f);
+                Place(left, right, Burst(0.21f, rnd.NextUInt(), BandPass(470 * pitch, 0.7f)), 0.6f);
+                for (int i = 0; i < 4; i++)
+                    Place(left, right, Clack(rnd.NextFloat(370, 1200), rnd.NextUInt()), 0.3f / (i + 1), at: i * 0.037f);
+            }
+            return Master(left, right);
+        }
 
         // The weapons: 0 ship pulse cannon, 1 ship missile launch, 2 ship lance, 3 pistol, 4 pump shotgun,
         // 5 bolt-action sniper rifle, 6 raider guns, 7 drone fireball, 8 station turret, 9 assault rifle,

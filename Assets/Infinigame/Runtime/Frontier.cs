@@ -28,6 +28,7 @@ namespace Infinigame
         sealed class Unit
         {
             public Transform model;
+            public MachineMotion motion;
             public LineRenderer beam;
             public bool ship, escort;
             public Front front;
@@ -353,7 +354,8 @@ namespace Infinigame
                 if (robotTemplate == null) { robotTemplate = Models.Robot(); robotTemplate.SetParent(transform, false); robotTemplate.gameObject.SetActive(false); }
                 var model = Instantiate(ship ? shipTemplate : robotTemplate); model.gameObject.SetActive(true);
                 model.name = escort ? "Fleet escort" : ship ? "Robot patrol ship" : "Robodog patrol";
-                if (!ship) model.gameObject.AddComponent<MachineMotion>().quadruped = true;
+                MachineMotion motion = null;
+                if (!ship) { motion = model.gameObject.AddComponent<MachineMotion>(); motion.quadruped = true; }
                 else
                 {
                     model.localScale = Vector3.one * 0.35f;
@@ -367,7 +369,7 @@ namespace Infinigame
                 var colony = game.Colonies.FirstOrDefault(item => item.world == origin.world && item.region == origin.region);
                 float3 position = colony?.site ?? game.Player.Position, velocity = float3.zero;
                 if (origin.world != game.System.Reference) game.System.Descriptor.Rebase(origin.world, game.System.Reference, game.System.Clock, ref position, ref velocity);
-                units.Add(new Unit { model = model, beam = beam, ship = ship, escort = escort, front = origin, health = ship || origin.mindDead ? 350 : 25, position = position });
+                units.Add(new Unit { model = model, motion = motion, beam = beam, ship = ship, escort = escort, front = origin, health = ship || origin.mindDead ? 350 : 25, position = position });
                 assembly = 3;
             }
             int escortIndex = 0;
@@ -420,7 +422,12 @@ namespace Infinigame
                     unit.position = up * (unit.ship ? math.max(math.length(unit.position), game.System.ReferenceBody.GroundRadius(up) + 20) : game.System.ReferenceBody.GroundRadius(up));
                 float3 forward = math.normalizesafe(unit.ship ? aim - unit.position : Walker.Project(target - unit.position, up), math.cross(up, new float3(1, 0, 0)));
                 unit.model.SetPositionAndRotation(unit.position - game.System.Anchor, quaternion.LookRotationSafe(forward, up));
-                if (!unit.ship) unit.model.GetComponent<MachineMotion>().speed = enemy >= 0 ? 9 : 3;
+                float3 travel = dt > 0 ? (unit.position - before) / dt : float3.zero;
+                if (unit.motion != null)
+                {
+                    unit.motion.speed = math.length(Walker.Project(travel, up));
+                    if (dt > 0 && unit.motion.LandedFoot) game.Sounds.Encounter(EncounterCue.Footfall, unit.position);
+                }
                 if (game.Hermit.Provoked && math.distance(unit.position, game.Player.Position) < 50 && game.Outpost.Visible(unit.position, game.Player.Position))
                 {
                     unit.beam.enabled = true; unit.beam.SetPosition(0, unit.position + up - game.System.Anchor);
@@ -434,6 +441,11 @@ namespace Infinigame
                     if ((unit.fire -= dt) <= 0)
                     {
                         unit.fire = 0.15f;
+                        if (unit.motion != null)
+                        {
+                            unit.motion.recoil = 1;
+                            game.Sounds.Encounter(EncounterCue.Emitter, unit.position + up * 1.4f);
+                        }
                         var gun = Combat.Arms[1]; gun.damage = 0.15f * (unit.ship ? 22 : unit.front.mindDead ? 50 : 3);
                         unit.beamEnd = game.Battle.FriendlyFire(unit.position + up * 1.4f, aim, gun);
                     }
@@ -448,7 +460,7 @@ namespace Infinigame
                 if (unit.health <= 0)
                 {
                     if (unit.ship) unit.front.ships = math.max(0, unit.front.ships - 1); else unit.front.dogs = math.max(0, unit.front.dogs - 1);
-                    game.Corpses.AddModel(unit.model, unit.position, float3.zero, unit.ship);
+                    game.Corpses.AddModel(unit.model, unit.position, travel, unit.ship);
                     unit.model.gameObject.SetActive(false);
                 }
             }

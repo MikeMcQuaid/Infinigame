@@ -1021,16 +1021,6 @@ namespace Infinigame
         static void Add(Transform root, string name, MeshKit mesh, Material material, bool shadows = true) =>
             Shapes.Part(root, name, mesh.Mesh(name), material, Vector3.zero, Vector3.one, shadows);
 
-        public static Transform Robot()
-        {
-            var robot = Fabricator();
-            var barrel = new MeshKit();
-            barrel.Rod(new Vector3(0, 1.65f, -0.3f), new Vector3(0, 1.65f, 0.8f), 0.12f, 32);
-            barrel.Ball(new Vector3(0, 1.5f, -0.15f), new Vector3(0.3f, 0.2f, 0.3f));
-            Shapes.Part(robot, "Dorsal laser", barrel.Mesh("Dorsal laser"), Shapes.Solid(Surface.Metal, new Color(0.25f, 0.4f, 0.45f), true), Vector3.zero, Vector3.one);
-            return robot;
-        }
-
         public static Transform Camp()
         {
             var root = new GameObject("Robot shelter").transform;

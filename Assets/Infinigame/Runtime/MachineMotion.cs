@@ -11,6 +11,7 @@ namespace Infinigame
         public float speed, strike, recoil;
         public int weapon;
         public Transform look, planet;
+        public bool LandedFoot { get; private set; }
         public BodyDescriptor ground;
         Transform torso, head;
         Transform[] legs, knees, arms, elbows;
@@ -51,14 +52,35 @@ namespace Infinigame
                 }
                 speed = moving.magnitude;
             }
-            phase += speed * Time.deltaTime * (quadruped ? 4 : 2.2f);
+            float lastPhase = phase;
+            phase = Mathf.Repeat(phase + Time.deltaTime * (quadruped ? Mathf.Min(speed / 0.917f, 4.2f) * 2 * Mathf.PI : speed * 2.2f), Mathf.PI * 2);
+            LandedFoot = quadruped && !seated && (phase < lastPhase || lastPhase < Mathf.PI && phase >= Mathf.PI);
             float stride = Mathf.Clamp01(speed / (quadruped ? 1 : 5));
             torso.localPosition = torsoHome + Vector3.up * (seated ? -0.2f : Mathf.Cos(phase * 2) * 0.025f * stride);
             for (int i = 0; i < legs.Length; i++)
             {
-                float beat = Mathf.Sin(phase + (quadruped ? i == 0 || i == 3 ? 0 : Mathf.PI : i * Mathf.PI));
+                if (quadruped && !seated)
+                {
+                    float2 foot = GroundStride.Foot(phase / (2 * Mathf.PI) + (i == 1 || i == 2 ? 0.5f : 0)) * stride;
+                    float depth = 0.83f - foot.y * 0.19f, forward = foot.x * 0.55f;
+                    float reach = Mathf.Sqrt(depth * depth + forward * forward);
+                    const float thigh = 0.4045f, shin = 0.51f;
+                    float sign = i < 2 ? 1 : -1;
+                    float upper = -Mathf.Atan2(forward, depth) - sign * Mathf.Acos(Mathf.Clamp((thigh * thigh + reach * reach - shin * shin) / (2 * thigh * reach), -1, 1));
+                    float bend = sign * Mathf.Acos(Mathf.Clamp((reach * reach - thigh * thigh - shin * shin) / (2 * thigh * shin), -1, 1));
+                    legs[i].localRotation = Quaternion.Euler(upper * Mathf.Rad2Deg + 8.53f, 0, 0);
+                    knees[i].localRotation = Quaternion.Euler(bend * Mathf.Rad2Deg - 8.53f, 0, 0);
+                    continue;
+                }
+                float beat = Mathf.Sin(phase + i * Mathf.PI);
                 legs[i].localRotation = Quaternion.Euler(seated ? i < 2 ? -70 : 70 : beat * 28 * stride, 0, 0);
                 knees[i].localRotation = Quaternion.Euler(seated ? 100 : -Mathf.Max(0, -beat) * 42 * stride, 0, 0);
+            }
+            if (quadruped && !seated)
+            {
+                recoil = Mathf.MoveTowards(recoil, 0, Time.deltaTime * 6);
+                torso.localRotation = Quaternion.Euler(4 * recoil + 2 * Mathf.Cos(phase * 2) * stride, 0, 3 * Mathf.Sin(phase) * stride);
+                if (look == null) head.localRotation = Quaternion.Euler(-3 * recoil - Mathf.Cos(phase * 2) * stride, 0, -2 * Mathf.Sin(phase) * stride);
             }
             if (arms != null)
                 for (int i = 0; i < arms.Length; i++)

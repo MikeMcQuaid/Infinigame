@@ -31,7 +31,7 @@ session = players[-1]
 print(session['title'])
 print('\n'.join(session['info']))
 rows = [row for row in session['rows'] if row['doing'] in ('foot', 'flying', 'autopilot', 'landed')]
-print('Medians of five-second samples; not an aggregate per-frame percentile.')
+print('Medians across logged sample windows. Each p95 comes from its own window.')
 print('Activity      Samples     FPS    p95 ms   Worst ms   Work ms    GPU ms')
 for activity in ('foot', 'flying', 'autopilot', 'landed'):
     subset = [row for row in rows if row['doing'] == activity]

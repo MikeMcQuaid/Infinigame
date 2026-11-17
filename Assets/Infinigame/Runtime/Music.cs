@@ -81,7 +81,7 @@ namespace Infinigame
                 }
             }
             float dt = Time.unscaledDeltaTime;
-            gain = Mathf.MoveTowards(gain, song != null && !game.Dead ? 0 : game.Paused ? 0.35f : 1, dt);
+            gain = Mathf.MoveTowards(gain, song != null && !game.Dead ? 0 : game.Paused || game.Speech.Speaking ? 0.35f : 1, dt);
             bool foes = game.Battle.Foes.Any(foe => !foe.friendly && !foe.scattered);
             fight = Mathf.MoveTowards(fight, foes ? 1 : 0, dt / (foes ? 1 : 5));
             for (int mood = 0; mood < 2; mood++)

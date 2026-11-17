@@ -61,6 +61,7 @@ Shader "Infinigame/Hull"
         // blow up has lost about half of itself.
         float Breach(float4 place)
         {
+            UNITY_BRANCH if (frac(place.w) == 0.0) return -1.0;
             float3 p = place.xyz * (3.2 / _Size) + floor(place.w) * 7.31;
             float worn = frac(place.w);
             return 0.56 * Noise(p) + 0.28 * Noise(p * 2.7 + 4.1) + 0.16 * Noise(p * 8.3 + 9.7) - 0.5 - 0.5 * pow(1.0 - worn, 2.5);
@@ -135,7 +136,8 @@ Shader "Infinigame/Hull"
                 float scorch = worn > 0.0 ? smoothstep(-0.16, -0.02, breach) : 0.0;
                 float rim = max(0.05, 2.0 * fwidth(breach)), edge = worn > 0.0 ? saturate(1.0 + breach / rim) : 0.0;
                 // what smoulders comes and goes
-                float ember = Noise(input.place.xyz * (9.0 / _Size) + _Time.y * 0.5);
+                float ember = 0;
+                UNITY_BRANCH if (worn > 0 && _Organic < 1) ember = Noise(input.place.xyz * (9.0 / _Size) + _Time.y * 0.5);
 
                 InputData inputData = (InputData)0;
                 inputData.positionWS = input.positionWS;
@@ -166,7 +168,8 @@ Shader "Infinigame/Hull"
                 // the inside is all soot
                 float soot = outside ? 0.94 * scorch : 0.94;
                 surface.albedo = lerp(_BaseColor.rgb * shell.rgb * input.colour.rgb * 1.35, half3(0.02, 0.018, 0.016), soot);
-                float blood = _Organic * saturate(worn * 3 + scorch) * smoothstep(0.22, 0.55, Noise(input.place.xyz * 7));
+                float blood = 0;
+                UNITY_BRANCH if (worn > 0 && _Organic > 0) blood = _Organic * saturate(worn * 3 + scorch) * smoothstep(0.22, 0.55, Noise(input.place.xyz * 7));
                 surface.albedo = lerp(surface.albedo, half3(0.21, 0.015, 0.34), blood);
                 surface.metallic = _Metallic * (1.0 - soot) * (1 - _Organic);
                 surface.smoothness = _Smoothness * lerp(0.55, 1.25, grain) * (1.0 - 0.85 * soot);
@@ -174,7 +177,7 @@ Shader "Infinigame/Hull"
                 surface.alpha = 1.0;
                 surface.emission = _Glow.rgb * (1.0 - scorch) + (1 - _Organic) * (Fire(edge * (0.45 + 0.3 * ember)) * (0.05 / rim)
                     + (outside ? 0.0 : 1.0) * Fire(worn * (0.2 + 0.4 * ember)));
-                surface.smoothness = lerp(surface.smoothness, 0.28, _Organic);
+                surface.smoothness = lerp(surface.smoothness, lerp(0.16, 0.42, saturate((grain - 0.24) * 2.5)), _Organic);
                 surface.specular = lerp(half3(0.04, 0.04, 0.04), half3(0.015, 0.01, 0.02), _Organic);
                 half4 colour = UniversalFragmentPBR(inputData, surface);
                 colour.rgb = lerp(colour.rgb, min(colour.rgb, half3(1.15, 0.95, 1.2)), _Organic);

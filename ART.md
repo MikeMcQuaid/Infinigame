@@ -4,6 +4,20 @@ This is design guidance, not a runtime configuration file. `Models.cs`, `MeshKit
 
 Build models in passes: primary proportions and curved volumes, articulated structure, overlapping shell panels and recesses, then fasteners, cables, vents and optics. Use real geometry for silhouette and parallax, and generated normal and roughness detail for small surface marks. Additional triangles alone do not make a convincing model.
 
+## Ground encounter
+
+The robodog's overlapping ceramic shoulders, three cyan optics and articulated bearings identify it from the side. The stalker's paired back plates, fluted cheek membranes and hooked jaws give it a broader, lower silhouette. Studio development started with an original concept sheet and a generated image exploring how the surfaces could catch light. The first Unity render showed the cheek folds disappearing into the stalker’s brown shell. That led to a forward-facing, ribbed membrane and separate colours for armour, tissue and claws. The final render uses the gameplay meshes and materials. [Concept sheet](docs/art/ground-encounter-concept.jpg) · [Studio design target](docs/art/ground-encounter-lookdev.jpg) · [Original Unity models](docs/art/ground-encounter-before.jpg) · [First mesh pass](docs/art/ground-encounter-first-pass.jpg) · [Revised Unity models](docs/art/ground-encounter.jpg)
+
+The robodog's diagonal feet bear weight for three fifths of each stride. Distance travelled drives the gait and the body and head counterbalance each other. The stalker draws its shell back before attacking, lunges forwards and rocks away from a hit. All three motile castes keep their leg count and silhouette at close, medium and distant detail. Their apparent size on screen selects the mesh. Separate approach and retreat thresholds keep the mesh stable near each boundary.
+
+Each sound in the preview plays twice. In order, the sounds are a patrol footfall, the dorsal emitter, a motile warning, a shell impact and a body collapsing. In play, four spatial voices share these events. Nearby warnings take priority over quiet footsteps. Walls muffle attacks, a tunnel adds a short echo and the music and combat effects dip during speech. [Encounter sound preview](docs/art/ground-encounter-sound.mp3)
+
+Run `script/test --unity -testFilter RenderGroundEncounter` for a matching 1280 × 640 studio image and measurements in `Logs/Screenshots/ground-encounter.txt`. On an Apple M5 Max at the VR detail tier, the median of 20 warmed renders fell from 3.44 ms to 2.96 ms. Each sample includes a synchronous pixel readback. The close pair fell from 424,760 to 197,784 triangles. Use `script/performance` after a normal Mac play session to measure the whole game.
+
+A separate 1920 × 1080 HDR macOS development player ran the factory patrol against one stalker. Across 18 half-second windows on foot, median FPS was 58.5 and median GPU time was 6.5 ms. The slowest entry frame took 1.50 seconds. Burst was disabled for this build. Larger swarms, iPad and VR need their own measurements.
+
+## Models and materials
+
 The traveller has a complete articulated body for third-person play and a matching pair of first-person gauntlets. Do not expose an unambiguous human face or robotic brain. The suit is worn from the opening. Critical power leaves only emergency fists, with visible arcing at the gauntlets.
 
 Friendly quadrupeds and ships share rounded alloy armour, dark moving joints, protected cables and cyan instruments. Enemy ground bodies, scouts, ships and buildings share carapaces, fluted tissue, recessed sensory organs and warmer internal light. Maintain different silhouettes for workers, scouts, armed ground bodies and rooted minds.
@@ -28,11 +42,11 @@ Desktop close-view triangle counts from the checked render:
 
 | Model | Triangles |
 |---|---:|
-| Foundry companion with dorsal laser | 189,008 |
-| Powered suit, including gauntlets and pack | 209,704 |
-| Stalker, including six legs | 235,752 |
-| Breacher, including eight legs | 317,188 |
-| Spitter, including four legs | 312,344 |
+| Foundry companion with dorsal laser | 125,008 |
+| Powered suit, including gauntlets and pack | 133,672 |
+| Stalker, including six legs | 72,776 |
+| Breacher, including eight legs | 121,580 |
+| Spitter, including four legs | 129,824 |
 | Flying scout | 146,816 |
 | Presence vessel | 382,752 |
 
@@ -40,14 +54,6 @@ These are the complete model counts, not triangles on screen every frame. Instan
 
 Recent sound additions include a rising rail-charge loop and a low, modulated mind presence that is muffled by tunnel walls and stops on death. Organic damage no longer uses white-hot metal emission. Minds collapse into separated violet sections; their blood spreads along the sampled terrain, follows slopes and settles with fading ripples. This is bounded surface flow, not a general fluid simulation.
 
-The next useful sound improvements are separate music, speech and effects volume controls; automatic music ducking during instructions; different near/far weapon layers; wet tissue impacts distinct from alloy impacts; and recognisable calls for each hostile caste. Add a quiet repair hum to the multicoloured scanning beams and brief robodog acknowledgements for deployment, target acquisition and victory. A headphone/night-time dynamic-range setting would help quiet listening without losing mission speech. These are proposals, not implemented settings.
+Future audio work can add distinct calls for each caste, a quiet repair hum and separate music, speech and effects volume controls. Compare the existing spatial mix on headphones and handheld speakers before introducing another audio system.
 
-## Next fidelity pass
-
-The current close meshes already use hundreds of thousands of triangles. More subdivisions are unlikely to fix their appearance and would make swarm combat harder to sustain. First improve silhouette, proportions, articulation, material separation and lighting. Build one representative enemy and one factory scene to a consistent standard before extending that treatment to the whole cast.
-
-Use close, medium and distant mesh variants with stable screen-size thresholds. Retain silhouette and moving joints; move pores, fine panel relief and scratches into normal/roughness maps. Reuse a few texture families and atlas repeated parts. Keep 2K hero materials on desktop and selective 1K mobile maps until actual device captures justify more. Consider offline baking generated textures and meshes into the build to remove first-use generation stalls, while keeping code as their source.
-
-For sound, the highest-value step is a layered event palette: attack anticipation, discharge, mechanical movement, impact, debris and a separate distant tail. Add several deterministic variations per event, material-specific impacts, cave occlusion/reverb and a strict simultaneous-voice budget. Mix enemy warnings above the swarm, duck music under the companion and compress loud peaks for handheld speakers. These are proposed production steps, not implemented audio features or a claim of AAA quality. Recorded or licensed source material would require changing the repository's current generated-audio policy.
-
-Unity already provides [mesh LOD](https://docs.unity.com/en-us/engine/6000.6/manual/analysis/graphics-performance-profiling/lod/mesh-lod) and [mixer routing, effects and snapshots](https://docs.unity.com/en-us/engine/6000.6/manual/audio/mixer/overview). Use these as reference points for the generated rendering and sound paths before adding middleware.
+For later passes, measure first-use stalls before choosing which generated meshes or textures to bake into the build. Extend the screen-size detail treatment to the factory and ships using captures from those encounters.

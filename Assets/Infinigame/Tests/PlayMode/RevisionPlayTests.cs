@@ -197,6 +197,7 @@ namespace Infinigame.Tests
             display.localPosition = new Vector3(-6, 1, -3);
             var hull = Shapes.Hull(new Color(0.5f, 0.43f, 0.35f), 1.2f);
             var glow = Shapes.Hull(Color.black, 1.2f, new Color(2.5f, 0.12f, 0.015f));
+            var sentryShell = Shapes.SentryShell();
             var metrics = new System.Text.StringBuilder();
             foreach (var caste in new[] { MotileCaste.Stalker, MotileCaste.Breacher, MotileCaste.Spitter })
             {
@@ -204,11 +205,11 @@ namespace Infinigame.Tests
                 int triangles = (shell.triangles.Length + senses.triangles.Length + Models.LimbCount(caste) * limb.triangles.Length) / 3;
                 metrics.AppendLine($"{caste}: {triangles:N0} triangles");
                 Assert.Greater(triangles, 30000, "Close bodies must retain curved anatomy and shell detail");
-                Shapes.Part(display, "Body", shell, hull, Vector3.zero, Vector3.one);
+                Shapes.Part(display, "Body", shell, sentryShell, Vector3.zero, Vector3.one);
                 Shapes.Part(display, "Eyes", senses, glow, Vector3.zero, Vector3.one);
                 for (int i = 0; i < Models.LimbCount(caste); i++)
                 {
-                    var part = Shapes.Part(display, "Leg", limb, hull, Models.LimbRoot(caste, i), Vector3.one);
+                    var part = Shapes.Part(display, "Leg", limb, sentryShell, Models.LimbRoot(caste, i), Vector3.one);
                     part.transform.localRotation = Quaternion.Euler(0, i < Models.LimbCount(caste) / 2 ? 180 : 0, 0);
                 }
                 string name = caste == MotileCaste.Stalker ? "94-presence-sentry" : "99-" + caste.ToString().ToLowerInvariant();

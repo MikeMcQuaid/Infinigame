@@ -17,6 +17,12 @@ namespace Infinigame
         readonly List<(Task<float[]> sound, Action<AudioClip> ready)> making = new List<(Task<float[]>, Action<AudioClip>)>();
         readonly AudioClip[][] shots = new AudioClip[Mix.Shots.Length][];
         readonly AudioSource[] voices = new AudioSource[8];
+        readonly AudioClip[][] encounters = new AudioClip[(int)EncounterCue.Footfall + 1][];
+        readonly (AudioSource source, AudioLowPassFilter filter, AudioEchoFilter echo)[] nearby = new (AudioSource, AudioLowPassFilter, AudioEchoFilter)[4];
+        readonly float3[] origins = new float3[4];
+        readonly float[] gains = new float[4];
+        int soundWorld = -1;
+        float duck = 1;
         readonly AudioSource[] geiger = new AudioSource[3];
         AudioSource engine, bike, whine, wind, rain, jetpack, beam, effects, charge, mind;
         AudioClip[] booms, bigBooms, thuds, steps, digs;
@@ -30,6 +36,28 @@ namespace Infinigame
             AudioListener.volume = Application.isBatchMode ? 0f : 1f;
             effects = gameObject.AddComponent<AudioSource>();
             for (int i = 0; i < voices.Length; i++) voices[i] = gameObject.AddComponent<AudioSource>();
+            for (int i = 0; i < nearby.Length; i++)
+            {
+                var emitter = new GameObject("Encounter sound");
+                emitter.transform.SetParent(transform, false);
+                var source = emitter.AddComponent<AudioSource>();
+                source.playOnAwake = false;
+                source.spatialBlend = 1;
+                source.dopplerLevel = 0;
+                source.rolloffMode = AudioRolloffMode.Logarithmic;
+                source.minDistance = 6;
+                source.maxDistance = 100;
+                var filter = emitter.AddComponent<AudioLowPassFilter>();
+                var echo = emitter.AddComponent<AudioEchoFilter>();
+                echo.delay = 68; echo.decayRatio = 0.23f; echo.wetMix = 0.2f;
+                filter.enabled = echo.enabled = false;
+                nearby[i] = (source, filter, echo);
+            }
+            for (int i = 0; i < encounters.Length; i++)
+            {
+                var cue = (EncounterCue)i;
+                encounters[i] = Takes(3, take => Synth.Encounter(cue, take));
+            }
             engine = Loop(Synth.Engine);
             whine = Loop(Synth.Whine);
             wind = Loop(Synth.Wind);
@@ -74,6 +102,18 @@ namespace Infinigame
                 ready(Clip(sound.Result));
             }
 
+            duck = Mathf.MoveTowards(duck, game.Speech.Speaking ? 0.42f : 1f, Time.unscaledDeltaTime * 4);
+            effects.volume = duck;
+            foreach (var voice in voices) voice.volume = duck;
+            for (int i = 0; i < nearby.Length; i++)
+            {
+                var source = nearby[i].source;
+                if (!source.isPlaying) continue;
+                if (soundWorld != game.System.Reference || game.Paused) { source.Stop(); continue; }
+                source.transform.position = origins[i] - game.System.Anchor;
+                source.volume = gains[i] * duck;
+            }
+            soundWorld = game.System.Reference;
             var player = game.Player;
             // a menu or the end of a run hushes the world, whose clock has stopped
             bool live = !game.Paused && !game.Dead && !game.Hermit.Talking && !game.Player.SystemView && !game.ShowControls, airborne = live && player.flying && !player.ship.landed;
@@ -132,6 +172,37 @@ namespace Infinigame
         public void Shot(int voice, float volume = 1f) => Play(Take(shots[voice]), Mix.Shots[voice] * volume, voice is 1 or 2 or 4 or 5 or 10 ? 0f : 0.04f);
 
         // A magazine changed, start to finish: about a second and a half.
+        public void Encounter(EncounterCue cue, float3 at)
+        {
+            float3 ear = game.Player.Position;
+            float distance = math.distancesq(at, ear);
+            if (distance > 100 * 100 || soundWorld != game.System.Reference) return;
+            var clip = Take(encounters[(int)cue]);
+            if (clip == null) return;
+            float gain = cue == EncounterCue.Footfall ? 0.16f : cue == EncounterCue.Emitter ? 0.28f : cue == EncounterCue.ShellHit ? 0.43f : 0.76f;
+            float priority = gain / math.max(36, distance);
+            int best = -1;
+            for (int i = 0; i < nearby.Length; i++)
+            {
+                if (!nearby[i].source.isPlaying) { best = i; break; }
+                float playing = gains[i] / math.max(36, math.distancesq(origins[i], ear));
+                if (playing < priority) { best = i; priority = playing; }
+            }
+            if (best < 0) return;
+            var (source, filter, echo) = nearby[best];
+            source.Stop();
+            bool obstructed = !game.Outpost.Visible(ear, at);
+            filter.enabled = obstructed || distance > 24 * 24;
+            if (filter.enabled) filter.cutoffFrequency = obstructed ? 1250 : Mathf.Lerp(8000, 2400, Mathf.Sqrt(distance) / 100);
+            echo.enabled = game.Outpost.World == game.System.Reference && game.Outpost.Rooms != null && !game.Outpost.Entering;
+            origins[best] = at;
+            gains[best] = gain * (obstructed ? 0.55f : 1f);
+            source.transform.position = at - game.System.Anchor;
+            source.volume = gains[best] * duck;
+            source.clip = clip;
+            source.Play();
+        }
+
         public void Reload() => Play(reload, Mix.Reload);
 
         public void DryFire() => Play(dryFire, Mix.DryFire, 0.03f);

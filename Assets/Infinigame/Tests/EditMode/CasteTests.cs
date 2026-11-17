@@ -7,6 +7,21 @@ namespace Infinigame.Tests
     public class CasteTests
     {
         [Test]
+        public void GroundFeetPlantThroughStanceAndReturnWithoutSnapping()
+        {
+            var touchdown = GroundStride.Foot(0);
+            var stance = GroundStride.Foot(0.3f);
+            var lift = GroundStride.Foot(0.6f);
+            var swing = GroundStride.Foot(0.8f);
+            Assert.AreEqual(0, stance.y);
+            Assert.AreEqual((touchdown.x + lift.x) * 0.5f, stance.x, 0.0001f);
+            Assert.Greater(touchdown.x, lift.x);
+            Assert.Greater(swing.y, 0.9f);
+            Assert.Less(math.distance(lift, GroundStride.Foot(0.6001f)), 0.002f);
+            Assert.Less(math.distance(touchdown, GroundStride.Foot(0.9999f)), 0.002f);
+        }
+
+        [Test]
         public void FirstBurrowContainsOnlyStalkers()
         {
             Assert.AreEqual(MotileCaste.Stalker, Combat.Caste(2, 0));

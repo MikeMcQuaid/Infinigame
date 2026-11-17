@@ -670,6 +670,21 @@ namespace Infinigame.Tests
     // The parts the sounds are built from.
     public class SynthTests
     {
+        [TestCase(EncounterCue.Emitter)]
+        [TestCase(EncounterCue.Threat)]
+        [TestCase(EncounterCue.Collapse)]
+        [TestCase(EncounterCue.Footfall)]
+        [TestCase(EncounterCue.ShellHit)]
+        public void EncounterCuesHaveDistinctBoundedTakes(EncounterCue cue)
+        {
+            var a = Encounter(cue, 0);
+            var b = Encounter(cue, 1);
+            Assert.IsTrue(a.All(value => math.isfinite(value) && math.abs(value) <= 1));
+            Assert.Greater(Measure.Rms(a), 0.015f);
+            Assert.AreEqual(0, a.Length % 2);
+            Assert.IsFalse(a.SequenceEqual(b));
+        }
+
         [TestCase(61.74f, 600f)]
         [TestCase(61.74f, 4500f)]
         [TestCase(110f, 4500f)]

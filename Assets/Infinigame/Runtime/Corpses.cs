@@ -36,7 +36,7 @@ namespace Infinigame
         public void Prepare(Mesh source)
         {
             if (pieces.ContainsKey(source)) return;
-            var vertices = source.vertices; var normals = source.normals; var uv = source.uv; var triangles = source.triangles;
+            var vertices = source.vertices; var normals = source.normals; var colours = source.colors32; var uv = source.uv; var triangles = source.triangles;
             var groups = Enumerable.Range(0, 8).Select(_ => new List<int>()).ToArray();
             for (int i = 0; i < triangles.Length; i += 3)
             {
@@ -53,6 +53,7 @@ namespace Infinigame
                 var mesh = new Mesh { name = source.name + " wreck section", indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
                 mesh.vertices = points.Select(point => point - centre).ToArray();
                 if (normals.Length == vertices.Length) mesh.normals = indices.Select(index => normals[index]).ToArray();
+                if (colours.Length == vertices.Length) mesh.colors32 = indices.Select(index => colours[index]).ToArray();
                 if (uv.Length == vertices.Length) mesh.uv = indices.Select(index => uv[index]).ToArray();
                 mesh.triangles = group.Select(index => map[index]).ToArray(); mesh.RecalculateBounds();
                 return (mesh, centre);

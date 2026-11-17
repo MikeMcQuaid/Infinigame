@@ -39,8 +39,10 @@ namespace Infinigame
         Mesh emplacement;
         readonly Instances emplacements = new Instances();
         Mesh raider, raiderLights, drone, droneEye, ball, missile, mind, mindLights;
-        readonly Mesh[] sentry = new Mesh[3], sentryEye = new Mesh[3], leg = new Mesh[3];
-        readonly Instances[] sentries = { new Instances(), new Instances(), new Instances() }, legs = { new Instances(), new Instances(), new Instances() };
+        readonly Mesh[] sentry = new Mesh[9], sentryEye = new Mesh[9], leg = new Mesh[9];
+        readonly Instances[] sentries = new Instances[9], legs = new Instances[9];
+        Camera view;
+        Material sentryShell;
         readonly Instances minds = new Instances();
         Material raiderHull, raiderGlow, droneHull, droneGlow, ours, theirs, fire, casing;
         Random rnd = new Random(1);
@@ -66,7 +68,14 @@ namespace Infinigame
         {
             (raider, raiderLights) = Models.Raider();
             (drone, droneEye) = Models.Drone();
-            for (int i = 0; i < 3; i++) (sentry[i], sentryEye[i], leg[i]) = Models.Sentry((MotileCaste)i);
+            view = Camera.main;
+            sentryShell = Shapes.SentryShell();
+            for (int i = 0; i < sentry.Length; i++)
+            {
+                (sentry[i], sentryEye[i], leg[i]) = Models.Sentry((MotileCaste)(i % 3), i / 3);
+                sentries[i] = new Instances();
+                legs[i] = new Instances();
+            }
             (mind, mindLights) = Models.Mind();
             var turretModel = Models.Building(Building.Turret);
             var turretParts = turretModel.GetComponentsInChildren<MeshFilter>().Select(part => new CombineInstance { mesh = part.sharedMesh, transform = turretModel.worldToLocalMatrix * part.transform.localToWorldMatrix }).ToArray();
@@ -494,7 +503,8 @@ namespace Infinigame
                             foe.attack = 1;
                             shot.damage *= game.Pressure;
                             Bolts.Add(shot);
-                            game.Sounds.Shot(foe.kind == FoeKind.Raider ? 6 : foe.kind == FoeKind.Base ? 8 : 7,
+                            if (foe.kind != FoeKind.Sentry || foe.stationary || foe.caste != MotileCaste.Stalker)
+                                game.Sounds.Shot(foe.kind == FoeKind.Raider ? 6 : foe.kind == FoeKind.Base ? 8 : 7,
                                 0.45f / (1 + math.lengthsq(foe.position - self) / 2500));
                         }
                     }
@@ -510,6 +520,18 @@ namespace Infinigame
                         float3 away = Walker.Project(foe.position - game.Hermit.Position, up);
                         float gap = math.length(away);
                         if (gap < 1.8f && gap > 0.01f) foe.position += away * ((1.8f - gap) / gap);
+                    }
+                    if (foe.kind == FoeKind.Sentry && !foe.stationary)
+                    {
+                        float travel = math.length(Walker.Project(foe.position - before, math.normalizesafe(before)));
+                        foe.pace = math.lerp(foe.pace, math.saturate(travel / math.max(0.001f, dt * 2)), math.min(1, dt * 14));
+                        foe.stride = math.frac(foe.stride + math.min(travel / 0.94f, dt * 4.5f));
+                        float reach = Combat.SentryReach(foe.caste);
+                        float coil = hunting && !foe.scattered && math.distancesq(foe.position, quarry) < (reach + 2) * (reach + 2)
+                            ? math.saturate(1 - math.max(0, foe.cooldown) / 0.4f) : 0;
+                        float previous = foe.windup;
+                        foe.windup = math.lerp(previous, coil, math.min(1, dt * 16));
+                        if (previous < 0.28f && foe.windup >= 0.28f) game.Sounds.Encounter(EncounterCue.Threat, foe.position);
                     }
                     Foes[i] = foe;
                 }
@@ -563,6 +585,7 @@ namespace Infinigame
                 else if (strike.foe >= 0)
                 {
                     var foe = Foes[strike.foe];
+                    if (foe.kind == FoeKind.Sentry && !foe.stationary) game.Sounds.Encounter(EncounterCue.ShellHit, strike.at);
                     effects.Flesh(strike.at, math.normalizesafe(strike.at - foe.position, -where), math.min(foe.size, 4), foe.velocity);
                 }
                 else if (sea && strike.blast >= 1.2f) effects.Steam(strike.at, where, hole);
@@ -586,7 +609,7 @@ namespace Infinigame
                 if (foe.health <= 0f)
                 {
                     Mesh corpse = foe.kind == FoeKind.Raider ? raider : foe.kind == FoeKind.Sentry ? deadSentry[(int)foe.caste] : foe.kind == FoeKind.Mind ? mind : drone;
-                    game.Corpses.Add(corpse, foe.kind == FoeKind.Raider ? raiderHull : droneHull, foe.position, Quaternion.LookRotation(foe.forward, up), foe.velocity, foe.kind == FoeKind.Raider ? 0.8f : foe.kind == FoeKind.Mind ? foe.size * 0.2f : 0.25f, foe.kind == FoeKind.Mind ? foe.size / 2 : 1, foe.kind == FoeKind.Mind);
+                    game.Corpses.Add(corpse, foe.kind == FoeKind.Raider ? raiderHull : foe.kind == FoeKind.Sentry ? sentryShell : droneHull, foe.position, Quaternion.LookRotation(foe.forward, up), foe.velocity, foe.kind == FoeKind.Raider ? 0.8f : foe.kind == FoeKind.Mind ? foe.size * 0.2f : 0.25f, foe.kind == FoeKind.Mind ? foe.size / 2 : 1, foe.kind == FoeKind.Mind);
                     game.Effects.Bleed(foe.position, math.min(9, foe.size * 1.4f));
                     if (foe.stationary) body.foundations.RemoveAll(foundation => math.distance(foundation.xyz, foe.position) < 5);
                     bool credited = playerHits.Remove(foe.seed);
@@ -596,7 +619,8 @@ namespace Infinigame
                     else front.aliens = math.max(0, front.aliens - 1);
                     if (credited && !flying && player.Powered && weapon.melee && away < 8) player.energy = math.min(Suit.Capacity + 50, player.energy + 22);
                     if (credited && weapon.rail) { player.health = math.min(player.MaxHealth, player.health + 8); player.hull = math.min(player.MaxHull, player.hull + 8); }
-                    game.Sounds.Boom(math.saturate(1f - away / 2500f), foe.kind != FoeKind.Drone);
+                    if (foe.kind == FoeKind.Sentry && !foe.stationary) game.Sounds.Encounter(EncounterCue.Collapse, foe.position);
+                    else game.Sounds.Boom(math.saturate(1f - away / 2500f), foe.kind != FoeKind.Drone);
                     game.Award(foe.kind, credited);
                 }
                 else if (foe.outerGuard || foe.kind == FoeKind.Mind || foe.kind == FoeKind.Sentry || (foe.kind == FoeKind.Base ? there : !(foe.kind == FoeKind.Raider ? away > 6000f || (ashore > 25f && !player.Has(Gear.BackMissiles)) : away > 350f))) continue;
@@ -678,8 +702,11 @@ namespace Infinigame
             foreach (var list in new[] { raiders, drones, flashes, missiles, minds, bolts[0], bolts[1] }) list.Clear();
             foreach (var list in sentries) list.Clear();
             foreach (var list in legs) list.Clear();
-            foreach (var foe in Foes)
+            float focalPixels = view.scaledPixelHeight * view.projectionMatrix.m11 * 0.5f;
+            float3 eye = (float3)view.transform.position + anchor;
+            for (int index = 0; index < Foes.Count; index++)
             {
+                var foe = Foes[index];
                 if (game.Player.InSpace && foe.kind != FoeKind.Raider && foe.kind != FoeKind.Base && game.System.ReferenceBody.kind != BodyKind.Station) continue;
                 float3 up = game.System.ReferenceBody.kind == BodyKind.Station ? new float3(0, 1, 0) : math.normalizesafe(foe.position, new float3(0, 1, 0));
                 if (foe.shield > 0)
@@ -700,14 +727,24 @@ namespace Infinigame
                 else if (foe.kind == FoeKind.Sentry)
                 {
                     Quaternion facing = Quaternion.LookRotation(math.normalizesafe(Walker.Project(foe.forward, up), new float3(0, 0, 1)), up);
-                    sentries[(int)foe.caste].Add(Matrix4x4.TRS(foe.position - anchor, facing * Quaternion.Euler(-foe.attack * 18 + foe.recoil * 24, 0, math.sin(foe.seed) * foe.recoil * 18), new Vector3(1 + foe.recoil * 0.08f, 1 - foe.recoil * 0.12f, 1)), battered, foe.seed);
+                    float range = math.distance(foe.position, eye);
+                    float pixels = 2 * foe.size * focalPixels / math.max(1, range);
+                    int detail = LodSettings.SentryDetail(pixels, foe.detail);
+                    if (foe.detail != detail) { foe.detail = detail; Foes[index] = foe; }
+                    int batch = detail * 3 + (int)foe.caste;
+                    float cycle = foe.stride + (foe.seed % 37u) / 37f;
+                    Vector3 sway = new Vector3(0, -foe.windup * 0.12f + math.sin(cycle * math.PI * 4) * 0.035f * foe.pace, foe.attack * 0.18f - foe.windup * 0.08f);
+                    sentries[batch].Add(Matrix4x4.TRS(foe.position - anchor + (float3)(facing * sway),
+                        facing * Quaternion.Euler(foe.windup * 12 - foe.attack * 18 + foe.recoil * 24, 0, math.sin(foe.seed) * foe.recoil * 18),
+                        new Vector3(1 + foe.recoil * 0.08f, 1 - foe.recoil * 0.12f, 1)), battered, foe.seed);
                     for (int i = 0; i < Models.LimbCount(foe.caste); i++)
                     {
-                        float side = i < Models.LimbCount(foe.caste) / 2 ? -1 : 1, stride = math.min(math.length(foe.velocity) * 0.012f, 0.08f);
+                        int pairs = Models.LimbCount(foe.caste) / 2;
+                        bool left = i < pairs;
                         Vector3 attachment = Models.LimbRoot(foe.caste, i);
-                        float lift = math.max(0, math.sin(beat * 7 + (i % 2) * math.PI)) * stride;
-                        legs[(int)foe.caste].Add(Matrix4x4.TRS(foe.position - anchor + (float3)(facing * (attachment + Vector3.up * lift)),
-                            facing * Quaternion.Euler(0, side < 0 ? 180 : 0, 0), Vector3.one), battered, foe.seed);
+                        float2 foot = GroundStride.Foot(cycle + ((i % pairs + (left ? 0 : 1)) % 2) * 0.5f) * foe.pace;
+                        legs[batch].Add(Matrix4x4.TRS(foe.position - anchor + (float3)(facing * attachment),
+                            facing * Quaternion.Euler(-foot.x * 34, 0, (left ? -1 : 1) * foot.y * 11) * Quaternion.Euler(0, left ? 180 : 0, 0), Vector3.one), battered, foe.seed);
                     }
                 }
             }
@@ -734,11 +771,11 @@ namespace Infinigame
             raiders.Draw(raiderLights, raiderGlow, false, bounds);
             drones.Draw(drone, droneHull, true, bounds);
             drones.Draw(droneEye, droneGlow, false, bounds);
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < sentries.Length; i++)
             {
-                sentries[i].Draw(sentry[i], droneHull, true, bounds);
+                sentries[i].Draw(sentry[i], sentryShell, true, bounds);
                 sentries[i].Draw(sentryEye[i], droneGlow, false, bounds);
-                legs[i].Draw(leg[i], droneHull, true, bounds);
+                legs[i].Draw(leg[i], sentryShell, true, bounds);
             }
             minds.Draw(mind, droneHull, true, bounds);
             minds.Draw(mindLights, droneGlow, false, bounds);

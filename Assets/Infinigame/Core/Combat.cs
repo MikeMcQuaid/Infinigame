@@ -19,10 +19,10 @@ namespace Infinigame.Core
         // how big a target it is, as the radius of a ball
         public float health, cooldown, size, maximumHealth;
         // A raider fires in bursts, and breaks away after each pass before turning back.
-        public int burst;
+        public int burst, detail;
         public bool away, scattered, friendly, stationary, guardian, outerGuard, protectedCore;
         public Alert alert;
-        public float suspicion, recoil, attack, shield, burrowing;
+        public float suspicion, recoil, attack, shield, burrowing, stride, pace, windup;
         public bool clever;
         public bool patrol;
         public uint seed, random;
@@ -127,6 +127,8 @@ namespace Infinigame.Core
         public static float Health(FoeKind kind, int depth, MotileCaste caste = MotileCaste.Stalker) =>
             (kind == FoeKind.Sentry ? caste == MotileCaste.Breacher ? 90f : caste == MotileCaste.Spitter ? 45f : 35f
             : kind == FoeKind.Raider ? 60f : kind == FoeKind.Drone ? 35f : kind == FoeKind.Mind ? 120f : 1500f);
+        public static float SentryReach(MotileCaste caste) => caste == MotileCaste.Stalker ? 3.5f : caste == MotileCaste.Spitter ? 70f : 12f;
+
         public static float Damage(FoeKind kind, int depth) => (kind == FoeKind.Raider ? 6f : kind == FoeKind.Drone ? 9f : 8f);
 
         public static MotileCaste Caste(int stage, int guard) => stage <= 2 ? MotileCaste.Stalker : (MotileCaste)((guard + stage - 2) % 3);
@@ -226,7 +228,7 @@ namespace Infinigame.Core
                     foe.position = up * (foe.kind == FoeKind.Sentry ? floor + 0.9f : math.max(floor + 0.8f, math.lerp(math.length(foe.position), floor + Hover, 1 - math.exp(-4 * dt))));
                 }
                 foe.forward = Turn(foe.forward, to / distance, 2.5f * dt);
-                if (distance > (stalker ? 3.5f : spitter ? 70 : breacher ? 12 : DroneReach) || foe.cooldown > 0f) return false;
+                if (distance > (foe.kind == FoeKind.Sentry ? SentryReach(foe.caste) : DroneReach) || foe.cooldown > 0f) return false;
                 foe.cooldown = (spitter ? 3 : breacher ? 2 : 1.4f) + rnd.NextFloat(0.8f);
                 float speed = stalker ? 140 : spitter ? 24 : DroneBolt;
                 shot = Fire(foe.position, math.normalize(to + targetVelocity * (distance / speed)), float3.zero, speed,

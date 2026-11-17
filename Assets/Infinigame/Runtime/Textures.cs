@@ -116,9 +116,11 @@ namespace Infinigame
                     float3 scales = Cells(uv * new float2(17, 27) + 0.55f * (warp - 0.5f), new float2(17, 27));
                     float seam = 1 - math.smoothstep(0.015f, 0.1f, scales.y - scales.x);
                     float striae = 0.5f + 0.5f * noise.pnoise(uv * new float2(12, 180), new float2(12, 180));
-                    float3 colour = math.lerp(new float3(0.34f, 0.42f, 0.44f), new float3(0.96f, 0.83f, 0.61f), warp);
+                    float3 colour = math.lerp(new float3(0.43f, 0.43f, 0.50f), new float3(0.94f, 0.87f, 0.92f), warp);
+                    float ridge = math.pow(0.5f + 0.5f * math.cos((uv.y * 21 + math.abs(math.sin(uv.x * math.PI * 8)) * 0.8f + warp) * 2 * math.PI), 5);
+                    colour *= 0.80f + 0.20f * ridge;
                     colour *= (0.75f + striae * 0.16f + pores * 0.15f) * (1 - seam * 0.42f);
-                    return new float4(colour, 0.55f - seam * 0.28f + striae * 0.045f + pores * 0.04f);
+                    return new float4(colour, 0.49f + ridge * 0.16f - seam * 0.28f + striae * 0.045f + pores * 0.04f);
                 }
                 case Surface.Sand:
                 {

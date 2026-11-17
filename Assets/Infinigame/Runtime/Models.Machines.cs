@@ -62,10 +62,11 @@ namespace Infinigame
         static void Piston(MeshKit frame, MeshKit shell, Vector3 a, Vector3 b, float radius)
         {
             Vector3 mid = Vector3.Lerp(a, b, 0.55f);
-            frame.Rod(a, b, radius * 0.55f, Curves);
-            shell.Rod(a, mid, radius, Curves, radius * 0.86f);
-            frame.Ball(a, radius * 1.2f, Curves);
-            frame.Ball(b, radius * 0.85f, Curves);
+            int sides = radius < 0.05f ? 16 : Curves;
+            frame.Rod(a, b, radius * 0.55f, sides);
+            shell.Rod(a, mid, radius, sides, radius * 0.86f);
+            frame.Ball(a, radius * 1.2f, sides);
+            frame.Ball(b, radius * 0.85f, sides);
         }
 
         static void CladLimb(Transform root, float length, float width, bool foot = false)
@@ -198,7 +199,30 @@ namespace Infinigame
             Add(pack, "Nozzles", shell, Alloy); Add(pack, "Cooling fins", frame, Mechanism); Add(pack, "Thruster light", glow, Optics, false);
         });
 
-        static Transform Fabricator() => Machine("Robot", root =>
+        // A swept plate with a broad leading lip, crowned section and a trailing point.
+        static void Scute(MeshKit kit, Vector3 nose, Vector3 tip, Vector3 across, float width, float crown, int samples = 10)
+        {
+            Vector3 along = (tip - nose).normalized;
+            across = Vector3.ProjectOnPlane(across, along).normalized;
+            Vector3 normal = Vector3.Cross(along, across);
+            var rings = new Vector3[samples + 1][];
+            for (int i = 0; i < rings.Length; i++)
+            {
+                float t = i / (float)samples;
+                float taper = Mathf.Sin(Mathf.Pow(t, 0.62f) * Mathf.PI);
+                Vector3 spine = Vector3.Lerp(nose, tip, t) + normal * (crown * taper);
+                var ring = rings[i] = new Vector3[samples + 2];
+                for (int j = 0; j < ring.Length; j++)
+                {
+                    float angle = j * 2 * Mathf.PI / ring.Length;
+                    ring[j] = spine + taper * (across * (Mathf.Cos(angle) * width)
+                        + normal * (Mathf.Sin(angle) * crown * 0.65f));
+                }
+            }
+            kit.Skin(rings);
+        }
+
+        public static Transform Robot() => Machine("Robot", root =>
         {
             var torso = Child(root, "Torso"); torso.localPosition = new Vector3(0, 1.05f, 0);
             MeshKit shell = new MeshKit(), frame = new MeshKit(), seal = new MeshKit();
@@ -221,7 +245,15 @@ namespace Infinigame
                 }
             }
             for (int i = -2; i <= 2; i++) seal.Tube(Path(18, new Vector3(i * 0.055f, 0.18f, -0.7f), new Vector3(i * 0.06f, 0.31f, 0), new Vector3(i * 0.05f, 0.27f, 0.61f)), 0.014f, 12);
-            Add(torso, "Overlapping carapace", shell, Alloy); Add(torso, "Spinal mechanisms", frame, Mechanism); Add(torso, "Cables", seal, Rubber);
+            foreach (float side in new[] { -1f, 1f })
+                for (int i = 0; i < 4; i++)
+                {
+                    float z = 0.73f - i * 0.32f;
+                    Scute(shell, new Vector3(side * 0.16f, 0.22f, z), new Vector3(side * 0.48f, -0.1f, z - 0.49f),
+                        new Vector3(-1, side * 0.8f, 0), 0.21f, 0.085f);
+                }
+            var ivory = Paint(new Color(0.84f, 0.80f, 0.68f), 0.18f, 0.42f, Surface.Ceramic);
+            Add(torso, "Overlapping carapace", shell, ivory); Add(torso, "Spinal mechanisms", frame, Mechanism); Add(torso, "Cables", seal, Rubber);
             var neck = Child(torso, "Neck"); neck.localPosition = new Vector3(0, 0.12f, 0.58f);
             shell = new MeshKit(); frame = new MeshKit();
             foreach (float side in new[] { -1f, 1f })
@@ -246,14 +278,26 @@ namespace Infinigame
                 Bearing(frame, new Vector3(side * 0.2f, 0.01f, 0), 0.065f);
                 frame.Tube(Path(10, new Vector3(side * 0.15f, 0.08f, -0.15f), new Vector3(side * 0.19f, 0.2f, -0.1f), new Vector3(side * 0.15f, 0.26f, 0)), 0.012f, 12);
             }
-            Add(head, "Sensor housing", shell, Alloy); Add(head, "Optical mounts", frame, Mechanism); Add(head, "Three optics", glow, Optics, false);
+            foreach (float side in new[] { -1f, 1f })
+                Scute(shell, new Vector3(side * 0.12f, 0.13f, -0.29f), new Vector3(side * 0.14f, 0.045f, 0.32f),
+                    new Vector3(1, -side * 0.31f, 0), 0.154f, 0.051f);
+            Add(head, "Sensor housing", shell, ivory); Add(head, "Optical mounts", frame, Mechanism); Add(head, "Three optics", glow, Optics, false);
+            var barrel = new MeshKit();
+            barrel.Place(Move(0, 0.47f, -0.17f) * Turn(90, 0, 0), () =>
+                barrel.Lathe(new[] { 0f, -0.38f, 0.12f, -0.32f, 0.12f, -0.1f, 0.085f, -0.04f, 0.067f, 0.50f, 0.075f, 0.54f, 0.045f, 0.55f, 0.045f, 0.50f }, 28));
+            for (int i = 0; i < 4; i++)
+                barrel.Place(Move(0, 0.47f, -0.38f + i * 0.09f) * Turn(90, 0, 0), () => barrel.Torus(0.12f, 0.012f, 24, 8));
+            Bearing(barrel, new Vector3(0, 0.33f, -0.27f), 0.13f);
+            Add(torso, "Dorsal laser", barrel, Mechanism);
             for (int i = 0; i < 4; i++)
             {
                 float side = i % 2 == 0 ? -1 : 1;
-                var upper = Child(root, "Leg " + i); upper.localPosition = new Vector3(side * 0.32f, 0.95f, i < 2 ? 0.46f : -0.5f);
+                var upper = Child(root, "Leg " + i); upper.localPosition = new Vector3(side * 0.32f, 0.84f, i < 2 ? 0.46f : -0.5f);
                 CladLimb(upper, 0.39f, 0.16f);
                 var lower = Child(upper, "Knee"); lower.localPosition = new Vector3(0, -0.4f, 0.06f);
                 CladLimb(lower, 0.51f, 0.12f, true);
+                upper.localRotation = Quaternion.Euler(i < 2 ? -16 : 34, 0, 0);
+                lower.localRotation = Quaternion.Euler(i < 2 ? 42 : -58, 0, 0);
             }
         });
     }
