@@ -6,6 +6,7 @@ script/lib/build-target Win64 Infinigame.Editor.Platforms.SteamDeck Logs/build-s
 mkdir -p Build/Packages/SteamDeck
 rm -rf Build/Packages/SteamDeck/Infinigame
 /usr/bin/ditto Build/SteamDeck Build/Packages/SteamDeck/Infinigame
+cp Assets/Infinigame/Icon.png Build/Packages/SteamDeck/Infinigame/Infinigame.png
 /usr/bin/ditto -c -k --keepParent Build/Packages/SteamDeck/Infinigame Build/Infinigame-SteamDeck.zip
 echo "Built: $PWD/Build/Infinigame-SteamDeck.zip"
 echo "On Deck: Power > Switch to Desktop. Copy and extract this zip into Documents."

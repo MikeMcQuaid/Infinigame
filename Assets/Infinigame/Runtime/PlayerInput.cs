@@ -28,8 +28,10 @@ namespace Infinigame
 
         static readonly System.Text.StringBuilder typed = new System.Text.StringBuilder();
         static Keyboard listening;
-        static bool navigating;
+        static int navigation;
+        static float nextNavigation;
         public static bool UsingPad { get; private set; }
+        public static bool KeyboardUsed { get; private set; }
 
         public static Controls Read()
         {
@@ -52,6 +54,7 @@ namespace Infinigame
                 c.jump = keys.spaceKey.isPressed;
                 c.sprint = keys.leftShiftKey.isPressed;
                 c.interact = keys.fKey.wasPressedThisFrame;
+                c.scan = keys.xKey.wasPressedThisFrame;
                 c.toggleAssist = keys.zKey.wasPressedThisFrame;
                 c.toggleView = keys.vKey.wasPressedThisFrame;
                 c.travel = keys.tKey.wasPressedThisFrame;
@@ -82,7 +85,7 @@ namespace Infinigame
             {
                 c.fire = Mouse.current.leftButton.isPressed;
                 c.cycle = (int)Mathf.Sign(Mouse.current.scroll.ReadValue().y) * (Mouse.current.scroll.ReadValue().y == 0f ? 0 : 1);
-                c.scan = Mouse.current.rightButton.wasPressedThisFrame;
+
                 // acceleration: a quick flick turns further than the same distance moved slowly
                 Vector2 delta = Mouse.current.delta.ReadValue();
                 c.look = delta * (Sensitivity * (1f + Mathf.Min(delta.magnitude * 0.04f, 2f)));
@@ -117,13 +120,18 @@ namespace Infinigame
                 c.talk |= pad.dpad.left.wasPressedThisFrame && pad.leftTrigger.isPressed;
                 c.up |= pad.dpad.up.wasPressedThisFrame;
                 c.down |= pad.dpad.down.wasPressedThisFrame;
-                float vertical = pad.leftStick.y.ReadValue();
-                c.up |= vertical > 0.7f && !navigating;
-                c.down |= vertical < -0.7f && !navigating;
-                navigating = Mathf.Abs(vertical) > 0.4f;
-                if (pad.leftStick.ReadValue().sqrMagnitude > 0.1f || pad.rightStick.ReadValue().sqrMagnitude > 0.1f || (pad.buttonSouth.wasPressedThisFrame || pad.buttonNorth.wasPressedThisFrame || pad.buttonWest.wasPressedThisFrame || pad.buttonEast.wasPressedThisFrame || pad.startButton.wasPressedThisFrame || pad.selectButton.wasPressedThisFrame || pad.dpad.ReadValue().sqrMagnitude > 0 || pad.rightTrigger.isPressed || pad.leftTrigger.isPressed)) UsingPad = true;
+                float vertical = Mathf.Abs(pad.leftStick.y.ReadValue()) > Mathf.Abs(pad.rightStick.y.ReadValue()) ? pad.leftStick.y.ReadValue() : pad.rightStick.y.ReadValue();
+                int direction = vertical > 0.65f ? 1 : vertical < -0.65f ? -1 : 0;
+                if (direction != 0 && (direction != navigation || Time.unscaledTime >= nextNavigation))
+                {
+                    c.up |= direction > 0; c.down |= direction < 0;
+                    nextNavigation = Time.unscaledTime + (direction != navigation ? 0.4f : 0.16f);
+                }
+                navigation = direction;
+                if (pad.leftStick.ReadValue().sqrMagnitude > 0.1f || pad.rightStick.ReadValue().sqrMagnitude > 0.1f || (pad.buttonSouth.wasPressedThisFrame || pad.buttonNorth.wasPressedThisFrame || pad.buttonWest.wasPressedThisFrame || pad.buttonEast.wasPressedThisFrame || pad.startButton.wasPressedThisFrame || pad.selectButton.wasPressedThisFrame || pad.dpad.ReadValue().sqrMagnitude > 0 || pad.rightTrigger.isPressed || pad.leftTrigger.isPressed)) { UsingPad = true; KeyboardUsed = false; }
             }
-            if (keys?.anyKey.wasPressedThisFrame == true || Mouse.current?.delta.ReadValue().sqrMagnitude > 1) UsingPad = false;
+            if (keys?.anyKey.wasPressedThisFrame == true) { UsingPad = false; KeyboardUsed = true; }
+            else if (!DeviceControls.Deck && Mouse.current?.delta.ReadValue().sqrMagnitude > 1) UsingPad = false;
             return c;
         }
 

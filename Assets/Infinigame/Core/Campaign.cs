@@ -24,11 +24,17 @@ namespace Infinigame.Core
     // Stable gear bit positions keep equipment compatible with older saves.
     public static class Campaign
     {
-        public const int Buried = 0, Stranger = 1, Tower = 5, Citadel = 11, Won = 12;
+        public const int Buried = 0, Stranger = 1, FirstBurrow = 2, SecondBurrow = 3, ThirdBurrow = 4, Recovery = 5, Tower = 6, Citadel = 12, Won = 13;
+
+        public static int Minds(int stage) => stage == SecondBurrow ? 2 : stage == ThirdBurrow || stage == Citadel ? 3 : 1;
 
         public static int OuterDefences(int stage) => stage < Tower || stage >= Citadel ? 0 : 2 * (stage - Tower + 1);
 
-        public static int MigrateStage(int stage) => new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 8, 8, 9, 9, 10, 11, 12 }[math.clamp(stage, 0, 15)];
+        public static int MigrateStage(int stage, int version = 1)
+        {
+            if (version < 2) stage = new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 8, 8, 9, 9, 10, 11, 12 }[math.clamp(stage, 0, 15)];
+            return version < 3 ? stage == 4 ? Recovery : stage >= 5 ? stage + 1 : stage : stage;
+        }
 
         public static Mission[] Missions { get; internal set; } = Array.Empty<Mission>();
 
@@ -101,7 +107,7 @@ namespace Infinigame.Core
             if (stage < Tower)
             {
                 float3 previous = system.missionSites[stage - 1], origin = previous * body.GroundRadius(previous);
-                float budget = stage == 2 ? 300 : 800;
+                float budget = stage <= SecondBurrow ? 300 : 800;
                 float3 onward = math.normalizesafe(Walker.Project(previous - landing, previous), math.normalizesafe(math.cross(previous, new float3(0.2f, 0.9f, 0.4f))));
                 float before = math.distance(previous, landing) * body.radius;
                 for (int i = 0; i < 1800; i++)

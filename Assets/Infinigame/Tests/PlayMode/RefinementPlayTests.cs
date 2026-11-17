@@ -14,7 +14,7 @@ namespace Infinigame.Tests
         [UnityTest] public IEnumerator RefinementRepairBeamAndWeaponOutline()
         {
             game.Jump(1);
-            yield return Seconds(0.5f);
+            yield return new WaitForSeconds(13);
             Assert.IsTrue(game.Tutorial.Repairing);
             var beam = GameObject.Find("Suit repair beam").GetComponent<LineRenderer>();
             Assert.IsTrue(beam.enabled);
@@ -30,7 +30,7 @@ namespace Infinigame.Tests
         }
         [UnityTest] public IEnumerator RefinementFactoryUplinkExplainsLockedUpgrades()
         {
-            game.Jump(3); yield return null;
+            game.Jump(Campaign.ThirdBurrow); yield return null;
             yield return Press(new Controls { ride = true });
             Assert.AreEqual(Game.ColonyPage, game.Page);
             Assert.IsFalse(game.Frontier.CanBuild(1));
@@ -41,7 +41,7 @@ namespace Infinigame.Tests
             game.Frontier.Local.factory = true;
             Assert.IsTrue(game.Items[0].Contains("built"));
             StringAssert.Contains("FACTORY BUILT", game.Frontier.FactoryHint(0));
-            game.Frontier.Local.aliens = 0;
+            for (int region = 0; region < 3; region++) { var front = game.Frontier.State(Home, region); front.aliens = 0; front.factory = front.mindDead = true; }
             Assert.IsTrue(game.Frontier.CanBuild(1));
             Assert.IsFalse(game.Frontier.CanBuild(2));
         }

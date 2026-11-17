@@ -6,7 +6,7 @@ namespace Infinigame.Core
     [Serializable]
     public class Front
     {
-        public int world, rank, depth, kills, shipKills;
+        public int world, region, rank, depth, kills, shipKills;
         public float aliens, dogs, alienShips, ships;
         public bool factory, shipyard, established, mindDead;
         public float[] exposure = new float[10];
@@ -21,7 +21,7 @@ namespace Infinigame.Core
             aliens = 90 + rank * 35 + (depth - 1) * 100,
             alienShips = 8 + rank * 3 + (depth - 1) * 12,
         };
-        public static float Resistance(Front front, int weapon) => front.mindDead || front.exposure == null || weapon < 0 || weapon >= front.exposure.Length ? 1 : 1 / (1 + math.min(2.3f, front.exposure[weapon] * 0.035f));
+        public static float Resistance(Front front, int weapon) => front.mindDead || front.exposure == null || weapon < 0 || weapon >= front.exposure.Length ? 1 : 1 / (1 + math.min(0.35f, front.exposure[weapon] * 0.005f));
         public static void Learn(Front front, int weapon, float amount)
         {
             if (front.mindDead) return;
@@ -48,6 +48,7 @@ namespace Infinigame.Core
             while (seconds > 0)
             {
                 float dt = math.min(1, seconds); seconds -= dt;
+                for (int weapon = 0; front.exposure != null && weapon < front.exposure.Length; weapon++) front.exposure[weapon] = math.max(0, front.exposure[weapon] - dt * 0.5f);
                 float growth = 0.004f + front.rank * 0.0005f + (front.depth - 1) * 0.001f;
                 if (front.aliens > 0)
                 {

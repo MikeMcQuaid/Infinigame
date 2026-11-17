@@ -39,7 +39,7 @@ namespace Infinigame.Tests
             var system = SolarSystemDescriptor.Generate(1);
             var fall = new Moonfall { moon = 4, world = 3, began = 10, duration = 60, active = true };
             Assert.Less(math.distance(system.OrbitalPosition(4, 16), fall.Position(system, 16)), 0.01);
-            Assert.Less(math.distance(system.OrbitalPosition(3, 70), fall.Position(system, 70)), 0.01);
+            Assert.AreEqual(system.bodies[3].radius + system.bodies[4].radius, math.distance(system.OrbitalPosition(3, 70), fall.Position(system, 70)), 0.01);
         }
         [TestCase(false)] [TestCase(true)] public void ShieldReflectsShipsFromEitherSide(bool inside)
         {

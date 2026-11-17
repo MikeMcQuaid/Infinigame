@@ -10,7 +10,7 @@ using UnityEngine;
 namespace Infinigame
 {
     // The hermit's voice. On a Mac the system's own speech reads his lines: it writes the sound
-    // to a file, and the game plays that with its other sounds. Speech can continue during menus. Where there is no such speech he is only read.
+    // to a file, and the game plays that with its other sounds. Menus pause speech; unsupported devices use text.
     public class Speech : MonoBehaviour
     {
         public static bool Muted, Robot;
@@ -24,6 +24,7 @@ namespace Infinigame
         [System.Runtime.InteropServices.DllImport("__Internal")] static extern void InfinigameVoiceFree(IntPtr text);
         [System.Runtime.InteropServices.DllImport("__Internal")] static extern bool InfinigameSpeaking();
         [System.Runtime.InteropServices.DllImport("__Internal")] static extern void InfinigameSilence();
+        [System.Runtime.InteropServices.DllImport("__Internal")] static extern void InfinigameSpeechPause(bool pause);
 #else
         public static string Tool = "/usr/bin/say";
 #endif
@@ -81,6 +82,18 @@ $speaker.Dispose()" } : new[] { "-v", "?" }) start.ArgumentList.Add(argument);
         }
 
         AudioSource source;
+        bool paused, preview;
+        void Update()
+        {
+            var game = GetComponent<Game>();
+            bool hold = !preview && (game.Paused || game.Dead || game.ShowControls || game.Player.SystemView);
+            if (paused == hold) return;
+            paused = hold;
+            if (hold) source.Pause(); else source.UnPause();
+#if UNITY_IOS && !UNITY_EDITOR
+            if (Tool == "native-ios" && !Application.isBatchMode) InfinigameSpeechPause(hold);
+#endif
+        }
         int asked, pending;
         public bool Speaking
         {
@@ -89,12 +102,12 @@ $speaker.Dispose()" } : new[] { "-v", "?" }) start.ArgumentList.Add(argument);
 #if UNITY_IOS && !UNITY_EDITOR
                 if (Tool == "native-ios" && !Application.isBatchMode) return InfinigameSpeaking();
 #endif
-                return pending != 0 || source != null && source.isPlaying;
+                return pending != 0 || source != null && (source.isPlaying || paused && source.clip != null);
             }
         }
         public void Silence()
         {
-            asked++; pending = 0; source.Stop();
+            asked++; pending = 0; source.Stop(); Destroy(source.clip); source.clip = null;
 #if UNITY_IOS && !UNITY_EDITOR
             if (Tool == "native-ios" && !Application.isBatchMode) InfinigameSilence();
 #endif
@@ -104,18 +117,19 @@ $speaker.Dispose()" } : new[] { "-v", "?" }) start.ArgumentList.Add(argument);
         {
             source = gameObject.AddComponent<AudioSource>();
             source.pitch = 1f;
-            // Voice previews and colony explanations are heard while their menus are open.
+            // Explicit settings previews can be heard while the menu is open.
             source.ignoreListenerPause = true;
         }
 
         // Says these words, in place of whatever was being said.
-        public async void Say(string words)
+        public async void Say(string words, bool preview = false)
         {
+            this.preview = preview;
             int mine = ++asked;
             pending = 0; source.Stop();
             if (Muted || string.IsNullOrWhiteSpace(words)) return;
 #if UNITY_IOS && !UNITY_EDITOR
-            if (Tool == "native-ios" && !Application.isBatchMode) { InfinigameSpeak(words, Choice, Robot ? RobotStrength : 0); return; }
+            if (Tool == "native-ios" && !Application.isBatchMode) { InfinigameSpeak(words, Choice, Robot ? RobotStrength : 0); if (paused && !preview) InfinigameSpeechPause(true); return; }
 #endif
             if (!File.Exists(Tool)) return;
             pending = mine;
@@ -183,6 +197,7 @@ $speaker.Dispose()");
             source.clip = AudioClip.Create("Speech", sound.Length, 1, rate, false);
             source.clip.SetData(sound, 0);
             source.Play();
+            if (paused && !preview) source.Pause();
         }
 
         // The sound in a WAV file of 16-bit samples, wherever among its chunks the data lies.

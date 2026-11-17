@@ -9,7 +9,7 @@ namespace Infinigame.Core
     [Serializable]
     public class Colony
     {
-        public int world, buildings, robots = 1;
+        public int world, region, buildings, robots = 1;
         public float ore, ice, salvage, raid, fabrication;
         public float3 site;
         public bool Has(Building building) => (buildings & 1 << (int)building) != 0;
@@ -83,7 +83,9 @@ namespace Infinigame.Core
         public double3 Position(SolarSystemDescriptor system, double time)
         {
             double t = math.saturate((time - began - Assembly - Ignition) / math.max(1, duration - Assembly - Ignition));
-            return math.lerp(system.OrbitalPosition(moon, time), system.OrbitalPosition(world, time), t * t * (3 - 2 * t));
+            double3 start = system.OrbitalPosition(moon, time), target = system.OrbitalPosition(world, time);
+            double3 impact = target + math.normalizesafe(start - target) * (system.bodies[world].radius + system.bodies[moon].radius);
+            return math.lerp(start, impact, t * t * (3 - 2 * t));
         }
         public bool Finished(double time) => active && time >= began + duration;
     }

@@ -40,7 +40,11 @@ void InfinigameSpeak(const char *text, const char *voice, float strength) {
     line.rate = AVSpeechUtteranceDefaultSpeechRate * 0.92;
     [speaker speakUtterance:line];
 }
-bool InfinigameSpeaking() { return speaker.isSpeaking; }
+bool InfinigameSpeaking() { return speaker.isSpeaking || speaker.isPaused; }
+void InfinigameSpeechPause(bool pause) {
+    if (pause) [speaker pauseSpeakingAtBoundary:AVSpeechBoundaryImmediate];
+    else [speaker continueSpeaking];
+}
 void InfinigameSilence() { [speaker stopSpeakingAtBoundary:AVSpeechBoundaryImmediate]; }
 void InfinigameVoiceStop() {
     if (state == 1) { generation++; state = -1; return; }

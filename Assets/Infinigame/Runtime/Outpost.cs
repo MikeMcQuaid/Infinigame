@@ -59,7 +59,7 @@ namespace Infinigame
                 system = game.System.Descriptor;
                 for (int completed = 2; completed < math.min(game.Stage, Campaign.Citadel); completed++)
                 {
-                    if (completed == 3 || completed == 4) continue;
+                    if (completed == Campaign.Recovery) continue;
                     Build(completed);
                     Keep();
                 }
@@ -68,12 +68,12 @@ namespace Infinigame
             else if (fort != null) Destroy(fort.gameObject);
             spawned = Open = false;
             waiting.Clear();
-            Left = game.Stage == Campaign.Citadel ? 3 : 1;
+            Left = Campaign.Minds(game.Stage);
             Escape = 0;
             walls.Clear();
             Rooms = null;
             World = -1;
-            if (game.Stage == 2 || game.Stage >= 5 && game.Stage <= Campaign.Citadel) Build(game.Stage);
+            if (game.Stage >= Campaign.FirstBurrow && game.Stage <= Campaign.Citadel && game.Stage != Campaign.Recovery) Build(game.Stage);
         }
 
         void Keep()
@@ -106,9 +106,7 @@ namespace Infinigame
             Position = station ? float3.zero : site * body.GroundRadius(site);
             rotation = station ? quaternion.identity : quaternion.LookRotationSafe(Walker.Project(new float3(0.2f, 0.9f, 0.4f), site), site);
 
-            Rooms = station ? Interior.Citadel() : Interior.Burrow();
-            if (!station && stage > 2)
-                Rooms.walls = Rooms.walls.Concat(Enumerable.Range(0, 3).Select(i => new Wall(new float3(i % 2 == 0 ? -2.5f : 2.5f, Interior.TunnelFloor(-10 + i * 16) + 1.5f, -10 + i * 16), new float3(2, 1.5f, 0.65f)))).ToArray();
+            Rooms = station ? Interior.Citadel() : Interior.Burrow(stage == Campaign.FirstBurrow ? 0 : stage == Campaign.SecondBurrow ? 1 : 2);
             if (stage == 2)
                 Rooms.walls = Rooms.walls.Concat(new[] { new Wall(new float3(0, 1.5f, -23), new float3(5, 3, 1)) { damage = 192 } }).ToArray();
             if (!station) game.System.Bodies[World].SealBurrow(new Burrow { origin = Position, rotation = rotation });
@@ -132,9 +130,7 @@ namespace Infinigame
             var lit = Shapes.Material("Glow", new Color(0.25f, 0.9f, 1.1f));
             foreach (var wall in Rooms.walls)
             {
-                Transform part;
-                if (station) part = Models.RoomPanel(wall.half, wall.door);
-                else part = Shapes.Part(fort, "Grown tunnel rock", Shapes.Rock(6), Shapes.Solid(Surface.Chitin, new Color(0.48f, 0.19f, 0.4f), true), Vector3.zero, wall.half * 2.8f).transform;
+                var part = Shapes.Part(fort, station ? "Living citadel wall" : "Grown tunnel rock", Shapes.Rock(6), Shapes.Solid(Surface.Chitin, new Color(0.48f, 0.19f, 0.4f), true), Vector3.zero, wall.half * 2.8f).transform;
                 part.SetParent(fort, false);
                 part.localPosition = wall.centre;
                 part.gameObject.SetActive(!wall.broken && !(wall.door && (Open || stage < game.Stage)));
@@ -245,8 +241,8 @@ namespace Infinigame
             if (World < 0 || stage == Campaign.Citadel) return;
             var ruin = game.Ruins.FirstOrDefault(item => item.stage == stage);
             if (ruin == null) { ruin = new Ruin { stage = stage }; game.Ruins.Add(ruin); }
-            ruin.detonates = game.System.Clock + 30;
-            game.Hermit.Remark("Equipment recovered. I have armed a demolition charge in the dead mind. Thirty seconds. Get out of the burrow and keep running.");
+            ruin.detonates = game.System.Clock + 20;
+            game.Hermit.Remark("Equipment recovered. I have armed a demolition charge in the dead mind. Twenty seconds. Get out of the burrow and keep running.");
         }
         public void Tick()
         {
@@ -328,8 +324,13 @@ namespace Infinigame
                     var turret = game.Battle.Foes[^1]; turret.stationary = true; game.Battle.Foes[^1] = turret;
                 }
             }
-            else game.Battle.Add(FoeKind.Mind, Core);
-            if (stage >= 5 && stage < Campaign.Citadel)
+            else
+                for (int i = 0; i < Campaign.Minds(stage); i++)
+                {
+                    float z = i == Campaign.Minds(stage) - 1 ? 32 : Campaign.Minds(stage) == 2 ? 17 : i == 0 ? -2 : 20;
+                    game.Battle.Add(FoeKind.Mind, Place(new float3(0, Interior.TunnelFloor(z) + 1, z)));
+                }
+            if (stage >= Campaign.Tower && stage < Campaign.Citadel)
                 for (int i = 0; i < Campaign.OuterDefences(stage); i++)
                 {
                     float3 at = Place(new float3((i % 2 == 0 ? -1 : 1) * (18 + i * 7), i % 2 == 0 ? 100 : 1, -68));
@@ -343,7 +344,8 @@ namespace Infinigame
             if (stage == Campaign.Citadel) return;
             int coreIndex = game.Battle.Foes.FindIndex(foe => foe.kind == FoeKind.Mind);
             var core = game.Battle.Foes[coreIndex]; core.protectedCore = OuterLeft > 0; game.Battle.Foes[coreIndex] = core;
-            for (int i = 0; i < math.max(2, game.Mission.count); i++)
+            var minds = game.Battle.Foes.Where(foe => foe.kind == FoeKind.Mind).Select(foe => Local(foe.position)).ToArray();
+            for (int i = 0; i < math.max(minds.Length * 2, game.Mission.count); i++)
             {
                 // Two sentries watch the rooms; the remaining guards use the authored patrol kind.
                 FoeKind kind = FoeKind.Sentry;
@@ -352,25 +354,25 @@ namespace Infinigame
                     : kind == FoeKind.Raider ? new float3((i % 4 - 1.5f) * 35, 25, -90 - i / 4 * 30)
                     : kind == FoeKind.Drone ? new float3((i % 4 - 1.5f) * 12, 3, -18 - i / 4 * 8)
                     : new float3((i % 2 * 2 - 1) * 2, Interior.TunnelFloor(-16 + i * 44f / math.max(1, game.Mission.count - 1)) + 0.9f, -16 + i * 44f / math.max(1, game.Mission.count - 1));
-                if (i < 2) position = Rooms.core + new float3(i == 0 ? -2.5f : 2.5f, 0.9f, -4);
+                if (i < minds.Length * 2) position = minds[i / 2] + new float3(i % 2 == 0 ? -2.5f : 2.5f, 0.9f, -3);
                 game.Battle.Add(kind, Place(position), Combat.Caste(game.Stage, i));
-                var sentry = game.Battle.Foes[^1]; sentry.guardian = i < 2; game.Battle.Foes[^1] = sentry;
+                var sentry = game.Battle.Foes[^1]; sentry.guardian = i < minds.Length * 2; game.Battle.Foes[^1] = sentry;
             }
         }
         public void Killed(FoeKind kind)
         {
             if (kind != FoeKind.Mind || World != game.System.Reference || Fallen) return;
-            if (--Left > 0) { game.Notify($"MIND DESTROYED · {Left} MINDS REMAIN IN THE CITADEL"); return; }
+            if (--Left > 0) { game.Notify($"MIND DESTROYED · {Left} MINDS REMAIN IN {(stage == Campaign.Citadel ? "THE CITADEL" : "THIS REGION")}"); return; }
             Open = true;
             Escape = 25;
-            game.Frontier.Local.mindDead = true;
+            game.Frontier.State(World, World == SolarSystemDescriptor.Home ? stage - Campaign.FirstBurrow : 0).mindDead = true;
             game.Presence.Liberate(World);
             for (int i = 0; i < game.Battle.Foes.Count; i++)
             {
                 var foe = game.Battle.Foes[i]; foe.scattered = true; foe.shield = 0; foe.clever = false; game.Battle.Foes[i] = foe;
             }
             game.Notify(game.Stage == Campaign.Citadel ? "CORE DESTROYED  ·  25 SECONDS TO ESCAPE" : "MIND SILENT · COORDINATION, COPIED WEAPONS AND SHIELDS OFFLINE");
-            game.Hermit.Remark(game.Stage == Campaign.Citadel ? "That shield held the final mind safe. Get us out. We have twenty-five seconds." : "The mind is silent. This world has lost coordinated tactics, copied weapons and shields. " + (game.Frontier.Local.factory ? "Your factory is already built. Its robots can now rebuild losses and win this world." : "Build a robodog factory at a clear surface site. Its robots will now conquer this world."));
+            game.Hermit.Remark(game.Stage == Campaign.Citadel ? "That shield held the final mind safe. Get us out. We have twenty-five seconds." : "The mind is silent. This region has lost coordinated tactics, copied weapons and shields. " + (game.Frontier.Local.factory ? "Your factory is already built. Its robots can now rebuild losses and win this world." : game.FactoryUnlocked ? "Build a robodog factory at a clear surface site. Its robots will now control the alien population in this region." : "Take the equipment behind the mind. The second burrow will restore surface flight and factory construction."));
             game.Sounds.Chime();
         }
     }

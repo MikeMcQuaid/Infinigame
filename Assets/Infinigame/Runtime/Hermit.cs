@@ -40,6 +40,14 @@ namespace Infinigame
         Transform camp, figure;
         bool seated, unasked;
         LineRenderer repair;
+        readonly LineRenderer[] repairRays = new LineRenderer[6];
+        int punches;
+        public bool Provoked => punches >= 5;
+        public void Punched()
+        {
+            punches++;
+            Remark(punches >= 5 ? "Repeated attack confirmed. Defensive weapons engaged." : punches >= 3 ? "Stop attacking friendly robots. The next attacks will trigger lethal defence." : "Do not punch the robodogs. We are on your side.");
+        }
 
         // Pitches the camp on the freshly built home world, a short walk from the landing site.
         public void Settle()
@@ -68,11 +76,11 @@ namespace Infinigame
             movement.look = Camera.main.transform;
 
             Talking = Thinking = false;
-            Line = Draft = "";
+            Line = Draft = ""; punches = 0;
             Spoke = float.MinValue;
         }
 
-        // He sits beside the pilot once he flies with them, and is back by his fire in a game where he does not yet.
+        // The recovered companion rides behind the pilot with only its head above the socket.
         void Update()
         {
             if (camp != null)
@@ -87,21 +95,41 @@ namespace Infinigame
                 repair = new GameObject("Suit repair beam").AddComponent<LineRenderer>();
                 repair.transform.SetParent(transform, false); repair.positionCount = 2;
                 repair.sharedMaterial = Shapes.Material("Glow", new Color(0.08f, 0.35f, 0.95f));
-                repair.startWidth = 0.06f; repair.endWidth = 0.12f;
+                repair.startWidth = 0.018f; repair.endWidth = 0.035f;
+                for (int i = 0; i < repairRays.Length; i++)
+                {
+                    repairRays[i] = Instantiate(repair, transform);
+                    repairRays[i].name = "Repair scanning laser";
+                    repairRays[i].sharedMaterial = Shapes.Material("Glow", Color.HSVToRGB(0.45f + i * 0.055f, 0.7f, 0.9f));
+                }
             }
             repair.enabled = game.Tutorial != null && game.Tutorial.Repairing && !game.Paused;
             if (repair.enabled)
             {
                 repair.SetPosition(0, camp.position + camp.up * 1.1f);
-                repair.SetPosition(1, (Vector3)(game.Player.Position - game.System.Anchor) + (Vector3)math.normalizesafe(game.Player.Position) * 0.8f);
+                repair.SetPosition(1, (Vector3)(game.Player.Position - game.System.Anchor) + (Vector3)math.normalizesafe(game.Player.Position) * Mathf.Lerp(1.85f, 0.12f, game.Tutorial.RepairProgress));
             }
+            for (int i = 0; i < repairRays.Length; i++)
+            {
+                var laser = repairRays[i]; laser.enabled = repair.enabled;
+                if (!laser.enabled) continue;
+                laser.SetPosition(0, repair.GetPosition(0));
+                laser.SetPosition(1, repair.GetPosition(1) + Camera.main.transform.right * ((i - 2.5f) * 0.13f * math.saturate(game.Tutorial.RepairProgress * 5)));
+            }
+            if (Provoked && !Aboard && !game.Paused && !game.Dead && math.distance(Position, game.Player.Position) < 40 && game.Outpost.Visible(Position + math.normalizesafe(Position), game.Player.Position))
+            {
+                repair.enabled = true; repair.SetPosition(0, camp.position + camp.up);
+                repair.SetPosition(1, game.Player.Position - game.System.Anchor + math.normalizesafe(game.Player.Position));
+                game.Player.Hurt(180 * Time.deltaTime, "Killed by friendly robot defensive fire after repeated attacks");
+            }
+            if (game.Paused || game.ShowControls || game.Player.SystemView) Spoke += Time.unscaledDeltaTime;
             if (figure == null || seated == Aboard || !(game.Player.Seat is Transform seat)) return;
             seated = Aboard;
             figure.SetParent(seated ? seat : camp, false);
             // The seated figure fits beneath the canopy.
             figure.localScale = Vector3.one * (seated ? 0.25f : 1f);
-            figure.localPosition = seated ? Vector3.forward * 0.15f : Vector3.zero;
-            figure.localRotation = Quaternion.Euler(0, seated ? 155 : 0, 0);
+            figure.localPosition = seated ? new Vector3(0, -0.24f, 0) : Vector3.zero;
+            figure.localRotation = Quaternion.identity;
             figure.GetComponent<MachineMotion>().seated = seated;
         }
 
@@ -137,7 +165,7 @@ namespace Infinigame
             game.Speech.Say(words);
         }
 
-        public string Briefing => game.Stage >= Campaign.Won ? game.Fall.destroyed ? "The mind has collapsed. Stay with me while the system falls into it." : "The core is gone, but the final mind is buried too deep for torpedoes. Our colonies must build engines on a moon." : game.Stage == 3 ? game.Frontier.FactoryHint(0) : game.Stage == 5 || game.Stage == 6 ? "Break this world’s mind, then recover its equipment. " + game.Frontier.FactoryHint(0) : game.Mission.brief;
+        public string Briefing => game.Stage >= Campaign.Won ? game.Fall.destroyed ? "The mind has collapsed. Stay with me while the system falls into it." : "The core is gone, but the final mind is buried too deep for torpedoes. Our colonies must build engines on a moon." : game.Stage == Campaign.Tower || game.Stage == Campaign.Tower + 1 ? "Break this world’s mind, then recover its equipment. " + game.Frontier.FactoryHint(0) : game.Mission.brief;
 
         // Authored replies keep the early story playable without an account.
         string Canned(string asked) => asked.IndexOf("factory", StringComparison.OrdinalIgnoreCase) >= 0 || asked.IndexOf("build", StringComparison.OrdinalIgnoreCase) >= 0
@@ -172,8 +200,8 @@ namespace Infinigame
             Draft = "";
         }
 
-        [Serializable] public class WorldState { public string world; public int aliens, dogs, hostileShips, ships; public bool factory, shipyard; }
-        [Serializable] public class State { public int stage, depth, power, health, hull, altitude; public string location, objective; public WorldState[] worlds; }
+        [Serializable] public class WorldState { public string world; public int region, aliens, dogs, hostileShips, ships; public bool factory, shipyard; }
+        [Serializable] public class State { public int stage, depth, power, health, hull, altitude, level, experience, salvage; public string location, objective; public WorldState[] worlds; }
 
         // Sends the traveller's words and waits for the reply. The talk so far is kept as
         // alternating lines: the traveller's, then the hermit's.
@@ -188,13 +216,13 @@ namespace Infinigame
             }
             var system = game.System;
             string persona = $"You are {Name}, the traveller's Foundry recovery robot and copilot. " +
-                "Speak in one to three short sentences. Use only the known story; do not invent later revelations. " +
+                "Speak in one to three short sentences. Use only the known story; do not invent later revelations. Explain XP level choices, salvage modifications and regional population control when asked. Powered fist kills restore energy; rail kills repair armour. Three damage ranks make beams chain. " +
                 $"Current mission: {Briefing} The following story addresses the traveller as 'you', not the companion. " + Narrative.Context(game.Stage, game.Fall.destroyed);
             words = words.Substring(0, math.min(words.Length, 400));
             var states = game.Presence.fronts.OrderBy(front => front.world == system.Reference ? 0 : 1).Take(24)
-                .Select(front => new WorldState { world = system.Descriptor.bodies[front.world].name, aliens = (int)front.aliens, dogs = (int)front.dogs,
+                .Select(front => new WorldState { world = system.Descriptor.bodies[front.world].name, region = front.region + 1, aliens = (int)front.aliens, dogs = (int)front.dogs,
                     hostileShips = (int)front.alienShips, ships = (int)front.ships, factory = front.factory, shipyard = front.shipyard }).ToArray();
-            string snapshot = JsonUtility.ToJson(new State { stage = game.Stage, depth = game.Depth, location = system.ReferenceBody.name,
+            string snapshot = JsonUtility.ToJson(new State { stage = game.Stage, depth = game.Depth, location = system.ReferenceBody.name, level = game.Progression.level, experience = game.Progression.experience, salvage = game.Progression.salvage,
                 objective = game.Objective, power = (int)game.Player.energy, health = (int)game.Player.health, hull = (int)(100 * game.Player.hull / game.Player.MaxHull), altitude = (int)game.Player.Altitude, worlds = states });
             System.IO.File.WriteAllText(System.IO.Path.Combine(Application.persistentDataPath, "companion-state.json"), snapshot);
             persona = persona.Substring(0, math.min(persona.Length, 4000));

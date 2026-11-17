@@ -630,9 +630,8 @@ namespace Infinigame
             });
             Vent(new Vector3(-0.439f, 0.3f, 1.75f), Vector3.right, 0.12f, 0.06f);
 
-            // Along the right wall is a low cradle for the recovery machine: "Copilot"
-            // is its base, far enough forward that whoever sits there shows at the edge of the view.
-            var guest = new Vector3(0.47f, 0.43f, 2f);
+            // The recovery machine rides in a low socket behind the pilot.
+            var guest = new Vector3(0, 0.62f, 0.05f);
             foreach (float side in new[] { -1f, 1f })
                 trim.Rod(guest + new Vector3(side * 0.1f, -0.4f, 0), guest + new Vector3(side * 0.1f, -0.09f, 0), 0.025f, 12);
             Child(cockpit, "Copilot").localPosition = guest;
@@ -1089,7 +1088,7 @@ namespace Infinigame
                 metal.Box(new Vector3(0, 3, 0), new Vector3(5, 0.4f, 4), 0.1f);
                 if (kind == Core.Building.Factory || kind == Core.Building.ShipFactory)
                 {
-                    var dog = Robot(); dog.name = "Fabrication cradle"; dog.SetParent(root, false); dog.localPosition = Vector3.up * 0.45f;
+                    metal.Box(new Vector3(0, 0.12f, 0), new Vector3(3, 0.24f, 3), 0.08f);
                     foreach (float side in new[] { -1f, 1f })
                     {
                         metal.Rod(new Vector3(side * 2, 2.7f, -1), new Vector3(side * 0.8f, 2.2f, 0), 0.13f, Curves);
@@ -1097,19 +1096,17 @@ namespace Infinigame
                     }
                     if (kind == Core.Building.ShipFactory)
                     {
-                        var hull = Ship(); hull.name = "Ship under construction"; hull.SetParent(root, false); hull.localPosition = new Vector3(0, 6, 14); hull.localScale = Vector3.one * 0.7f;
-                        hull.Find("Cockpit").gameObject.SetActive(false);
                         for (int i = 0; i < 3; i++)
                         {
-                            float z = 5 + i * 8;
-                            metal.Rod(new Vector3(-9, 0.2f, z), new Vector3(9, 0.2f, z), 0.35f, Curves);
+                            float z = -3 + i * 3;
+                            metal.Rod(new Vector3(-4.5f, 0.2f, z), new Vector3(4.5f, 0.2f, z), 0.35f, Curves);
                             foreach (float side in new[] { -1f, 1f })
                             {
-                                metal.Box(new Vector3(side * 9, 7, z), new Vector3(0.8f, 14, 0.8f), 0.08f);
-                                metal.Rod(new Vector3(side * 9, 13, z), new Vector3(side * 3, 7, z), 0.14f, Curves);
+                                metal.Box(new Vector3(side * 4.5f, 3.5f, z), new Vector3(0.4f, 7, 0.4f), 0.08f);
+                                metal.Rod(new Vector3(side * 4.5f, 6.5f, z), new Vector3(side * 1.5f, 3.5f, z), 0.14f, Curves);
                             }
-                            metal.Box(new Vector3(0, 14, z), new Vector3(19, 0.8f, 0.8f), 0.08f);
-                            glow.Box(new Vector3(0, 13.5f, z), new Vector3(17, 0.1f, 0.15f));
+                            metal.Box(new Vector3(0, 7, z), new Vector3(10, 0.4f, 0.4f), 0.08f);
+                            glow.Box(new Vector3(0, 6.75f, z), new Vector3(9, 0.1f, 0.15f));
                         }
                     }
                 }

@@ -16,7 +16,7 @@ namespace Infinigame.Tests
             Assert.AreEqual(0, front.aliens);
             Assert.Greater(front.dogs, 0);
         }
-        [TestCase(2, 0)] [TestCase(5, 2)] [TestCase(6, 4)] [TestCase(10, 12)] [TestCase(11, 0)]
+        [TestCase(2, 0)] [TestCase(6, 2)] [TestCase(7, 4)] [TestCase(11, 12)] [TestCase(12, 0)]
         public void LaterBurrowsGainGroundAndAirDefenders(int stage, int count) => Assert.AreEqual(count, Campaign.OuterDefences(stage));
 
         [Test] public void AFactoryCannotConquerAnActiveMind()

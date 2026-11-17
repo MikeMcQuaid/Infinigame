@@ -2,7 +2,21 @@
 
 Run `script/play`, spend several minutes walking, fighting, expanding a factory and flying between worlds, then quit. Run `script/performance`. The script reads the latest real player session from `Logs/frames.log`, excluding title, pause and map samples. Logs remain local and ignored by Git.
 
-## Latest Mac session, 17 November 2026 at 11:14:08
+## Latest Mac session, 17 November 2026 at 15:01:23
+
+Apple M5 Max, 2992 × 1878 on a 120 Hz display, PC detail, target 60, VSync disabled and **Burst active**. This session confirms the previous half-refresh cap is gone.
+
+| Activity | Samples | FPS | Window p95, ms | CPU work, ms | GPU, ms | Worst frame, ms |
+|---|---:|---:|---:|---:|---:|---:|
+| On foot | 43 | 50.2 | 33.3 | 18.6 | 7.1 | 1799.2 |
+| Flying | 77 | 59.4 | 17.3 | 15.3 | 7.1 | 20556.7 |
+| Autopilot | 2 | 59.2 | 16.9 | 15.2 | 5.5 | 49.6 |
+
+Walking remains over the 16.7 ms CPU budget. A 20.56-second Earth flight stall at 589 seconds is the largest concern; a generated-world flight stall took 2.46 seconds and an Earth walking stall took 1.80 seconds. These samples cannot identify the responsible method. They do not justify raising global polygon or terrain budgets.
+
+This revision avoids rebuilding unchanged factories and patrols on mission completion and clones prepared robot models when a factory deploys another unit. These are code-based reductions in repeated work, not a measured explanation or fix for the 20-second stall. Keep Automatic quality enabled and collect another real, Burst-enabled session. If long stalls persist, capture a Unity Profiler recording around mission transitions, factory deployment and world arrival before changing detail budgets. Device log retrieval is in [PLATFORMS.md](PLATFORMS.md#retrieving-iphone-and-ipad-performance-logs).
+
+## Earlier Mac session, 17 November 2026 at 11:14:08
 
 Apple M5 Max, 5120 × 2880 at 60 Hz, PC detail and **Burst active**. The log records `vsync every 2`, despite the 60 FPS application target. The quality preset was applied after the frame limiter and restored half-refresh VSync.
 

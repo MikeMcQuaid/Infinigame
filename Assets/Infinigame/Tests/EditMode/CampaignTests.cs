@@ -19,7 +19,7 @@ namespace Infinigame.Tests
             Assert.IsEmpty(Campaign.Missions[Campaign.Stranger].wins, "the traveller already wears the suit");
             CollectionAssert.AreEqual(new[] { Gear.GateParts }, Campaign.Missions[Campaign.Citadel].wins);
             Assert.AreEqual(FoeKind.Base, Campaign.Missions[Campaign.Citadel].guards);
-            foreach (var mission in Campaign.Missions.Skip(5)) Assert.Greater(mission.count, 0, mission.name);
+            foreach (var mission in Campaign.Missions.Skip(Campaign.Tower)) Assert.Greater(mission.count, 0, mission.name);
         }
 
         [Test]
@@ -29,9 +29,10 @@ namespace Infinigame.Tests
             for (int stage = 1; stage <= Campaign.Won; stage++)
                 Assert.AreEqual(Campaign.Kit(stage - 1), Campaign.Kit(stage) & Campaign.Kit(stage - 1));
             Assert.IsFalse(Campaign.Has(Campaign.Kit(2), Gear.Thrusters));
-            Assert.IsTrue(Campaign.Has(Campaign.Kit(3), Gear.Thrusters));
+            Assert.IsFalse(Campaign.Has(Campaign.Kit(3), Gear.Thrusters));
+            Assert.IsTrue(Campaign.Has(Campaign.Kit(4), Gear.Thrusters));
             Assert.IsFalse(Campaign.Has(Campaign.Kit(4), Gear.Ship));
-            Assert.IsTrue(Campaign.Has(Campaign.Kit(5), Gear.Ship));
+            Assert.IsTrue(Campaign.Has(Campaign.Kit(Campaign.Tower), Gear.Ship));
             Assert.IsFalse(Campaign.Has(Campaign.Kit(Campaign.Citadel), Gear.GateParts));
             Assert.IsTrue(Campaign.Has(Campaign.Kit(Campaign.Citadel), Gear.Nukes));
         }

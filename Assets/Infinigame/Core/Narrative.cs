@@ -18,12 +18,12 @@ namespace Infinigame.Core
         public static void Load(string plot, string missions, string sides, string colonies)
         {
             var stages = Rows(missions, 8).Where(row => int.TryParse(row[0], out _)).ToArray();
-            if (stages.Length != Campaign.Won) throw new FormatException("MISSIONS.md must contain stages 0 to 14.");
+            if (stages.Length != Campaign.Won) throw new FormatException($"MISSIONS.md must contain stages 0 to {Campaign.Citadel}.");
             var parsed = new Mission[stages.Length];
             for (int i = 0; i < stages.Length; i++)
             {
                 var row = stages[i];
-                if (int.Parse(row[0]) != i || !Enum.TryParse(row[3], out FoeKind guard) || !int.TryParse(row[4], out int count) || count < 0 || count > 24)
+                if (int.Parse(row[0]) != i || !Enum.TryParse(row[3], out FoeKind guard) || !int.TryParse(row[4], out int count) || count < 0 || count > 64)
                     throw new FormatException($"Check the stage, guard and count in MISSIONS.md row {i}.");
                 parsed[i] = new Mission { name = row[1], world = row[2], guards = guard, count = count,
                     wins = row[5].Split(',').Where(value => value.Trim().Length > 0).Select(value => (Gear)Enum.Parse(typeof(Gear), value.Trim())).ToArray(), task = row[6], brief = row[7] };

@@ -39,12 +39,6 @@ namespace Infinigame
             var scaler = canvas.GetComponent<CanvasScaler>(); scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize; scaler.referenceResolution = new Vector2(1920, 1080);
             glass = new GameObject("Helmet instruments", typeof(RectTransform), typeof(CanvasGroup)).GetComponent<CanvasGroup>(); glass.transform.SetParent(canvas.transform, false);
             var rect = glass.GetComponent<RectTransform>(); rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one; rect.offsetMin = rect.offsetMax = Vector2.zero;
-            for (int side = 0; side < 2; side++)
-            {
-                var anchor = new Vector2(side, 0.5f); float sign = side == 0 ? 1 : -1;
-                Bar(glass.transform, anchor, new Vector2(sign * 32, 0), new Vector2(3, 530), new Color(0.2f, 0.8f, 0.9f, 0.5f));
-                for (int i = 0; i < 19; i++) Bar(glass.transform, anchor, new Vector2(sign * 32, -250 + i * 28), new Vector2(i % 3 == 0 ? 22 : 10, 2), new Color(0.25f, 0.7f, 0.8f, 0.55f));
-            }
             Bar(glass.transform, new Vector2(0, 1), new Vector2(46, -25), new Vector2(525, 126), new Color(0.01f, 0.02f, 0.03f, 0.88f));
             telemetry = Label(glass.transform, "Telemetry", new Vector2(0, 1), new Vector2(60, -38), new Vector2(500, 130), 19);
             systems = Label(glass.transform, "Weapon bus", new Vector2(0, 0.5f), new Vector2(64, 0), new Vector2(340, 180), 17);
@@ -82,6 +76,7 @@ namespace Infinigame
             }
             for (int i = 0; i < bootTicks.Length; i++) bootTicks[i].enabled = game.Buried && age > 5 + i * 0.18f && age < 11.8f;
             glass.alpha = game.Paused || game.ShowControls || game.Hermit.Talking || game.Player.SystemView || game.Player.flying || game.Frontier.Collapsing ? 0 : math.saturate((age - 8) / 4);
+            blackout.enabled = !DeviceControls.VR || game.Frontier.Whiteout > 0;
             blackout.color = game.Frontier.Whiteout > 0 ? new Color(1, 1, 1, game.Frontier.Whiteout) : new Color(0, 0, 0, age < 8 ? 1 : math.saturate((12 - age) / 4));
             sweep.enabled = game.Buried && age >= 5 && age < 12;
             sweep.rectTransform.anchoredPosition = new Vector2(0, 400 - (age % 2) * 400);
@@ -93,8 +88,7 @@ namespace Infinigame
             if (game.Player.InSpace && (game.Player.Has(Gear.Ship) || game.Player.captive)) telemetry.text += $"\nSHIP {math.distance(game.Player.Position, game.Player.ship.position):0} m   RELATIVE SPEED {math.length(game.Player.Velocity - game.Player.ship.velocity):0} m/s";
             reactor.rectTransform.sizeDelta = new Vector2(300 * math.saturate(game.Player.energy / (Suit.Capacity + (game.Player.Has(Gear.Capacitor) ? 50 : 0))), 4);
             reactor.color = game.Player.Powered ? Color.cyan : new Color(1, 0.65f, 0.1f);
-            systems.text = game.Outpost.Escape > 0 && game.Stage == Campaign.Citadel ? $"ESCAPE  {math.ceil(game.Outpost.Escape):0}s\nCORE COLLAPSE IMMINENT"
-                : game.Player.Weapon.rail ? $"RAIL CHARGE {game.Battle.RailCharge:0%}\n{(DeviceControls.Touch ? "TAP FIRE · AUTOMATIC CHARGE" : "HOLD FIRE · RELEASE TO SHOOT")}" : "";
+            systems.text = "";
             radio.text = "";
 
         }

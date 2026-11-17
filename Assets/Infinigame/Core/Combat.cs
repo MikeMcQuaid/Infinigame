@@ -35,7 +35,7 @@ namespace Infinigame.Core
         // homing is how fast it can turn towards a foe, in radians a second; blast is how wide a hole it leaves
         public float life, damage, homing, blast;
         // level: a landing charge, which leaves the ground flat where it bursts instead of holed
-        public bool hostile, level, airOnly;
+        public bool hostile, level, airOnly, robot;
     }
 
     // Something the player fires.
@@ -62,7 +62,7 @@ namespace Infinigame.Core
         public float blast;
         // ground: it struck the ground or the sea. level: it was a landing charge. Otherwise it
         // struck something's hull, a foe's when foe says which.
-        public bool ground, level, shield, hostile;
+        public bool ground, level, shield, hostile, robot;
         public int foe;
     }
 
@@ -92,7 +92,7 @@ namespace Infinigame.Core
             new Weapon { name = "Gauntlet beam", speed = 1000, damage = 42, period = 0, life = 0.25f, voice = 2, beam = true, energy = 24, needs = Gear.Beams },
             new Weapon { name = "Back missiles", speed = 240, damage = 70, period = 3.4f, airOnly = true, homing = 3f, blast = 8f, life = 9, pellets = 1, voice = 1, energy = 15, needs = Gear.BackMissiles },
             new Weapon { name = "Rail gauntlet", speed = 10000, damage = 180, period = 2f, charge = 0.55f, life = 0.2f, voice = 5, rail = true, energy = 32, needs = Gear.Rail },
-            new Weapon { name = "Hemisphere lasers", damage = 7, period = 0.22f, sweep = true, energy = 9, voice = 0, needs = Gear.Nova },
+            new Weapon { name = "Hemisphere lasers", damage = 7, period = 0.12f, sweep = true, energy = 3.5f, voice = 0, needs = Gear.Nova },
         };
 
         public static void Hurt(ref Foe foe, float damage)
@@ -115,19 +115,19 @@ namespace Infinigame.Core
         public static Weapon CapturedWeapon(int kit, uint choice)
         {
             int count = 0;
-            foreach (var weapon in Guns) if (Campaign.Has(kit, weapon.needs)) count++;
+            foreach (var weapon in Guns) if (weapon.blast < Nuclear && Campaign.Has(kit, weapon.needs)) count++;
             if (count == 0) return Guns[0];
             int chosen = (int)(choice % count);
             foreach (var weapon in Guns)
-                if (Campaign.Has(kit, weapon.needs) && chosen-- == 0) return weapon;
+                if (weapon.blast < Nuclear && Campaign.Has(kit, weapon.needs) && chosen-- == 0) return weapon;
             return Guns[0];
         }
 
         // How much a foe can take and how hard it hits, at a level of threat that starts at 1.
         public static float Health(FoeKind kind, int depth, MotileCaste caste = MotileCaste.Stalker) =>
             (kind == FoeKind.Sentry ? caste == MotileCaste.Breacher ? 90f : caste == MotileCaste.Spitter ? 45f : 35f
-            : kind == FoeKind.Raider ? 60f : kind == FoeKind.Drone ? 35f : kind == FoeKind.Mind ? 120f : 1500f) * (1f + 0.25f * (depth - 1));
-        public static float Damage(FoeKind kind, int depth) => (kind == FoeKind.Raider ? 6f : kind == FoeKind.Drone ? 9f : 8f) * (1f + 0.2f * (depth - 1));
+            : kind == FoeKind.Raider ? 60f : kind == FoeKind.Drone ? 35f : kind == FoeKind.Mind ? 120f : 1500f);
+        public static float Damage(FoeKind kind, int depth) => (kind == FoeKind.Raider ? 6f : kind == FoeKind.Drone ? 9f : 8f);
 
         public static MotileCaste Caste(int stage, int guard) => stage <= 2 ? MotileCaste.Stalker : (MotileCaste)((guard + stage - 2) % 3);
 
@@ -268,7 +268,7 @@ namespace Infinigame.Core
             return 200 * math.saturate(1 - math.distance(blast, target) / math.max(1, radius));
         }
 
-        public static float Step(List<Bolt> bolts, List<Foe> foes, BodyDescriptor body, float3 player, float3 playerVelocity, float playerRadius, float dt, List<Strike> struck, Shield shield = default)
+        public static float Step(List<Bolt> bolts, List<Foe> foes, BodyDescriptor body, float3 player, float3 playerVelocity, float playerRadius, float dt, List<Strike> struck, Shield shield = default, System.Func<float3, float3, bool> visible = null)
         {
             float hurt = 0f;
             for (int i = bolts.Count - 1; i >= 0; i--)
@@ -307,23 +307,23 @@ namespace Infinigame.Core
                         if (!(hit = Crosses(bolt.position, step - foe.velocity * dt, foe.position, foe.size))) continue;
                         struckFoe = f;
                         // nothing short of a nuclear blast marks the citadel
-                        if (foe.kind != FoeKind.Base || bolt.blast >= Nuclear) { Hurt(ref foe, bolt.damage); foe.recoil = 1; }
+                        if (foe.kind != FoeKind.Base || bolt.blast >= Nuclear) { Hurt(ref foe, bolt.damage * (bolt.blast >= Nuclear && foe.kind == FoeKind.Mind ? 0.2f : 1)); foe.recoil = 1; }
                         foes[f] = foe;
                         // it ends on the near side of what it hit
                         at = foe.position - math.normalizesafe(step) * math.min(foe.size, math.distance(bolt.position, foe.position));
                     }
                 // the ground stops what misses
                 if (!hit) hit = ground = math.length(at) < Ship.Surface(body, math.normalize(at));
-                if (hit) struck?.Add(new Strike { at = at, blast = bolt.blast, ground = ground, level = bolt.level, foe = struckFoe, shield = blocked, hostile = bolt.hostile });
+                if (hit) struck?.Add(new Strike { at = at, blast = bolt.blast, ground = ground, level = bolt.level, foe = struckFoe, shield = blocked, hostile = bolt.hostile, robot = bolt.robot });
                 if (hit && !blocked && !bolt.hostile && bolt.blast >= 5f)
                     // a big enough bang catches whatever else is near, less the further off it is
                     for (int f = 0; f < foes.Count; f++)
                     {
                         var foe = foes[f];
-                        if (foe.friendly || foe.health <= 0 || shield.Blocks(at, foe.position - at, out _)) continue;
+                        if (foe.friendly || foe.health <= 0 || shield.Blocks(at, foe.position - at, out _) || visible != null && !visible(at, foe.position)) continue;
                         float near = math.distance(foe.position, at) - foe.size;
                         if (near <= 0f || near >= bolt.blast || (foe.kind == FoeKind.Base && bolt.blast < Nuclear)) continue;
-                        Hurt(ref foe, bolt.damage * (1f - near / bolt.blast));
+                        Hurt(ref foe, bolt.damage * (1f - near / bolt.blast) * (bolt.blast >= Nuclear && foe.kind == FoeKind.Mind ? 0.2f : 1));
                         foes[f] = foe;
                     }
                 if (hit || (bolt.life -= dt) <= 0f)
@@ -397,9 +397,9 @@ namespace Infinigame.Core
             return math.distancesq(from + step * along, centre) < radius * radius;
         }
 
-        public static int AssistedTarget(List<Foe> foes, float3 from, float3 forward, float reach)
+        public static int AssistedTarget(List<Foe> foes, float3 from, float3 forward, float reach, float degrees = 4)
         {
-            int target = -1; float closest = math.cos(math.radians(4));
+            int target = -1; float closest = math.cos(math.radians(degrees));
             for (int i = 0; i < foes.Count; i++)
             {
                 var foe = foes[i];

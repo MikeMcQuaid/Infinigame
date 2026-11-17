@@ -32,6 +32,12 @@ Detail tiers are Unity quality levels (Mobile, VR, PC), with per-platform defaul
 
 `Climate` works out how hot it is anywhere, from the star, a giant's depths or a furnace world's air, and `Combat.Scorch` turns heat into damage. The scanner (`Scanner.cs`, with `Core/Scan.cs` choosing what is being looked at and describing it) asks the oracle for a journal entry once per kind of thing per world.
 
+## Expedition progression
+
+`Progression` owns XP thresholds, salvage costs and the five upgrade ranks. `Game` awards combat, objective and discovery XP, pauses for a compulsory three-choice level screen and checkpoints progression at mission completion. `Campaign` separates the three Earth burrows, surface flight and orbital recovery. Version-three saves migrate earlier mission numbers without changing equipment bit positions.
+
+Earth fronts and colonies have regional identifiers. `Frontier` assigns surface positions to the nearest of three brood sites, simulates each population and requires all regions to be controlled before upgrading a factory to a shipyard. New slots choose a fresh seed; the same stored seed still generates the same system. Changing a mission does not rebuild unchanged factory models. Newly assembled units clone a prepared model and become the patrol itself.
+
 ## A frame
 
 `Game.Update` decides who the controls belong to and then drives everything in a fixed order:
@@ -44,9 +50,9 @@ Detail tiers are Unity quality levels (Mobile, VR, PC), with per-platform defaul
 
 ## The campaign
 
-`MISSIONS.md` is the mission table, loaded by `Core/Narrative.cs` into `Campaign`. `STORY.md`, `FACTIONS.md` and `COLONIES.md` supply the plot, faction context and building costs. `Editor/ContentImport.cs` packages copies as Resources text assets. Mission locations are fixed before terrain is changed. Ownership is the stable `Player.kit` bit set; `Player.fitted` holds the powered modules, all enabled when recovered. `Suit` validates owned modules; restored power enables the complete arsenal. `Game` owns progression and saves it.
+`MISSIONS.md` is the mission table, loaded by `Core/Narrative.cs` into `Campaign`. `STORY.md`, `FACTIONS.md` and `COLONIES.md` supply the plot, faction context and building costs. `Editor/ContentImport.cs` packages copies as Resources text assets. Mission locations are fixed before terrain is changed. Ownership is the stable `Player.kit` bit set; `Player.fitted` holds the powered modules, all enabled when recovered. `Suit` validates owned modules; the three Earth broods progressively restore beam power, surface thrusters and orbital flight. `Game` owns progression and saves it.
 
-`Outpost` cuts descending terrain pads and draws enclosing rock shells. Ground movement and terrain meshing share the same pad heights; the shells supply side and ceiling collision. Dry burrow volumes exclude sea rendering and underwater movement without adding another terrain collision source. It spawns the controlling mind and its guards, then exposes the power core when the mind dies. The citadel is a ship-sized tunnel with a timed escape after its core is destroyed. The factory phase moves a moon onto the final mind, starts a singularity cinematic and moves the traveller into a pre-generated harder system.
+`Outpost` cuts descending terrain pads and draws enclosing rock shells. Ground movement and terrain meshing share the same pad heights; the shells supply side and ceiling collision. Dry burrow volumes exclude sea rendering and underwater movement without adding another terrain collision source. It spawns the region’s linked minds and their guards, then exposes the power core when every mind dies. The citadel is a ship-sized tunnel with a timed escape after its core is destroyed. The factory phase moves a moon onto the final mind, starts a singularity cinematic and moves the traveller into a pre-generated harder system.
 
 The recovery robot (`Hermit.cs`) briefs each mission from the table, so the story needs no language model. After the first meeting it speaks over the radio; once the ship is recovered it joins the cockpit.
 
@@ -77,7 +83,7 @@ The game can start each tool's own sign-in from the settings page. It never show
 
 ## Saving
 
-A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, the mission stage, the gear bit set, fitted modules, colony resources, presence clock, moonfall, gate state, journal, talk breached outpost walls and armed/destroyed burrow demolition state. Worlds are never saved, since the seed remakes them. Save version 2 migrates the earlier fifteen-stage campaign into twelve stages without moving equipment bit positions. War fronts also retain weapon exposure and whether their controlling mind is dead. Settings that belong to the device (detail, music, speech) are `PlayerPrefs`. What the player has given the oracle is a separate file that never travels with a save.
+A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, the mission stage, the gear bit set, fitted modules, colony resources, presence clock, moonfall, gate state, journal, talk breached outpost walls and armed/destroyed burrow demolition state. Worlds are never saved, since the seed remakes them. Save version 3 migrates earlier campaigns into the regional Earth progression without moving equipment bit positions. Saves also retain XP, salvage, upgrade ranks and the current mission checkpoint. War fronts also retain weapon exposure and whether their controlling mind is dead. Settings that belong to the device (detail, music, speech) are `PlayerPrefs`. What the player has given the oracle is a separate file that never travels with a save.
 
 ## Tests and tooling
 
@@ -106,11 +112,11 @@ A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, 
 
 `War` and saved `Front` populations simulate alien and robot replication and attrition. `Colony` retains factory sites and legacy save fields. `Moonfall` controls the impact. `Frontier` steps the colonies only during play, draws the factories, nearby laser dogs and ships and stages the moon impact and singularity. Game saves hold those states, the clock and equipment. Old resource and gate fields remain readable for save compatibility. `SolarSystemDescriptor.Beyond` uses a separate random stream; `Generate` retains the original system's draws. The old gate is no longer appended; original world indices remain stable.
 
-`Radar` draws a transparent sphere and 3D contacts separately from the canvas. `DeviceControls` supplies touch and XR input through `Controls`. The iOS native bridge stores account data in Keychain. Speech remains local to macOS; other platforms show dialogue as text. `Platforms` configures device exports and the Windows OpenXR loader and Valve Index profile. The platform settings are generated by code when building.
+`Radar` draws a transparent sphere and 3D contacts separately from the canvas. `DeviceControls` supplies touch and XR input through `Controls`. The iOS native bridge stores account data in Keychain. Speech uses native Mac, Windows and iOS voices where available, with text fallback. `Platforms` configures device exports and the Windows OpenXR loader and Valve Index profile. The platform settings are generated by code when building.
 
 Procedural machine models share cached meshes, with separate articulated joints driven by `MachineMotion`. Presence bodies use curved carapaces, sensory organs and rooted neural folds. `MotileCaste` selects stalker, breacher or spitter combat rules within the stable sentry kind; `Outpost` assigns the mix and `Battle` instances each anatomy. `Textures` generates shared metal, ceramic, seal and chitin maps alongside the terrain library. `Models.Surfaces` builds the panelled interior shells. Terrain blast pools use a level surface bounded by the crater, with slow shader flow.
 
-`SuitHud` adds the helmet instruments and seven-second cold start. `VoiceInput` requests native dictation only on a player action, with an injectable test route. `VoiceBuild` compiles the macOS speech bridge and adds permission strings; iOS compiles the same Objective-C++ source. `Hermit` writes a bounded JSON state snapshot before a question. `Frontier` pre-generates the next descriptor and mission sites on a worker task during moonfall.
+`SuitHud` adds the helmet instruments and twelve-second cold start. `VoiceInput` requests native dictation only on a player action, with an injectable test route. `VoiceBuild` compiles the macOS speech bridge and adds permission strings; iOS compiles the same Objective-C++ source. `Hermit` writes a bounded JSON state snapshot before a question. `Frontier` pre-generates the next descriptor and mission sites on a worker task during moonfall.
 
 `DeviceControls` merges direct Input System touch regions with keyboard, mouse, gamepad and Index controls. Its canvas only draws the controls; button state does not depend on IMGUI events. `SuitTutorial` gates the initial control recovery. First-person renderer masking and head-relative VR body placement share `Player`; independent tracked gauntlets remain in `Arms`. The main HUD follows the head and exposes a plane for Index ray selection.
 

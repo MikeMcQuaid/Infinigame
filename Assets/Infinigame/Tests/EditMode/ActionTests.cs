@@ -237,12 +237,12 @@ namespace Infinigame.Tests
         }
 
         [Test]
-        public void FoesAreTougherTheFurtherTheGameHasGone()
+        public void IndividualFoesKeepTheirHealthAndDamageAsSwarmsGrow()
         {
             foreach (FoeKind kind in new[] { FoeKind.Raider, FoeKind.Drone })
             {
-                Assert.Greater(Combat.Health(kind, 4), Combat.Health(kind, 1));
-                Assert.Greater(Combat.Damage(kind, 4), Combat.Damage(kind, 1));
+                Assert.AreEqual(Combat.Health(kind, 4), Combat.Health(kind, 1));
+                Assert.AreEqual(Combat.Damage(kind, 4), Combat.Damage(kind, 1));
             }
         }
     }

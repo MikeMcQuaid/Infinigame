@@ -9,10 +9,12 @@ namespace Infinigame.Tests
     {
         [Test] public void OldCampaignSavesKeepTheirProgress()
         {
-            Assert.AreEqual(12, Campaign.Won);
+            Assert.AreEqual(13, Campaign.Won);
+            Assert.AreEqual(Campaign.Citadel, Campaign.MigrateStage(11, 2));
+            Assert.AreEqual(Campaign.Recovery, Campaign.MigrateStage(4, 2));
             Assert.AreEqual(Campaign.Citadel, Campaign.MigrateStage(14));
             Assert.AreEqual(Campaign.Won, Campaign.MigrateStage(15));
-            Assert.AreEqual(9, Campaign.MigrateStage(11));
+            Assert.AreEqual(10, Campaign.MigrateStage(11));
         }
         [Test] public void SpaceSuitBrakesWithoutInput()
         {
@@ -26,8 +28,9 @@ namespace Infinigame.Tests
         {
             var front = War.Create(3, 1, 0);
             War.Learn(front, 1, 100);
-            Assert.Less(War.Resistance(front, 1), 0.5f);
-            Assert.Greater(War.Resistance(front, 1), 0.25f);
+            Assert.Less(War.Resistance(front, 1), 0.8f);
+            Assert.Greater(War.Resistance(front, 1), 0.7f);
+            War.Step(front, 210); Assert.AreEqual(1, War.Resistance(front, 1));
             Assert.AreEqual(1, War.Resistance(front, 2));
             front.mindDead = true;
             Assert.AreEqual(1, War.Resistance(front, 1));

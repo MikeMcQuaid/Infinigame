@@ -75,6 +75,17 @@ namespace Infinigame
             return DeviceControls.VR && valid;
         }
 
+        public bool Aim(XRNode node, out Vector3 position, out Quaternion rotation)
+        {
+            bool tracked = Hand(node, out position, out rotation);
+            var controller = UnityEngine.InputSystem.InputSystem.GetDevice<UnityEngine.InputSystem.XR.XRController>(node == XRNode.LeftHand ? UnityEngine.InputSystem.CommonUsages.LeftHand : UnityEngine.InputSystem.CommonUsages.RightHand);
+            var aim = controller?.TryGetChildControl<UnityEngine.InputSystem.Controls.QuaternionControl>("pointerRotation");
+            var point = controller?.TryGetChildControl<UnityEngine.InputSystem.Controls.Vector3Control>("pointerPosition");
+            if (aim != null) rotation = TrackingRotation * aim.ReadValue();
+            if (point != null) position = TrackingPosition + TrackingRotation * (point.ReadValue() - trackingOrigin);
+            return tracked;
+        }
+
         BodyDescriptor Body => system.ReferenceBody;
         public float3 Position => flying ? ship.position : walker.position;
         public float3 Velocity => flying ? ship.velocity : walker.velocity;
@@ -82,14 +93,14 @@ namespace Infinigame
         // Looking at the map: of the whole system once there is a ship that can cross it, and until
         // then of the world underfoot.
         public bool SystemView { get; private set; }
-        public bool PlanetView => SystemView && !Has(Gear.Orbiter);
+        public bool PlanetView => SystemView && Body.kind == BodyKind.Rock && (!Has(Gear.Ship) || game.MapZoom < 0.5f && game.MapSelection == system.Reference);
         // Where the copilot sits, in a ship that has such a seat.
         public Transform Seat => model.Find("Cockpit/Copilot");
         public bool NearShip => (Has(Gear.Ship) || captive) && math.distance(walker.position, ship.position) < BoardingRange;
 
         public bool Has(Gear gear) => Campaign.Has(Suit.Modules.Contains(gear) ? fitted : kit, gear);
-        public float MaxHealth => Full + (Has(Gear.Armour) ? 50f : 0f);
-        public float MaxHull => Full + (Has(Gear.Plating) ? 50f : 0f) + (Has(Gear.Bulkheads) ? 100f : 0f);
+        public float MaxHealth => (Full + (Has(Gear.Armour) ? 50f : 0f)) * game.Progression.Toughness;
+        public float MaxHull => (Full + (Has(Gear.Plating) ? 50f : 0f) + (Has(Gear.Bulkheads) ? 100f : 0f)) * game.Progression.Toughness;
 
         // The world the autopilot is flying to, or -1.
         public int Destination { get; private set; } = -1;
@@ -102,13 +113,20 @@ namespace Infinigame
 
         // The weapon that would fire now, once it has been won: one of the ship's in flight, one of
         // those carried on foot. Arm is which of the latter.
-        public bool Powered => Campaign.Has(kit, Gear.Thrusters);
+        public bool Powered => Campaign.Has(kit, Gear.Beams);
+        public bool CanRecall => Has(Gear.Ship) || captive && InSpace;
         public Weapon Weapon
         {
             get
             {
                 var weapon = flying ? Combat.Guns[gun] : Combat.Arms[Powered ? arm : 0];
                 if (!flying && !Powered) { weapon.name = "Emergency fists"; weapon.damage = 18; weapon.period = 0.55f; weapon.blast = 0; }
+                if (Powered)
+                {
+                    weapon.damage *= game.Progression.Damage;
+                    weapon.period /= weapon.homing > 0 ? game.Progression.Recovery : game.Progression.Rate;
+                    weapon.charge /= game.Progression.Rate;
+                }
                 return weapon;
             }
         }
@@ -227,10 +245,10 @@ namespace Infinigame
             }
             if (!flying)
             {
-                if (!Has(Gear.Ship) && !captive) return "NO SHIP LINK";
+                if (!CanRecall) return captive ? "CLIMB ABOVE THE ATMOSPHERE TO ESTABLISH THE SHIP LINK" : "NO SHIP LINK";
                 recall = true;
                 game.Hermit.Remark(InSpace ? "Your suit transponder is detected. The ship is matching your velocity. Hold position, then board when it reaches you." : "Ship recall accepted. Clearing the terrain and landing beside you.");
-                return "SHIP INBOUND · HOLD POSITION · F TO BOARD";
+                return $"SHIP INBOUND · HOLD POSITION · {DeviceControls.Use} TO BOARD";
             }
             if (!Has(Gear.Orbiter)) return "THE AUTOPILOT NEEDS AN ORBITAL DRIVE";
             float nearest = math.cos(math.radians(14f));
@@ -298,7 +316,27 @@ namespace Infinigame
             float frame = Time.timeScale == 0 ? 0 : Mathf.Clamp(Time.deltaTime, 1e-4f, 0.1f);
             int steps = frame > 0 ? Mathf.Max(1, Mathf.CeilToInt(frame * 60f)) : 0;
             float dt = frame / math.max(1, steps);
-            energy = math.min(Suit.Capacity + (Has(Gear.Capacitor) ? 50 : 0), energy + (Powered ? Suit.Recharge : 0) * frame);
+            if (DeviceControls.Touch && c.look.sqrMagnitude > 0.001f && c.look.magnitude < 4 && !SystemView && frame > 0)
+            {
+                float3 eye = (float3)view.transform.position + system.Anchor;
+                int target = Combat.AssistedTarget(game.Battle.Foes, eye, view.transform.forward, flying ? 1800 : 220, flying ? 18 : 14);
+                if (target >= 0)
+                {
+                    float3 at = game.Battle.Foes[target].position;
+                    bool visible = game.Outpost.Visible(eye, at) && !game.Outpost.Shield.Blocks(eye, at - eye, out _);
+                    for (int sample = 1; visible && sample < 12; sample++)
+                    {
+                        float3 point = math.lerp(eye, at, sample / 12f);
+                        visible = math.length(point) >= Ship.Surface(Body, math.normalizesafe(point));
+                    }
+                    if (visible)
+                    {
+                        Vector3 local = view.transform.InverseTransformDirection(at - eye).normalized;
+                        c.look += new Vector2(Mathf.Atan2(local.x, local.z), Mathf.Asin(local.y)) * (Mathf.Rad2Deg * (1 - math.exp(-12 * frame)));
+                    }
+                }
+            }
+            energy = math.min(Suit.Capacity + (Has(Gear.Capacitor) ? 50 : 0), energy + (Powered ? Suit.Recharge * game.Progression.Energy : 0) * frame);
             if (cloaked && !Suit.Spend(ref energy, 18 * frame)) cloaked = false;
             float3 before = Position;
             var bodies = system.Descriptor.bodies;
@@ -373,7 +411,7 @@ namespace Infinigame
                     }, Body, dt);
                     if (Has(Gear.Thrusters) && !walker.grounded && (c.jump || math.lengthsq(c.move) > 0)) Suit.Spend(ref energy, 15 * dt);
                     float3 up = math.normalizesafe(walker.position);
-                    float ceiling = Body.GroundRadius(up) + Suit.Ceiling;
+                    float ceiling = Body.GroundRadius(up) + (Has(Gear.Orbiter) ? Suit.Ceiling : Suit.SurfaceCeiling);
                     if (math.length(walker.position) > ceiling)
                     {
                         walker.position = up * ceiling;
@@ -407,7 +445,7 @@ namespace Infinigame
                 }
                 submerged = walker.swimming;
                 // a suit mends itself once left alone a while
-                if (Time.time - HurtAt > 6f) health = math.min(MaxHealth, health + 4f * frame);
+                if (Time.time - HurtAt > 6f) health = math.min(MaxHealth, health + 4f * frame * game.Progression.Recovery);
             }
             if (frame > 0 && game != null && game.Outpost != null)
             {
@@ -441,7 +479,7 @@ namespace Infinigame
             }
             if (Irradiated) Hurt(Combat.Radiation * frame, "Cooked by radiation out beyond Luna");
             // a ship on the ground is patched up, and one with a mender aboard mends as it flies once it is left alone
-            if (!Dead && (ship.landed || (Has(Gear.Mender) && Time.time - HurtAt > 6f))) hull = math.min(MaxHull, hull + (ship.landed ? 3f : 2f) * frame);
+            if (!Dead && (ship.landed || (Has(Gear.Mender) && Time.time - HurtAt > 6f))) hull = math.min(MaxHull, hull + (ship.landed ? 3f : 2f) * frame * game.Progression.Recovery);
             system.Focus = Position;
 
             // the instruments measure to a surface: the destination's, or the nearest there is

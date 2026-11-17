@@ -78,7 +78,7 @@ namespace Infinigame
             {
                 for (int i = 0; i < 2; i++)
                     if (game.Player.Hand(i == 0 ? XRNode.LeftHand : XRNode.RightHand, out var position, out var rotation))
-                        gauntlets[i].SetPositionAndRotation(position, rotation);
+                        gauntlets[i].SetPositionAndRotation(position, rotation * Quaternion.Euler(90, 0, 0));
                 return;
             }
             float punch = game.Player.Weapon.melee ? math.saturate(1 - (Time.time - game.Battle.Fired) / 0.25f) : 0;

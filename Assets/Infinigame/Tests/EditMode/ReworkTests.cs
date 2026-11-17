@@ -10,7 +10,7 @@ namespace Infinigame.Tests
         {
             Assert.IsTrue(Campaign.Has(Campaign.Kit(0), Gear.Suit));
             Assert.IsFalse(Campaign.Has(Campaign.Kit(2), Gear.Thrusters));
-            foreach (var gear in new[] { Gear.Thrusters, Gear.Beams, Gear.BackMissiles, Gear.Rail, Gear.Nova })
+            foreach (var gear in new[] { Gear.Beams, Gear.Capacitor })
                 Assert.IsTrue(Campaign.Has(Campaign.Kit(3), gear));
             Assert.AreEqual(MotileCaste.Stalker, Combat.Caste(2, 3));
         }

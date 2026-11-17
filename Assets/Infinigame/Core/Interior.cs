@@ -21,7 +21,7 @@ namespace Infinigame.Core
         public bool Contains(float3 point)
         {
             var local = Local(point);
-            return math.abs(local.x) < 8 && local.z > -25 && local.z < 42 && local.y > -16 && local.y < 12;
+            return math.abs(local.x) < 8 && local.z > -25 && local.z < 42 && local.y > -32 && local.y < 12;
         }
     }
 
@@ -37,6 +37,7 @@ namespace Infinigame.Core
     public class Interior
     {
         public Wall[] walls;
+        public bool indestructible;
         public float3 entrance, core, console;
         public float3[] route = Array.Empty<float3>();
         public static Interior Outpost() => new Interior
@@ -56,19 +57,28 @@ namespace Infinigame.Core
                 new Wall(new float3(0, 0.6f, 19), new float3(7.5f, 0.6f, 4)),
             },
         };
-        public static float TunnelFloor(float z) => -math.clamp((z + 24) * 0.22f, 0, 12);
-        public static Interior Burrow()
+        public static float TunnelFloor(float z) => -math.clamp((z + 24) * 0.42f, 0, 24);
+        public static Interior Burrow(int variant = 0)
         {
             var walls = new List<Wall>();
             for (int i = 0; i < 10; i++)
             {
                 float z = -21 + i * 6, floor = TunnelFloor(z);
-                walls.Add(new Wall(new float3(-6, floor + 3, z), new float3(1.5f, 4, 3.2f)));
-                walls.Add(new Wall(new float3(6, floor + 3, z), new float3(1.5f, 4, 3.2f)));
-                if (i > 1) walls.Add(new Wall(new float3(0, floor + 7, z), new float3(7, 2, 3.2f)));
+                walls.Add(new Wall(new float3(-6, floor + (variant >= 2 ? 4 : 3), z), new float3(1.5f, variant >= 2 ? 5 : 4, 3.2f)));
+                walls.Add(new Wall(new float3(6, floor + (variant >= 2 ? 4 : 3), z), new float3(1.5f, variant >= 2 ? 5 : 4, 3.2f)));
+                if (i > 1) walls.Add(new Wall(new float3(0, floor + (variant >= 2 ? 9 : 7), z), new float3(7, 2, 3.2f)));
             }
-            walls.Add(new Wall(new float3(0, -5, 40), new float3(7, 5, 2)));
-            return new Interior { entrance = new float3(0, 1, -26), core = new float3(0, -10, 32), console = new float3(10000), walls = walls.ToArray() };
+            if (variant == 1)
+                for (int i = 0; i < 4; i++)
+                {
+                    float z = -9 + i * 6;
+                    walls.Add(new Wall(new float3(0, TunnelFloor(z) + 3, z), new float3(0.8f, 4, 3.2f)));
+                }
+            if (variant >= 2)
+                foreach (float z in new[] { -8f, 14f })
+                    walls.Add(new Wall(new float3(0, TunnelFloor(z) + 1.5f, z), new float3(5, 1.5f, 2)));
+            walls.Add(new Wall(new float3(0, TunnelFloor(40) + 3, 40), new float3(8, 8, 3)));
+            return new Interior { entrance = new float3(0, 1, -26), core = new float3(0, TunnelFloor(32) + 1, 32), console = new float3(10000), walls = walls.ToArray() };
         }
         public static Interior Citadel()
         {
@@ -95,7 +105,7 @@ namespace Infinigame.Core
             }
             var route = new List<float3> { new float3(0, 0, -290) };
             foreach (var turn in turns) route.Add(new float3(turn.x * 58, 0, -260 + turn.y * 58));
-            return new Interior { entrance = route[0], core = route[^1], console = route[^1], route = route.ToArray(), walls = walls.ToArray() };
+            return new Interior { indestructible = true, entrance = route[0], core = route[^1], console = route[^1], route = route.ToArray(), walls = walls.ToArray() };
         }
         public float3 Move(float3 from, float3 velocity, float radius, float dt, bool open, out bool hit, float stepHeight = 0)
         {
@@ -131,6 +141,7 @@ namespace Infinigame.Core
         }
         public bool Breach(float3 point, float damage)
         {
+            if (indestructible) return false;
             for (int i = 0; i < walls.Length; i++)
             {
                 var wall = walls[i];

@@ -6,6 +6,7 @@ script/lib/build-target Win64 Infinigame.Editor.Platforms.Windows Logs/build-win
 mkdir -p Build/Packages/Windows
 rm -rf Build/Packages/Windows/Infinigame
 /usr/bin/ditto Build/Windows Build/Packages/Windows/Infinigame
+cp Assets/Infinigame/Icon.png Build/Packages/Windows/Infinigame/Infinigame.png
 /usr/bin/ditto -c -k --keepParent Build/Packages/Windows/Infinigame Build/Infinigame-Windows.zip
 echo "Built: $PWD/Build/Windows/Infinigame.exe"
 echo "Copy $PWD/Build/Infinigame-Windows.zip to Windows, extract it and run Infinigame/Infinigame.exe. Keep the whole folder together."

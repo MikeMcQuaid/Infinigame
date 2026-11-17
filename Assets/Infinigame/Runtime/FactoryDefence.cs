@@ -33,7 +33,7 @@ namespace Infinigame
             mount.localRotation = Quaternion.RotateTowards(mount.localRotation, Quaternion.LookRotation(new Vector3(direction.x, 0, direction.z)), 110 * Time.deltaTime);
             if ((cooldown -= Time.deltaTime) > 0 || game.Outpost.Shield.Blocks(from, target.position - from, out _)) return;
             var gun = Combat.Arms[weapon++ % Combat.Arms.Length];
-            gun.damage *= game.Frontier.State(world).mindDead ? 1 : 0.15f;
+            gun.damage *= game.Frontier.State(world, game.Frontier.Region(world, transform.localPosition)).mindDead ? 1 : 0.15f;
             gun.airOnly = false;
             if (gun.melee && math.distance(from, target.position) > 20) { cooldown = 0.2f; return; }
             float3 end = game.Battle.FriendlyFire(from, target.position, gun);

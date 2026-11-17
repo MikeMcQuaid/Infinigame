@@ -174,8 +174,10 @@ Shader "Infinigame/Hull"
                 surface.alpha = 1.0;
                 surface.emission = _Glow.rgb * (1.0 - scorch) + (1 - _Organic) * (Fire(edge * (0.45 + 0.3 * ember)) * (0.05 / rim)
                     + (outside ? 0.0 : 1.0) * Fire(worn * (0.2 + 0.4 * ember)));
-                surface.smoothness = lerp(surface.smoothness, 0.5, blood);
+                surface.smoothness = lerp(surface.smoothness, 0.28, _Organic);
+                surface.specular = lerp(half3(0.04, 0.04, 0.04), half3(0.015, 0.01, 0.02), _Organic);
                 half4 colour = UniversalFragmentPBR(inputData, surface);
+                colour.rgb = lerp(colour.rgb, min(colour.rgb, half3(1.15, 0.95, 1.2)), _Organic);
                 return half4(MixFog(colour.rgb, inputData.fogCoord), cover);
             }
             ENDHLSL

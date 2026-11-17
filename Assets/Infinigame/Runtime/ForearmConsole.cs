@@ -10,19 +10,21 @@ namespace Infinigame
         public Game game;
         Canvas canvas;
         Text heading;
-        readonly Text[] labels = new Text[8];
-        readonly Image[] plates = new Image[8];
+        readonly Text[] labels = new Text[12];
+        readonly Image[] plates = new Image[12];
         bool building;
         int touching = -1;
-        static readonly string[] actions = { "BUILD", "MAP", "RECALL", "ROBOT", "SCAN", "CLOAK", "WEAPON", "MENU" };
+        static readonly string[] actions = { "BUILD", "MAP", "RECALL", "ROBOT", "SCAN", "CLOAK", "WEAPON", "MENU", "THRUST", "DESCEND", "VOICE", "ASSIST" };
         public void Init()
         {
             if (canvas != null) return;
             canvas = new GameObject("Forearm console", typeof(Canvas)).GetComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
             canvas.gameObject.AddComponent<Image>().color = new Color(0.005f, 0.015f, 0.025f, 0.99f);
-            canvas.GetComponent<RectTransform>().sizeDelta = new Vector2(480, 440);
+            canvas.GetComponent<RectTransform>().sizeDelta = new Vector2(480, 620);
             canvas.transform.localScale = Vector3.one * 0.0005f;
+            var housing = new MeshKit(); housing.Box(new Vector3(0, 0, 18), new Vector3(500, 640, 24), 12);
+            Shapes.Part(canvas.transform, "Wrist display casing", housing.Mesh("Wrist screen housing"), Shapes.Solid(Surface.Metal, new Color(0.07f, 0.12f, 0.15f)), Vector3.zero, Vector3.one);
             var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             Text Label(Transform parent, string text, Vector2 at, Vector2 size, int fontSize)
             {
@@ -31,12 +33,12 @@ namespace Infinigame
                 label.alignment = TextAnchor.MiddleCenter; label.fontSize = fontSize; label.color = new Color(0.4f, 0.95f, 1);
                 label.rectTransform.anchoredPosition = at; label.rectTransform.sizeDelta = size; return label;
             }
-            heading = Label(canvas.transform, "FOUNDRY / SUIT LINK", new Vector2(0, 190), new Vector2(480, 55), 25);
+            heading = Label(canvas.transform, "FOUNDRY / SUIT LINK", new Vector2(0, 280), new Vector2(480, 55), 25);
             for (int i = 0; i < labels.Length; i++)
             {
                 var plate = new GameObject(actions[i], typeof(RectTransform), typeof(Image)).GetComponent<Image>();
                 plate.transform.SetParent(canvas.transform, false); plate.color = new Color(0.01f, 0.04f, 0.06f, 0.98f);
-                plate.rectTransform.anchoredPosition = new Vector2(i % 2 == 0 ? -118 : 118, 117 - i / 2 * 91);
+                plate.rectTransform.anchoredPosition = new Vector2(i % 2 == 0 ? -118 : 118, 207 - i / 2 * 91);
                 plate.rectTransform.sizeDelta = new Vector2(224, 79); plates[i] = plate;
                 labels[i] = Label(plate.transform, actions[i], Vector2.zero, new Vector2(220, 76), 30);
             }
@@ -44,7 +46,7 @@ namespace Infinigame
         public void Place(Vector3 hand, Quaternion rotation)
         {
             Init();
-            canvas.transform.SetPositionAndRotation(hand + rotation * new Vector3(0, 0.07f, -0.19f), rotation * Quaternion.Euler(90, 0, 0));
+            canvas.transform.SetPositionAndRotation(hand + rotation * new Vector3(0, 0.10f, -0.12f), rotation * Quaternion.Euler(90, 0, 0));
         }
         public int At(Vector3 world)
         {
@@ -83,11 +85,15 @@ namespace Infinigame
             if (item == 5) c.reload = true;
             if (item == 6) c.cycle = 1;
             if (item == 7) c.menu = true;
+            if (item == 8) c.jump = true;
+            if (item == 9) c.lift = -1;
+            if (item == 10) c.voice = true;
+            if (item == 11) c.toggleAssist = true;
         }
         public bool Touch(Vector3 finger, ref Controls c)
         {
             int item = At(finger);
-            if (item >= 0 && item != touching) Activate(item, ref c);
+            if (item >= 0 && (item != touching || !building && (item == 8 || item == 9 || item == 10))) Activate(item, ref c);
             touching = item;
             return item >= 0;
         }
@@ -97,12 +103,13 @@ namespace Infinigame
             Init();
             bool tracked = game.Player.Hand(XRNode.LeftHand, out var hand, out var rotation);
             canvas.enabled = tracked && !game.Title && !game.Dead && !game.Buried && !game.Paused && !game.Hermit.Talking && !game.Player.SystemView;
+            canvas.gameObject.SetActive(canvas.enabled);
             if (!canvas.enabled) { touching = -1; return; }
             Place(hand, rotation);
-            heading.text = building ? $"FACTORY / {game.Frontier.Local.kills}/{War.RequiredKills(game.Frontier.Local)} KILLS" : "FOUNDRY / SUIT LINK";
+            heading.text = building ? $"FACTORY / {game.Frontier.Local.kills}/{War.RequiredKills(game.Frontier.Local)} KILLS" : "LEFT A · THRUST / RIGHT A · DESCEND";
             for (int i = 0; i < labels.Length; i++)
             {
-                plates[i].gameObject.SetActive(!building || i < 4);
+                plates[i].gameObject.SetActive(building ? i < 4 : (i != 0 || game.FactoryUnlocked) && (i != 2 || game.Player.CanRecall) && (i != 5 || game.Player.Has(Gear.Stealth)) && (i != 8 && i != 9 || game.Player.Has(Gear.Thrusters)) && (i != 11 || game.Player.flying));
                 labels[i].text = building ? i == 0 ? "ROBODOGS" : i == 1 ? "SHIPYARD" : i == 2 ? "MOON DRIVE" : "BACK" : actions[i];
                 plates[i].color = i == touching ? new Color(0.04f, 0.25f, 0.3f, 1) : new Color(0.01f, 0.04f, 0.06f, 0.98f);
             }
