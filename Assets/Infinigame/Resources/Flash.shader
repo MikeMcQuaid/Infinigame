@@ -53,7 +53,10 @@ Shader "Infinigame/Flash"
             half4 Fragment(Varyings input) : SV_Target
             {
                 float facing = saturate(dot(normalize(input.normalWS), GetWorldSpaceNormalizeViewDir(input.positionWS)));
-                return half4(_Colour.rgb * facing * facing * facing, 1.0);
+                float ripple = 0.5 + 0.5 * sin(facing * 24 - _Time.y * 16 + 2 * input.normalWS.y);
+                float core = facing * facing * facing;
+                return half4(_Colour.rgb * (0.72 * core + 0.2 * ripple * facing * (1 - facing))
+                    + saturate(_Colour.rgb) * core * core * 0.26, 1);
             }
             ENDHLSL
         }

@@ -7,19 +7,25 @@ namespace Infinigame.Core
     {
         public float3[] positions, velocities;
         public float[] lengths;
+        readonly float3[] samples;
+        readonly float[] floors;
+        Blast[] terrain;
         public bool[] joined;
         public Ragdoll(float3[] points, float3 velocity)
         {
             positions = points; velocities = new float3[points.Length];
+            samples = new float3[points.Length]; floors = new float[points.Length];
             lengths = new float[points.Length]; joined = new bool[points.Length];
             for (int i = 0; i < points.Length; i++)
             { velocities[i] = velocity; lengths[i] = math.distance(points[0], points[i]); joined[i] = i > 0; }
         }
-        public void Strike(float3 from, float3 step, float force, float radius = 0.7f)
+        public bool Strike(float3 from, float3 step, float force, float radius = 0.7f)
         {
+            bool hit = false;
             for (int i = 0; i < positions.Length; i++)
                 if (Combat.Crosses(from, step, positions[i], radius))
-                { joined[i] = false; velocities[i] += math.normalizesafe(step) * math.min(25, force * 0.12f); }
+                { hit = true; joined[i] = false; velocities[i] += math.normalizesafe(step) * math.min(25, force * 0.12f); }
+            return hit;
         }
         public void Step(BodyDescriptor body, float dt, float radius)
         {
@@ -40,11 +46,18 @@ namespace Infinigame.Core
                 for (int i = 0; i < positions.Length; i++)
                 {
                     float3 up = math.normalizesafe(positions[i], new float3(0, 1, 0));
-                    float floor = body.GroundRadius(up) + radius;
-                    if (body.kind == BodyKind.Station || math.length(positions[i]) >= floor) continue;
+                    if (body.kind == BodyKind.Station) continue;
+                    if (terrain != body.blasts || math.distancesq(up * body.radius, samples[i]) > 0.0001f)
+                    {
+                        samples[i] = up * body.radius;
+                        floors[i] = body.GroundRadius(up);
+                    }
+                    float floor = floors[i] + radius;
+                    if (math.length(positions[i]) >= floor) continue;
                     positions[i] = up * floor;
                     velocities[i] = Walker.Project(velocities[i], up) * math.exp(-8 * dt);
                 }
+                terrain = body.blasts;
             }
         }
     }

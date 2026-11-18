@@ -11,7 +11,7 @@ namespace Infinigame
         public Game game;
         Canvas canvas;
         Image blackout, sweep, reactor;
-        Text boot, telemetry, systems, radio;
+        Text boot, telemetry;
         CanvasGroup glass;
         readonly Image[] bootTicks = new Image[32];
         bool spoke;
@@ -28,7 +28,9 @@ namespace Infinigame
         Image Bar(Transform parent, Vector2 anchor, Vector2 position, Vector2 size, Color colour)
         {
             var image = new GameObject("Visor circuit", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
-            image.transform.SetParent(parent, false); image.color = colour; image.raycastTarget = false;
+            image.transform.SetParent(parent, false);
+            if (size != Vector2.zero) { image.sprite = Hud.Panel; image.type = Image.Type.Sliced; }
+            image.color = colour; image.raycastTarget = false;
             var rect = image.rectTransform; rect.anchorMin = rect.anchorMax = anchor; rect.pivot = anchor; rect.anchoredPosition = position; rect.sizeDelta = size;
             return image;
         }
@@ -39,11 +41,9 @@ namespace Infinigame
             var scaler = canvas.GetComponent<CanvasScaler>(); scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize; scaler.referenceResolution = new Vector2(1920, 1080);
             glass = new GameObject("Helmet instruments", typeof(RectTransform), typeof(CanvasGroup)).GetComponent<CanvasGroup>(); glass.transform.SetParent(canvas.transform, false);
             var rect = glass.GetComponent<RectTransform>(); rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one; rect.offsetMin = rect.offsetMax = Vector2.zero;
-            Bar(glass.transform, new Vector2(0, 1), new Vector2(46, -25), new Vector2(525, 126), new Color(0.01f, 0.02f, 0.03f, 0.88f));
+            Bar(glass.transform, new Vector2(0, 1), new Vector2(46, -25), new Vector2(420, 88), new Color(0.01f, 0.02f, 0.03f, 0.88f));
             telemetry = Label(glass.transform, "Telemetry", new Vector2(0, 1), new Vector2(60, -38), new Vector2(500, 130), 19);
-            systems = Label(glass.transform, "Weapon bus", new Vector2(0, 0.5f), new Vector2(64, 0), new Vector2(340, 180), 17);
-            radio = Label(glass.transform, "Radio", new Vector2(1, 0), new Vector2(-65, 45), new Vector2(380, 95), 17); radio.alignment = TextAnchor.LowerRight;
-            reactor = Bar(glass.transform, new Vector2(0, 1), new Vector2(60, -142), new Vector2(300, 4), Color.cyan);
+            reactor = Bar(glass.transform, new Vector2(0, 1), new Vector2(60, -96), new Vector2(300, 4), Color.cyan);
             blackout = Bar(canvas.transform, Vector2.zero, Vector2.zero, Vector2.zero, Color.black);
             blackout.rectTransform.anchorMax = Vector2.one; blackout.rectTransform.offsetMin = blackout.rectTransform.offsetMax = Vector2.zero;
             for (int i = 0; i < bootTicks.Length; i++)
@@ -82,15 +82,11 @@ namespace Infinigame
             sweep.rectTransform.anchoredPosition = new Vector2(0, 400 - (age % 2) * 400);
             boot.enabled = game.Buried && age < 12;
             boot.text = age < 3.5f ? "" : age < 5 ? "YOU ARE NOT DEAD." : age < 6.5f ? "YOU ARE NOT DEAD.\n\nFIGHT." : age < 9 ? "NEURAL LINK RESTORED\nVISOR ONLINE  ·  ACTUATORS ONLINE\nREACTOR CRITICAL" : "EMERGENCY FISTS READY\n\nPUNCH YOUR WAY OUT\n\nTHRUSTERS AND WEAPON BUS OFFLINE";
-            telemetry.enabled = systems.enabled = radio.enabled = reactor.enabled = !game.Paused && !game.Hermit.Talking && !game.Player.SystemView && !game.ShowControls;
-            telemetry.fontSize = DeviceControls.Touch ? 26 : 19;
-            telemetry.text = $"FOUNDRY // SEALED ARMOUR\nINTEGRITY {100 * math.saturate(game.Player.health / game.Player.MaxHealth):0}%    REACTOR {100 * game.Player.energy / (Suit.Capacity + (game.Player.Has(Gear.Capacitor) ? 50 : 0)):0}%\nALT {game.Player.Altitude:0} m    SPEED {math.length(game.Player.Velocity):0} m/s";
-            if (game.Player.InSpace && (game.Player.Has(Gear.Ship) || game.Player.captive)) telemetry.text += $"\nSHIP {math.distance(game.Player.Position, game.Player.ship.position):0} m   RELATIVE SPEED {math.length(game.Player.Velocity - game.Player.ship.velocity):0} m/s";
+            telemetry.enabled = reactor.enabled = !game.Paused && !game.Hermit.Talking && !game.Player.SystemView && !game.ShowControls;
+            telemetry.fontSize = DeviceControls.Touch ? 25 : 19;
+            telemetry.text = $"INTEGRITY {game.Player.health:0}/{game.Player.MaxHealth:0}    ENERGY {game.Player.energy:0}\nSUIT LV {game.Progression.level}    XP {game.Progression.experience}/{game.Progression.Required}";
             reactor.rectTransform.sizeDelta = new Vector2(300 * math.saturate(game.Player.energy / (Suit.Capacity + (game.Player.Has(Gear.Capacitor) ? 50 : 0))), 4);
             reactor.color = game.Player.Powered ? Color.cyan : new Color(1, 0.65f, 0.1f);
-            systems.text = "";
-            radio.text = "";
-
         }
         void OnDestroy() { if (canvas != null) Destroy(canvas.gameObject); }
     }

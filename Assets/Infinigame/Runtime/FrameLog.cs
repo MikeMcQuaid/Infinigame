@@ -68,7 +68,7 @@ namespace Infinigame
             log.WriteLine($"# {DateTime.Now:yyyy-MM-dd HH:mm:ss}  Infinigame {Application.version}  Unity {Application.unityVersion}  {(Application.isEditor ? "editor" : "player")}");
             log.WriteLine($"# {SystemInfo.deviceModel}  {SystemInfo.processorType} x{SystemInfo.processorCount}  {SystemInfo.graphicsDeviceName}  {SystemInfo.operatingSystem}");
             log.WriteLine($"# screen {screen.width}x{screen.height} at {screen.refreshRateRatio.value:0} Hz  vsync every {QualitySettings.vSyncCount}  target {Application.targetFrameRate}  HDR {HDROutputSettings.main.active}  build {Application.buildGUID}  burst {(flag[0] == 1 ? "yes" : "NO")}");
-            log.WriteLine("time\tfps\tmedian_ms\tp95_ms\tp99_ms\tworst_ms\tmain_ms\twork_ms\trender_ms\tgpu_ms\tdetail\tpixels\twhere\tdoing\tspeed\tpatches\tplants\tring_cells\tfoes\tdepth\tstage\tmanaged_mb\tcorpses\thdr\tadaptive_lod\tresolution_scale");
+            log.WriteLine("time\tfps\tmedian_ms\tp95_ms\tp99_ms\tworst_ms\tmain_ms\twork_ms\trender_ms\tgpu_ms\tdetail\tpixels\twhere\tdoing\tspeed\tpatches\tplants\tring_cells\tfoes\tdepth\tstage\tmanaged_mb\tcorpses\thdr\tadaptive_lod\tresolution_scale\tactive_corpses");
             flag.Dispose();
         }
 
@@ -104,7 +104,7 @@ namespace Infinigame
                 Time.realtimeSinceStartup.ToString("0"), (frames.Count / since).ToString("0.0"), At(0.5f).ToString("0.0"), At(0.95f).ToString("0.0"), At(0.99f).ToString("0.0"),
                 frames[frames.Count - 1].ToString("0.0"), (main / math.max(timed, 1)).ToString("0.0"), (work / math.max(timed, 1)).ToString("0.0"), (render / math.max(timed, 1)).ToString("0.0"), (gpu / math.max(timed, 1)).ToString("0.0"),
                 QualitySettings.names[QualitySettings.GetQualityLevel()], $"{Screen.width}x{Screen.height}", system.ReferenceBody.name, doing, math.length(player.Velocity).ToString("0"),
-                body.PatchCount, Count<Scatter>(scatter => scatter.Drawn), Count<RingField>(rings => rings.Drawn), game.Battle.Foes.Count, game.Depth, game.Stage, (GC.GetTotalMemory(false) / 1048576).ToString(), game.Corpses.Count, HDROutputSettings.main.active, LodSettings.Adaptive.ToString("0.00"), ScalableBufferManager.widthScaleFactor.ToString("0.00")));
+                body.PatchCount, Count<Scatter>(scatter => scatter.Drawn), Count<RingField>(rings => rings.Drawn), game.Battle.Foes.Count, game.Depth, game.Stage, (GC.GetTotalMemory(false) / 1048576).ToString(), game.Corpses.Count, HDROutputSettings.main.active, LodSettings.Adaptive.ToString("0.00"), ScalableBufferManager.widthScaleFactor.ToString("0.00"), game.Corpses.ActiveCount));
             if (Automatic && !Application.isBatchMode && (doing == "foot" || doing == "flying" || doing == "autopilot"))
             {
                 float budget = 1000 / refresh;

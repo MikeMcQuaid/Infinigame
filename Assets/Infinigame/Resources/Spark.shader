@@ -67,7 +67,10 @@ Shader "Infinigame/Spark"
                 // round at both ends, however long
                 float2 from = float2(input.uv.x, max(abs(input.uv.y) * input.uv.z - (input.uv.z - 1.0), 0.0));
                 float behind = LinearEyeDepth(SampleSceneDepth(GetNormalizedScreenSpaceUV(input.positionCS)), _ZBufferParams) - input.positionCS.w;
-                half3 light = input.glare.rgb * (pow(saturate(1.0 - dot(from, from)), 2.5) * saturate(behind / input.uv.w));
+                float profile = saturate(1.0 - dot(from, from));
+                float head = saturate(0.55 + 0.45 * input.uv.y);
+                half3 light = (input.glare.rgb * (0.42 + 0.58 * head) + min(input.glare.rgb, 1) * profile * profile * head)
+                    * (profile * profile * saturate(behind / input.uv.w));
                 return half4(light, input.glare.a * saturate(max(light.r, max(light.g, light.b))));
             }
             ENDHLSL

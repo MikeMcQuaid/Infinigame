@@ -11,6 +11,57 @@ namespace Infinigame.Tests
     public class EncounterRenderTests
     {
         [Test]
+        public void RenderFlightEquipment()
+        {
+            foreach (var name in new[] { "Ichor", "EnergyRibbon", "Spark", "Flash", "Puff" })
+            {
+                var shader = Resources.Load<Shader>(name);
+                Assert.IsTrue(shader.isSupported, name);
+            }
+            var ship = Models.Ship();
+            var glove = Models.Gauntlet();
+            var camera = new GameObject("Equipment review").AddComponent<Camera>();
+            var key = new GameObject("Equipment key").AddComponent<Light>();
+            var fill = new GameObject("Equipment fill").AddComponent<Light>();
+            var target = new RenderTexture(960, 640, 24);
+            var image = new Texture2D(target.width, target.height, TextureFormat.RGB24, false);
+            var active = RenderTexture.active;
+            try
+            {
+                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.backgroundColor = new Color(0.13f, 0.17f, 0.21f);
+                camera.targetTexture = target; camera.nearClipPlane = 0.015f; camera.cullingMask = 1 << 29;
+                key.type = fill.type = LightType.Directional;
+                key.cullingMask = fill.cullingMask = camera.cullingMask;
+                key.transform.rotation = Quaternion.Euler(43, 151, 0); key.intensity = 2.1f;
+                fill.transform.rotation = Quaternion.Euler(26, -36, 0); fill.intensity = 0.85f;
+                foreach (var actor in new[] { ship, glove })
+                    foreach (var part in actor.GetComponentsInChildren<Transform>(true)) part.gameObject.layer = 29;
+                void Capture(string name, Vector3 eye, Vector3 aim)
+                {
+                    camera.transform.SetPositionAndRotation(eye, Quaternion.LookRotation(aim - eye));
+                    camera.Render(); RenderTexture.active = target;
+                    image.ReadPixels(new Rect(0, 0, target.width, target.height), 0, 0);
+                    Directory.CreateDirectory("Logs/Screenshots");
+                    File.WriteAllBytes($"Logs/Screenshots/{name}.png", image.EncodeToPNG());
+                }
+                glove.gameObject.SetActive(false);
+                ship.Find("Cockpit").gameObject.SetActive(false);
+                Capture("flight-chassis", new Vector3(4.6f, 3.8f, 5.48f), Vector3.zero);
+                ship.Find("Exterior").gameObject.SetActive(false);
+                ship.Find("Cockpit").gameObject.SetActive(true);
+                Capture("flight-cabin", new Vector3(0, 0.95f, 1.2f), new Vector3(0, 0.70f, 2.2f));
+                ship.gameObject.SetActive(false); glove.gameObject.SetActive(true);
+                Capture("gauntlet-rails", new Vector3(0.31f, 0.34f, 0.38f), Vector3.zero);
+            }
+            finally
+            {
+                camera.targetTexture = null; RenderTexture.active = active;
+                foreach (var item in new Object[] { ship.gameObject, glove.gameObject, camera.gameObject, key.gameObject, fill.gameObject, image, target }) Object.DestroyImmediate(item);
+            }
+        }
+
+        [Test]
         public void SwarmMeshesKeepTheirSilhouetteAcrossDetailBoundaries()
         {
             foreach (MotileCaste caste in System.Enum.GetValues(typeof(MotileCaste)))

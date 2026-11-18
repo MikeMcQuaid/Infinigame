@@ -369,8 +369,9 @@ namespace Infinigame.Tests
             yield return null;
             game.Hermit.Greet();
             Assert.IsTrue(Player.Has(Gear.Suit));
-            Assert.AreEqual(2, game.Stage);
+            Assert.IsTrue(game.Hermit.Talking);
             yield return Press(new Controls { menu = true });
+            game.Jump(Campaign.FirstBurrow);
             var outpost = game.Outpost;
             Player.walker.position = outpost.Place(new float3(0, 0, -8));
             Player.flying = false;
@@ -386,9 +387,10 @@ namespace Infinigame.Tests
             Assert.IsFalse(Player.Has(Gear.Thrusters), "the prize still has to be collected");
             Player.walker.position = outpost.Prize;
             yield return Press(new Controls { interact = true });
+            yield return EscapeAndBuild(Campaign.FirstBurrow);
             Assert.AreEqual(3, game.Stage);
-            Assert.IsTrue(Player.Has(Gear.Thrusters));
-            Assert.IsEmpty(game.Colonies, "the player must build the first factory");
+            Assert.IsTrue(Player.Has(Gear.Beams));
+            Assert.IsTrue(game.Colonies.Any());
         }
 
         [UnityTest]

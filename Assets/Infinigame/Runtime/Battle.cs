@@ -84,7 +84,7 @@ namespace Infinigame
             ball = Shapes.Sphere(0.5f, 8);
             ray = new GameObject("Weapon beam").AddComponent<LineRenderer>();
             ray.transform.SetParent(transform, false);
-            ray.sharedMaterial = Shapes.Material("Glow", new Color(0.5f, 3, 5));
+            ray.sharedMaterial = Shapes.Beam(new Color(0.5f, 3, 5));
             ray.startWidth = ray.endWidth = 0.1f;
             ray.positionCount = 2;
             ray.enabled = false;
@@ -447,13 +447,14 @@ namespace Infinigame
                         var mind = Foes.Where(other => other.kind == FoeKind.Mind && other.health > 0).OrderBy(other => math.distancesq(other.position, foe.position)).FirstOrDefault();
                         bool wounded = mind.health > 0 && mind.health < mind.maximumHealth;
                         if (wounded) quarry = self;
-                        hunting = wounded || math.distance(foe.position, quarry) < (body.kind == BodyKind.Station ? 160 : 12);
+                        hunting = foe.provoked || wounded || math.distance(foe.position, quarry) < (body.kind == BodyKind.Station ? 160 : 12);
                         if (hunting) foe.alert = Alert.Alarmed;
                     }
                     float3 before = foe.position;
                     if (hunting || foe.scattered)
                     {
                         bool fired = Combat.Hunt(ref foe, body, quarry, player.Velocity, game.Threat, dt, out var shot);
+                        if (foe.outerGuard && foe.kind == FoeKind.Raider) game.Outpost.Shield.Bounce(before, ref foe.position, ref foe.velocity, foe.size);
                         if (foe.kind == FoeKind.Sentry)
                         {
                             foe.position = game.Outpost.Resolve(before, foe.position, 0.9f, out bool blocked);
@@ -609,8 +610,7 @@ namespace Infinigame
                 if (foe.health <= 0f)
                 {
                     Mesh corpse = foe.kind == FoeKind.Raider ? raider : foe.kind == FoeKind.Sentry ? deadSentry[(int)foe.caste] : foe.kind == FoeKind.Mind ? mind : drone;
-                    game.Corpses.Add(corpse, foe.kind == FoeKind.Raider ? raiderHull : foe.kind == FoeKind.Sentry ? sentryShell : droneHull, foe.position, Quaternion.LookRotation(foe.forward, up), foe.velocity, foe.kind == FoeKind.Raider ? 0.8f : foe.kind == FoeKind.Mind ? foe.size * 0.2f : 0.25f, foe.kind == FoeKind.Mind ? foe.size / 2 : 1, foe.kind == FoeKind.Mind);
-                    game.Effects.Bleed(foe.position, math.min(9, foe.size * 1.4f));
+                    game.Corpses.Add(corpse, foe.kind == FoeKind.Raider ? raiderHull : foe.kind == FoeKind.Sentry ? sentryShell : droneHull, foe.position, Quaternion.LookRotation(foe.forward, up), foe.velocity, foe.kind == FoeKind.Raider ? 0.8f : foe.kind == FoeKind.Mind ? foe.size * 0.2f : 0.25f, foe.kind == FoeKind.Mind ? foe.size / 2 : 1, foe.kind == FoeKind.Mind, math.min(9, foe.size * 1.4f));
                     if (foe.stationary) body.foundations.RemoveAll(foundation => math.distance(foundation.xyz, foe.position) < 5);
                     bool credited = playerHits.Remove(foe.seed);
                     var front = game.Frontier.State(system.Reference, game.Frontier.Region(system.Reference, foe.position));

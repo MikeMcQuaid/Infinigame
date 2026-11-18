@@ -45,7 +45,7 @@ namespace Infinigame
             public RectTransform at;
             // a diamond for a place, a box drawn round a foe, a line out to a name that had to go further off,
             // and an arrow for a mark held at the edge of the screen because its place is out of view
-            public Image icon, box, lead, arrow, health, healthTrack;
+            public Image icon, box, arrow, health, healthTrack;
             public Text name, detail;
         }
 
@@ -53,7 +53,12 @@ namespace Infinigame
 
         static Material overlay;
         Canvas canvas;
-        Sprite panel, outline;
+        static Sprite panel;
+        public static Sprite Panel => panel != null ? panel : panel = Rounded(0, 48, 12);
+        Sprite outline;
+        readonly List<Foe> markerFoes = new List<Foe>();
+        float3 markerEye;
+        int Nearer(Foe a, Foe b) => math.distancesq(a.position, markerEye).CompareTo(math.distancesq(b.position, markerEye));
         CanvasGroup status, prompt, banner, card, talk, menu, controls, hint, run, news, radar, chart, brief, asking, caption;
         Text place, readout, promptText, promptKey, bannerTitle, bannerSub, cardHead, cardTitle, cardBody, cardFoot, briefHead, briefTitle, briefTask, briefRows, briefWords, askText, captionText;
         Text speaker, line, draft, talkKeys, menuTitle, menuSub, menuNote, menuKeys, stats, vitalName, runText, newsText;
@@ -101,7 +106,6 @@ namespace Infinigame
             scaler.referenceResolution = new Vector2(1920f, 1080f);
             scaler.matchWidthOrHeight = 1f;
             Transform root = host.transform;
-            panel = Rounded(0f);
             outline = Rounded(2f);
             dot = Rounded(0f, 16, 8f);
             var pointer = Pointer();
@@ -124,7 +128,7 @@ namespace Infinigame
                 icon.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 45f);
                 markers[i] = new Marker
                 {
-                    at = at, icon = icon, healthTrack = Fill(at, centre, new Vector2(0, -25), new Vector2(64, 5), Shade), health = Fill(at, centre, new Vector2(0, -25), new Vector2(64, 5), Harm), box = Fill(at, centre, Vector2.zero, new Vector2(34f, 34f), Harm, outline), lead = Fill(at, centre, Vector2.zero, Vector2.zero, Dim),
+                    at = at, icon = icon, healthTrack = Fill(at, centre, new Vector2(0, -25), new Vector2(64, 5), Shade), health = Fill(at, centre, new Vector2(0, -25), new Vector2(64, 5), Harm), box = Fill(at, centre, Vector2.zero, new Vector2(34f, 34f), Harm, outline),
                     arrow = Fill(at, centre, Vector2.zero, new Vector2(13f, 13f), Ink, pointer),
                     name = Label(at, centre, new Vector2(0f, 18f), new Vector2(240f, 18f), 13, TextAnchor.MiddleCenter, Ink),
                     detail = Label(at, centre, new Vector2(0f, -17f), new Vector2(240f, 16f), 12, TextAnchor.MiddleCenter, Dim),
@@ -133,7 +137,7 @@ namespace Infinigame
             reticle = Fill(root, centre, Vector2.zero, new Vector2(5f, 5f), Ink, dot);
 
             status = Group(root, Vector2.zero, new Vector2(56f, 48f), new Vector2(900f, 112f));
-            statusPlate = Fill(status.transform, Vector2.zero, new Vector2(-20f, -18f), Vector2.zero, Plate, panel).rectTransform;
+            statusPlate = Fill(status.transform, Vector2.zero, new Vector2(-20f, -18f), Vector2.zero, Plate, Panel).rectTransform;
             place = Label(status.transform, topLeft, Vector2.zero, new Vector2(900f, 20f), 14, TextAnchor.UpperLeft, Dim);
             readout = Label(status.transform, topLeft, new Vector2(0f, -26f), new Vector2(900f, 44f), 34, TextAnchor.UpperLeft, Ink);
             // suit or hull, and under it the jetpack's fuel
@@ -145,7 +149,7 @@ namespace Infinigame
 
             // how deep the run has gone and how nearly the warp drive is charged
             run = Group(root, Vector2.one, new Vector2(-56f, -48f), new Vector2(420f, 30f));
-            missionPlate = Fill(run.transform, Vector2.one, new Vector2(10, 8), new Vector2(1020, 50), Plate, panel).rectTransform;
+            missionPlate = Fill(run.transform, Vector2.one, new Vector2(10, 8), new Vector2(1020, 50), Plate, Panel).rectTransform;
             runText = Label(run.transform, Vector2.one, Vector2.zero, new Vector2(1000f, 36f), 13, TextAnchor.UpperRight, Dim);
             chargeTrack = Fill(run.transform, Vector2.one, new Vector2(0f, -26f), new Vector2(220f, 3f), Faint);
             charge = Fill(run.transform, Vector2.one, new Vector2(0f, -26f), new Vector2(220f, 3f), Accent);
@@ -154,20 +158,20 @@ namespace Infinigame
             new GameObject("Globe radar").AddComponent<Radar>().game = game;
 
             weaponCard = Group(root, new Vector2(0, 0.5f), new Vector2(56, 35), new Vector2(340, 125));
-            Stretch(Fill(weaponCard.transform, centre, Vector2.zero, Vector2.zero, Plate, panel));
+            Stretch(Fill(weaponCard.transform, centre, Vector2.zero, Vector2.zero, Plate, Panel));
             heldWeapon = Label(weaponCard.transform, topLeft, new Vector2(15, -10), new Vector2(235, 26), 16, TextAnchor.UpperLeft, Ink);
             weaponGlyph = new GameObject("Weapon outline", typeof(RectTransform), typeof(WeaponGlyph)).GetComponent<WeaponGlyph>();
             weaponGlyph.transform.SetParent(weaponCard.transform, false); weaponGlyph.color = Ink; weaponGlyph.material = overlay; weaponGlyph.raycastTarget = false;
             weaponGlyph.rectTransform.anchorMin = weaponGlyph.rectTransform.anchorMax = Vector2.zero;
             weaponGlyph.rectTransform.pivot = Vector2.zero; weaponGlyph.rectTransform.anchoredPosition = new Vector2(15, 12); weaponGlyph.rectTransform.sizeDelta = new Vector2(180, 50);
             mapBar = Group(root, top, new Vector2(0, -70), new Vector2(1300, 66));
-            Stretch(Fill(mapBar.transform, centre, Vector2.zero, Vector2.zero, Plate, panel));
+            Stretch(Fill(mapBar.transform, centre, Vector2.zero, Vector2.zero, Plate, Panel));
             string[] mapActions = { "MAP", "SUMMARY", "ZOOM −", "ZOOM +", "AUTOPILOT", "CONTINUE" };
             mapButtons = new Text[mapActions.Length];
             for (int i = 0; i < mapActions.Length; i++) mapButtons[i] = Label(mapBar.transform, centre, new Vector2((i - 2.5f) * 210, 0), new Vector2(200, 58), 22, TextAnchor.MiddleCenter, Ink, mapActions[i]);
             // The system map's table: every world at a glance.
             chart = Group(root, topLeft, new Vector2(56f, -150f), new Vector2(1328f, 420f));
-            Stretch(Fill(chart.transform, centre, Vector2.zero, Vector2.zero, new Color(0.02f, 0.035f, 0.06f, 1), panel));
+            Stretch(Fill(chart.transform, centre, Vector2.zero, Vector2.zero, new Color(0.02f, 0.035f, 0.06f, 1), Panel));
             float[] columns = { 24f, 240f, 420f, 530f, 685f, 840f, 985f, 1130f, 0f, 0f };
             chartColumns = new Text[columns.Length];
             for (int i = 0; i < columns.Length; i++)
@@ -179,7 +183,7 @@ namespace Infinigame
 
             // The mission in hand, set out in full: over the map, and for a while whenever a new one begins.
             brief = Group(root, topLeft, new Vector2(56f, -592f), new Vector2(780f, 262f));
-            Stretch(Fill(brief.transform, centre, Vector2.zero, Vector2.zero, Glass, panel));
+            Stretch(Fill(brief.transform, centre, Vector2.zero, Vector2.zero, Glass, Panel));
             Fill(brief.transform, Vector2.zero, Vector2.zero, new Vector2(3f, 0f), Accent).rectTransform.anchorMax = topLeft;
             briefHead = Label(brief.transform, topLeft, new Vector2(30f, -22f), new Vector2(720f, 18f), 13, TextAnchor.UpperLeft, Accent);
             briefTitle = Label(brief.transform, topLeft, new Vector2(30f, -44f), new Vector2(720f, 36f), 28, TextAnchor.UpperLeft, Ink);
@@ -200,15 +204,15 @@ namespace Infinigame
             lesson = Label(root, bottom, new Vector2(0, 330), new Vector2(1100, 64), 24, TextAnchor.MiddleCenter, Accent);
             transcript = Label(root, bottom, new Vector2(0, 410), new Vector2(1000, 80), 22, TextAnchor.MiddleCenter, Ink);
             cheatGlyph = Label(root, new Vector2(1, 0), new Vector2(-22, 22), new Vector2(48, 48), 16, TextAnchor.MiddleCenter, Dim, "◇");
-            caption = Group(root, bottom, new Vector2(0f, 236f), new Vector2(1100f, 64f));
-            captionPlate = Fill(caption.transform, centre, Vector2.zero, Vector2.zero, Plate, panel).rectTransform;
+            caption = Group(root, bottom, new Vector2(0f, 94f), new Vector2(1100f, 64f));
+            captionPlate = Fill(caption.transform, centre, Vector2.zero, Vector2.zero, Plate, Panel).rectTransform;
             captionText = Label(caption.transform, centre, Vector2.zero, new Vector2(1040f, 60f), 19, TextAnchor.MiddleCenter, Ink);
 
             news = Group(root, top, new Vector2(0f, -258f), new Vector2(1400f, 30f));
             newsText = Label(news.transform, top, Vector2.zero, new Vector2(1400f, 26f), 17, TextAnchor.MiddleCenter, Accent);
 
             prompt = Group(root, bottom, new Vector2(0f, 176f), new Vector2(700f, 44f));
-            promptPlate = Fill(prompt.transform, centre, Vector2.zero, Vector2.zero, Plate, panel).rectTransform;
+            promptPlate = Fill(prompt.transform, centre, Vector2.zero, Vector2.zero, Plate, Panel).rectTransform;
             promptCap = Fill(prompt.transform, centre, Vector2.zero, new Vector2(40f, 40f), Ink, outline).rectTransform;
             promptKey = Label(promptCap, centre, Vector2.zero, new Vector2(40f, 40f), 19, TextAnchor.MiddleCenter, Ink, "F");
             promptText = Label(prompt.transform, centre, Vector2.zero, new Vector2(600f, 40f), 22, TextAnchor.MiddleLeft, Ink);
@@ -223,7 +227,7 @@ namespace Infinigame
             bannerSub = Label(banner.transform, top, new Vector2(0f, -88f), new Vector2(1400f, 26f), 18, TextAnchor.MiddleCenter, Dim);
 
             card = Group(root, new Vector2(1f, 0.5f), new Vector2(-56f, 40f), new Vector2(500f, 300f));
-            Stretch(Fill(card.transform, centre, Vector2.zero, Vector2.zero, Glass, panel));
+            Stretch(Fill(card.transform, centre, Vector2.zero, Vector2.zero, Glass, Panel));
             var bar = Fill(card.transform, Vector2.zero, Vector2.zero, new Vector2(3f, 0f), Accent).rectTransform;
             bar.anchorMax = topLeft;
             cardHead = Label(card.transform, topLeft, new Vector2(30f, -24f), new Vector2(440f, 36f), 13, TextAnchor.UpperLeft, Accent);
@@ -233,7 +237,7 @@ namespace Infinigame
             cardFoot = Label(card.transform, Vector2.zero, new Vector2(30f, 20f), new Vector2(440f, 16f), 12, TextAnchor.LowerLeft, Dim);
 
             talk = Group(root, bottom, new Vector2(0f, 64f), new Vector2(1080f, 274f));
-            Stretch(Fill(talk.transform, centre, Vector2.zero, Vector2.zero, Glass, panel));
+            Stretch(Fill(talk.transform, centre, Vector2.zero, Vector2.zero, Glass, Panel));
             talkClose = Label(talk.transform, new Vector2(1, 1), new Vector2(-30, -18), new Vector2(130, 45), 20, TextAnchor.MiddleRight, Ink, "CLOSE ×");
             speaker = Label(talk.transform, topLeft, new Vector2(38f, -26f), new Vector2(1000f, 36f), 13, TextAnchor.UpperLeft, Accent);
             line = Label(talk.transform, topLeft, new Vector2(38f, -78f), new Vector2(1004f, 124f), 23, TextAnchor.UpperLeft, Ink);
@@ -243,11 +247,11 @@ namespace Infinigame
             talkKeys = Label(talk.transform, new Vector2(1f, 0f), new Vector2(-38f, 26f), new Vector2(900f, 16f), 12, TextAnchor.LowerRight, Dim);
 
             escape = Group(root, new Vector2(0.5f, 1), new Vector2(0, -105), new Vector2(650, 70));
-            Stretch(Fill(escape.transform, centre, Vector2.zero, Vector2.zero, Plate, panel));
+            Stretch(Fill(escape.transform, centre, Vector2.zero, Vector2.zero, Plate, Panel));
             escapeText = Label(escape.transform, centre, Vector2.zero, new Vector2(620, 50), 30, TextAnchor.MiddleCenter, Harm);
             escape.alpha = 0;
             controls = Group(root, centre, new Vector2(0f, 10f), new Vector2(1240f, 840f));
-            Stretch(Fill(controls.transform, centre, Vector2.zero, Vector2.zero, new Color(0.015f, 0.03f, 0.045f, 1f), panel));
+            Stretch(Fill(controls.transform, centre, Vector2.zero, Vector2.zero, new Color(0.015f, 0.03f, 0.045f, 1f), Panel));
             for (int column = 0; column < Help.Length; column++)
             {
                 float x = 48f + 400f * column;
@@ -336,7 +340,7 @@ namespace Infinigame
         static Image Fill(Transform parent, Vector2 anchor, Vector2 position, Vector2 size, Color colour, Sprite sprite = null)
         {
             var image = Rect(parent, anchor, position, size).gameObject.AddComponent<Image>();
-            image.sprite = sprite;
+            image.sprite = sprite != null ? sprite : size != Vector2.zero ? Panel : null;
             image.material = overlay;
             image.type = Image.Type.Sliced;
             image.color = colour;
@@ -474,9 +478,12 @@ namespace Infinigame
             place.text = $"{(system.Reference == 0 ? "DEEP SPACE" : body.name.ToUpperInvariant())}  ·  {craft}{(system.Rain > 0.05f ? "  ·  RAIN" : "")}  ·  {outside}"
                 + (player.Irradiated ? "  ·  <color=#ff5a40>RADIATION</color>" : "");
             // in the ship: how fast, and how far to the surface that matters. On foot neither means much.
-            string[] gap = Distance(player.Range).ToUpperInvariant().Split(' ');
-            readout.text = $"{math.length(player.Velocity):0}<size=15>  M/S        </size>{gap[0]}<size=15>  {gap[1]} TO {worlds[player.Ahead].name.ToUpperInvariant()}</size>";
             readout.enabled = playing && player.flying && !player.Seated;
+            if (readout.enabled)
+            {
+                string[] gap = Distance(player.Range).ToUpperInvariant().Split(' ');
+                readout.text = $"{math.length(player.Velocity):0}<size=15>  M/S        </size>{gap[0]}<size=15>  {gap[1]} TO {worlds[player.Ahead].name.ToUpperInvariant()}</size>";
+            }
             float left = player.flying ? player.hull / player.MaxHull : player.health / player.MaxHealth;
             vital.rectTransform.sizeDelta = new Vector2(220f * math.saturate(left), 6f);
             vital.color = Color.Lerp(Harm, Ink, math.smoothstep(0.25f, 0.5f, left));
@@ -508,13 +515,15 @@ namespace Infinigame
             flash.color = new Color(Harm.r, Harm.g, Harm.b, game.Dead ? 0.3f : 0.4f * math.saturate(1f - (Time.time - player.HurtAt) / 0.6f) + 0.25f * math.saturate(1f - left * 4f));
 
             // the mission in hand, and how much of its guard has fallen
-            runText.text = game.Objective.Replace("  ·  ", "\n"); runText.color = Accent;
+            runText.text = game.Stage < Campaign.Won && game.Outpost.World == game.System.Reference ? game.Outpost.Instruction : game.Stage < Campaign.Won ? game.Mission.task : game.Objective; runText.color = Accent;
             bool mobile = Application.isMobilePlatform || DeviceControls.Touch || DeviceControls.Deck || DeviceControls.VR;
-            runText.fontSize = mobile ? 30 : 17;
+            runText.fontSize = mobile ? 24 : 19;
+            runText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            runText.resizeTextForBestFit = true; runText.resizeTextMinSize = 14; runText.resizeTextMaxSize = runText.fontSize;
             missionPlate.sizeDelta = new Vector2(Mathf.Min(1000, runText.preferredWidth) + 20, runText.preferredHeight + 22);
             charge.rectTransform.anchoredPosition = chargeTrack.rectTransform.anchoredPosition = new Vector2(0, -runText.preferredHeight - 6);
             run.GetComponent<RectTransform>().anchoredPosition = new Vector2(-56, mobile ? -190 : -48);
-            runText.rectTransform.sizeDelta = new Vector2(1000, 72);
+            runText.rectTransform.sizeDelta = new Vector2(Mathf.Min(1000, ((RectTransform)canvas.transform).rect.width - 112), 34);
             helpHint.text = ControlName("H") + " · CONTROLS";
             charge.rectTransform.sizeDelta = new Vector2(game.Outpost.World < 0 ? 0f : 220f * (1f - (float)game.Outpost.Left / Campaign.Minds(game.Stage)), 3f);
             Show(run, playing);
@@ -560,7 +569,7 @@ namespace Infinigame
             {
                 captionText.text = $"<color=#6bdcfa>{hermit.Name.ToUpperInvariant()}</color>     {hermit.Line}";
                 captionPlate.sizeDelta = new Vector2(Mathf.Min(captionText.preferredWidth, 1040f) + 48f, captionText.preferredHeight + 22f);
-                caption.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, player.Seated ? 470f : DeviceControls.HudActions ? 350f : 265f);
+                caption.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, player.Seated ? 86f : DeviceControls.HudActions ? 125f : 76f);
             }
             Show(caption, game.Subtitles && hermit.Remarking && playing, 4f);
             lesson.text = playing ? game.Tutorial.Hint : "";
@@ -770,7 +779,9 @@ namespace Infinigame
                     }
                 }
                 // and on that world, the raiders' place itself, then what they kept there: marks that lead the way and are never out of sight
-                if (charting && outpost.World == system.Reference && outpost.Fallen)
+                if (charting && outpost.World == system.Reference && outpost.Recovered)
+                    Mark(outpost.Exit - system.Anchor, outpost.SiteCleared ? "FACTORY REGION" : "BURROW EXIT", Distance(math.distance(player.Position, outpost.Exit)), Accent, false, -1, true);
+                else if (charting && outpost.World == system.Reference && outpost.Fallen)
                     Mark(ground + (Vector3)(outpost.Prize + math.normalizesafe(outpost.Prize) * 3f), Campaign.Name(game.Mission.wins[0]) + (game.Mission.wins.Length > 1 ? " AND MORE" : ""),
                         Distance(math.distance(player.Position, outpost.Prize)), Accent, false, -1, true);
                 else if (charting && outpost.World == system.Reference && outpost.OuterLeft == 0 && game.Stage < Campaign.Citadel)
@@ -786,14 +797,18 @@ namespace Infinigame
                     if (!inSpace || player.SystemView) Mark((Vector3)(factory.site - system.Anchor) + (Vector3)math.normalizesafe(factory.site) * 5, game.Frontier.State(factory.world, factory.region).shipyard ? "YOUR SHIPYARD" : "YOUR ROBODOG FACTORY", Distance(math.distance(factory.site, player.Position)), Accent, false, -1, true);
                 if (carding) Mark(scanner.Mark, "", "", Accent);
                 // whatever is hunting you, and for a raider where to aim so the cannons meet it
-                foreach (var foe in game.Battle.Foes)
+                markerFoes.Clear();
+                markerFoes.AddRange(game.Battle.Foes);
+                markerEye = eye + (Vector3)system.Anchor;
+                markerFoes.Sort(Nearer);
+                foreach (var foe in markerFoes)
                 {
                     float away = math.distance(foe.position, player.Position);
                     if (!playing) break;
                     if (foe.health <= 0) continue;
                     if (foe.outerGuard && outpost.World == system.Reference && away < 1500)
                     {
-                        Mark(foe.position - system.Anchor, foe.stationary ? "SHIELD TURRET" : "SHIELD SHIP", Distance(away), Accent, true, -1, true, math.saturate(foe.health / math.max(1, foe.maximumHealth)));
+                        Mark(foe.position - system.Anchor, foe.stationary ? "SPINE TURRET" : "HARROWER PATROL", Distance(away), Accent, true, -1, true, math.saturate(foe.health / math.max(1, foe.maximumHealth)));
                         continue;
                     }
                     if (inSpace && foe.kind != FoeKind.Raider || away > (inSpace ? 2500 : player.Powered ? 160 : 25)) continue;
@@ -854,14 +869,14 @@ namespace Infinigame
                 // under it; failing that the two go together to one side of it or another.
                 float wide = Mathf.Max(marker.name.preferredWidth, marker.detail.preferredWidth) + 10f, tall = detail.Length > 0 ? 36f : 18f;
                 bool placed = name.Length + detail.Length == 0;
-                marker.lead.enabled = false;
+
                 // Every side close in is tried first; then, where worlds crowd together, a place in a
                 // column off to the right of them, on the end of a line.
-                for (int i = 0; i < Places.Length + 16 && !placed; i++)
+                for (int i = 0; i < (boxed ? 1 : Places.Length) && !placed; i++)
                 {
-                    bool astride = i == 0 && detail.Length > 0, far = i >= Places.Length;
-                    Vector2 side = far ? Vector2.right : Places[i], half = new Vector2(side.x * wide / 2f, side.y * tall / 2f);
-                    Vector2 shift = astride ? Vector2.zero : far ? new Vector2(110f + wide / 2f, 150f - 20f * (i - Places.Length)) : half + new Vector2(side.x * 14f, side.y * 12f);
+                    bool astride = i == 0 && detail.Length > 0;
+                    Vector2 side = Places[i], half = new Vector2(side.x * wide / 2f, side.y * tall / 2f);
+                    Vector2 shift = astride ? Vector2.zero : half + new Vector2(side.x * 14f, side.y * 12f);
                     var box = new Rect(marker.at.anchoredPosition + shift - new Vector2(wide / 2f, astride ? 27f : tall / 2f), new Vector2(wide, astride ? 54f : tall));
                     bool free = true;
                     foreach (var other in labels) free &= !other.Overlaps(box);
@@ -870,13 +885,6 @@ namespace Infinigame
                     marker.name.rectTransform.anchoredPosition = shift + new Vector2(0f, astride ? 17.5f : detail.Length > 0 ? 9f : 0f);
                     marker.detail.rectTransform.anchoredPosition = shift - new Vector2(0f, astride ? 17.5f : 9f);
                     placed = true;
-                    // the line runs from just clear of the mark to the nearest edge of the name
-                    Vector2 end = shift - half;
-                    marker.lead.enabled = far;
-                    marker.lead.rectTransform.pivot = new Vector2(0f, 0.5f);
-                    marker.lead.rectTransform.anchoredPosition = end.normalized * 7f;
-                    marker.lead.rectTransform.sizeDelta = new Vector2(end.magnitude - 10f, 1f);
-                    marker.lead.rectTransform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(end.y, end.x) * Mathf.Rad2Deg);
                 }
                 marker.name.enabled = marker.detail.enabled = placed;
             }

@@ -129,6 +129,8 @@ Shader "Infinigame/Puff"
                 colour += (input.smoke.rgb + 0.05) * half3(2.6, 1.0, 0.25) * (input.heat.y * (1.2 - body));
                 // and shows through: hottest down in the creases, while the heads crust over with soot
                 half3 fire = Fire(input.heat.x * (1.4 - 1.15 * body) * (1.0 - 0.4 * out2));
+                float front = saturate(1 - 8 * abs(sqrt(out2) - min(0.9, 0.25 + age))) * wisps.r;
+                fire += half3(1, 0.39, 0.11) * front * saturate(input.heat.x) * (1 - eaten);
                 float alpha = density * input.smoke.a;
                 return half4(MixFogColor(colour * alpha + fire * density, unity_FogColor.rgb * alpha, input.uv.w), alpha);
             }

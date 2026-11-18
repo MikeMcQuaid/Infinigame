@@ -125,8 +125,7 @@ namespace Infinigame
             glare = new Material(Resources.Load<Shader>("Spark")) { enableInstancing = true };
             iron = Shapes.Hull(new Color(0.3f, 0.26f, 0.24f), 0.7f);
             flesh = Shapes.Solid(Surface.Chitin, new Color(0.38f, 0.035f, 0.6f), true);
-            ichor = Shapes.Material("Props", new Color(0.32f, 0.015f, 0.48f));
-            ichor.SetFloat("_Smoothness", 0.7f);
+            ichor = new Material(Resources.Load<Shader>("Ichor"));
             puffLooks = new MaterialPropertyBlock();
             sparkLooks = new MaterialPropertyBlock();
             for (int i = 0; i < glints.Length; i++)

@@ -105,6 +105,7 @@ namespace Infinigame.Tests
             game.Award(FoeKind.Mind);
             Player.walker.position = game.Outpost.Prize;
             yield return Press(new Controls { interact = true });
+            yield return EscapeAndBuild(Campaign.FirstBurrow);
             Assert.AreEqual(3, game.Stage);
             Assert.IsTrue(Player.Has(Gear.Beams)); Assert.IsFalse(Player.Has(Gear.Thrusters));
             while (game.Levelling) yield return Press(new Controls { confirm = true });

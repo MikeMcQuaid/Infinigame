@@ -94,13 +94,13 @@ namespace Infinigame
             {
                 repair = new GameObject("Suit repair beam").AddComponent<LineRenderer>();
                 repair.transform.SetParent(transform, false); repair.positionCount = 2;
-                repair.sharedMaterial = Shapes.Material("Glow", new Color(0.08f, 0.35f, 0.95f));
+                repair.sharedMaterial = Shapes.Beam(new Color(0.08f, 0.35f, 0.95f));
                 repair.startWidth = 0.018f; repair.endWidth = 0.035f;
                 for (int i = 0; i < repairRays.Length; i++)
                 {
                     repairRays[i] = Instantiate(repair, transform);
                     repairRays[i].name = "Repair scanning laser";
-                    repairRays[i].sharedMaterial = Shapes.Material("Glow", Color.HSVToRGB(0.45f + i * 0.055f, 0.7f, 0.9f));
+                    repairRays[i].sharedMaterial = Shapes.Beam(Color.HSVToRGB(0.45f + i * 0.055f, 0.7f, 0.9f));
                 }
             }
             repair.enabled = game.Tutorial != null && game.Tutorial.Repairing && !game.Paused;

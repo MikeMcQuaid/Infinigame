@@ -13,6 +13,7 @@ namespace Infinigame
         float3 start;
         public string Hint => game.Buried ? game.Boot < Game.BootDuration ? "SUIT RECOVERY · MOTOR LOCK" : $"{DeviceControls.Fire} · PUNCH THROUGH THE RUBBLE  {game.Dug}/{Game.Digs}"
             : game.Outpost.Demolition > 0 ? "DEMOLITION ARMED · LEAVE THE BURROW · GET 35 m FROM THE MIND"
+            : game.Outpost.SiteCleared ? DeviceControls.Key("B", "LT + D-PAD DOWN", "… / BUILD", "WRIST BUILD") + " · BUILD A ROBODOG FACTORY HERE"
             : game.Stage == 2 ? game.Outpost.Fallen ? $"{DeviceControls.Use} · TAKE THE SHIELDED BATTERY" : !game.Outpost.Rooms.walls.Last().broken ? $"{DeviceControls.Fire} · PUNCH THE MARKED ENTRANCE" : $"{DeviceControls.Fire} · PUNCH THE MIND AND ITS GUARDS"
             : game.Stage == Campaign.SecondBurrow ? "BEAM CUTS TERRAIN · DIG A FLANKING ROUTE · RECOVER SURFACE THRUSTERS"
             : game.Stage == Campaign.ThirdBurrow ? "SURFACE FLIGHT LIMIT 65 m · RECOVER THE ORBITAL BOOSTER"

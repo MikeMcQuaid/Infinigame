@@ -55,8 +55,8 @@ namespace Infinigame
             }
             if (visible)
             {
-                foreach (var foe in game.Battle.Foes) if (foe.health > 0 && !foe.friendly && (!game.Player.InSpace || game.System.ReferenceBody.kind == BodyKind.Station || foe.kind == FoeKind.Raider) && math.distance(foe.position, game.Player.Position) < (game.Player.InSpace ? 2500 : 500)) Contact(foe.position, false, foe.kind == FoeKind.Raider || foe.kind == FoeKind.Drone, foe.kind == FoeKind.Mind);
-                if (game.Goal is float3 position) Contact(position, true);
+                foreach (var foe in game.Battle.Foes) if (foe.health > 0 && !foe.friendly && !game.Outpost.Conceals(game.Player.Position, foe.position) && (!game.Player.InSpace || game.System.ReferenceBody.kind == BodyKind.Station || foe.kind == FoeKind.Raider) && math.distance(foe.position, game.Player.Position) < (game.Player.InSpace ? 2500 : 500)) Contact(foe.position, false, foe.kind == FoeKind.Raider || foe.kind == FoeKind.Drone, foe.kind == FoeKind.Mind);
+                if (game.Goal is float3 position && !game.Outpost.Conceals(game.Player.Position, position)) Contact(position, true);
             }
             for (int i = used; i < contacts.Count; i++) contacts[i].gameObject.SetActive(false);
         }

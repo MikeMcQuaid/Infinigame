@@ -8,8 +8,9 @@ namespace Infinigame
     public static partial class Models
     {
         static readonly Dictionary<string, Transform> masters = new Dictionary<string, Transform>();
-        static Material alloy, mechanism, rubber, optics, ceramic;
+        static Material alloy, mechanism, rubber, optics, ceramic, ivory;
         static int Curves => LodSettings.Tier == 0 ? 28 : 48;
+        static Material Ivory => ivory != null ? ivory : ivory = Paint(new Color(0.84f, 0.80f, 0.68f), 0.18f, 0.42f, Surface.Ceramic);
         static Material Alloy => alloy != null ? alloy : alloy = Paint(new Color(0.62f, 0.68f, 0.72f), 0.72f, 0.43f);
         static Material Mechanism => mechanism != null ? mechanism : mechanism = Paint(new Color(0.14f, 0.18f, 0.2f), 0.8f, 0.38f);
         static Material Rubber => rubber != null ? rubber : rubber = Paint(new Color(0.035f, 0.045f, 0.05f), 0.05f, 0.25f, Surface.Seal);
@@ -127,7 +128,24 @@ namespace Infinigame
             shell.Place(Move(0, 0.091f, -0.12f), () => shell.Lathe(new[] { 0.035f, 0, 0.035f, 0.018f, 0.027f, 0.025f, 0.018f, 0.025f, 0.018f, 0 }, Curves));
             glow.Ball(new Vector3(0, 0.108f, -0.12f), new Vector3(0.018f, 0.007f, 0.018f), Curves);
             for (int i = 0; i < 3; i++) glow.Box(new Vector3(0.102f, 0.025f, -0.14f + 0.04f * i), new Vector3(0.005f, 0.018f, 0.022f), 0.002f);
-            Add(root, "Armour", shell, Alloy);
+            // Split rails leave the palm lens and its concentric seals visible between the knuckles.
+            foreach (float side in new[] { -1f, 1f })
+            {
+                float x = side * 0.074f;
+                Scute(shell, new Vector3(x, 0.078f, -0.25f), new Vector3(x, 0.089f, 0.14f), Vector3.right, 0.023f, 0.021f);
+                frame.Rod(new Vector3(x, 0.103f, -0.18f), new Vector3(x, 0.105f, 0.14f), 0.012f, 12);
+                glow.Rod(new Vector3(x, 0.114f, -0.15f), new Vector3(x, 0.116f, 0.125f), 0.004f, 8);
+            }
+            frame.Place(Move(0, -0.063f, 0.067f) * Turn(180, 0, 0), () =>
+                frame.Lathe(new[] { 0.052f, 0, 0.055f, 0.009f, 0.047f, 0.017f, 0.034f, 0.017f, 0.032f, 0 }, 32));
+            glow.Ball(new Vector3(0, -0.076f, 0.067f), new Vector3(0.034f, 0.009f, 0.034f), 20);
+            for (int i = 0; i < 10; i++)
+            {
+                float angle = 36f * i;
+                shell.Place(Move(0, 0, -0.23f) * Turn(0, 0, angle) * Move(0, 0.09f, 0), () =>
+                    shell.Box(Vector3.zero, new Vector3(0.051f, 0.021f, 0.062f), 0.008f));
+            }
+            Add(root, "Armour", shell, Ivory);
             Add(root, "Finger joints and heat sinks", frame, Mechanism);
             Add(root, "Tendons", seal, Rubber);
             Add(root, "Emitter", glow, Optics, false);
@@ -252,8 +270,7 @@ namespace Infinigame
                     Scute(shell, new Vector3(side * 0.16f, 0.22f, z), new Vector3(side * 0.48f, -0.1f, z - 0.49f),
                         new Vector3(-1, side * 0.8f, 0), 0.21f, 0.085f);
                 }
-            var ivory = Paint(new Color(0.84f, 0.80f, 0.68f), 0.18f, 0.42f, Surface.Ceramic);
-            Add(torso, "Overlapping carapace", shell, ivory); Add(torso, "Spinal mechanisms", frame, Mechanism); Add(torso, "Cables", seal, Rubber);
+            Add(torso, "Overlapping carapace", shell, Ivory); Add(torso, "Spinal mechanisms", frame, Mechanism); Add(torso, "Cables", seal, Rubber);
             var neck = Child(torso, "Neck"); neck.localPosition = new Vector3(0, 0.12f, 0.58f);
             shell = new MeshKit(); frame = new MeshKit();
             foreach (float side in new[] { -1f, 1f })
@@ -281,7 +298,7 @@ namespace Infinigame
             foreach (float side in new[] { -1f, 1f })
                 Scute(shell, new Vector3(side * 0.12f, 0.13f, -0.29f), new Vector3(side * 0.14f, 0.045f, 0.32f),
                     new Vector3(1, -side * 0.31f, 0), 0.154f, 0.051f);
-            Add(head, "Sensor housing", shell, ivory); Add(head, "Optical mounts", frame, Mechanism); Add(head, "Three optics", glow, Optics, false);
+            Add(head, "Sensor housing", shell, Ivory); Add(head, "Optical mounts", frame, Mechanism); Add(head, "Three optics", glow, Optics, false);
             var barrel = new MeshKit();
             barrel.Place(Move(0, 0.47f, -0.17f) * Turn(90, 0, 0), () =>
                 barrel.Lathe(new[] { 0f, -0.38f, 0.12f, -0.32f, 0.12f, -0.1f, 0.085f, -0.04f, 0.067f, 0.50f, 0.075f, 0.54f, 0.045f, 0.55f, 0.045f, 0.50f }, 28));

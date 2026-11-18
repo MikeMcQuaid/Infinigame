@@ -18,6 +18,12 @@ namespace Infinigame.Core
         public float3 origin;
         public quaternion rotation;
         public float3 Local(float3 point) => math.rotate(math.inverse(rotation), point - origin);
+        public bool InPassage(float3 point)
+        {
+            float3 local = Local(point);
+            float height = local.y - Interior.TunnelFloor(local.z);
+            return math.abs(local.x) < 6 && local.z > -24 && local.z < 40 && height > -4 && height < 8;
+        }
         public bool Contains(float3 point)
         {
             var local = Local(point);
@@ -38,6 +44,23 @@ namespace Infinigame.Core
     {
         public Wall[] walls;
         public bool indestructible;
+        Wall[] bounded;
+        float3 minimum, maximum;
+
+        bool Outside(float3 from, float3 to, float radius)
+        {
+            if (bounded != walls)
+            {
+                minimum = new float3(float.MaxValue); maximum = -minimum;
+                foreach (var wall in walls)
+                {
+                    minimum = math.min(minimum, wall.centre - wall.half);
+                    maximum = math.max(maximum, wall.centre + wall.half);
+                }
+                bounded = walls;
+            }
+            return math.any(math.max(from, to) + radius < minimum) || math.any(math.min(from, to) - radius > maximum);
+        }
         public float3 entrance, core, console;
         public float3[] route = Array.Empty<float3>();
         public static Interior Outpost() => new Interior
@@ -64,8 +87,8 @@ namespace Infinigame.Core
             for (int i = 0; i < 10; i++)
             {
                 float z = -21 + i * 6, floor = TunnelFloor(z);
-                walls.Add(new Wall(new float3(-6, floor + (variant >= 2 ? 4 : 3), z), new float3(1.5f, variant >= 2 ? 5 : 4, 3.2f)));
-                walls.Add(new Wall(new float3(6, floor + (variant >= 2 ? 4 : 3), z), new float3(1.5f, variant >= 2 ? 5 : 4, 3.2f)));
+                walls.Add(new Wall(new float3(-6, floor + (variant >= 2 ? 1 : 0), z), new float3(1.5f, variant >= 2 ? 8 : 7, 3.2f)));
+                walls.Add(new Wall(new float3(6, floor + (variant >= 2 ? 1 : 0), z), new float3(1.5f, variant >= 2 ? 8 : 7, 3.2f)));
                 if (i > 1) walls.Add(new Wall(new float3(0, floor + (variant >= 2 ? 9 : 7), z), new float3(7, 2, 3.2f)));
             }
             if (variant == 1)
@@ -110,6 +133,7 @@ namespace Infinigame.Core
         public float3 Move(float3 from, float3 velocity, float radius, float dt, bool open, out bool hit, float stepHeight = 0)
         {
             hit = false;
+            if (Outside(from, from + velocity * dt, radius + stepHeight)) return from + velocity * dt;
             int steps = math.max(1, (int)math.ceil(math.length(velocity) * dt / math.max(0.2f, radius * 0.5f)));
             float3 at = from, delta = velocity * (dt / steps);
             for (int i = 0; i < steps; i++)
@@ -139,6 +163,15 @@ namespace Infinigame.Core
             }
             return at;
         }
+        // Preserve the wall top and its save index when extending it below uneven terrain.
+        public void SinkWall(int index, float bottom)
+        {
+            var wall = walls[index];
+            float extra = math.max(0, wall.centre.y - wall.half.y - bottom) * 0.5f;
+            wall.centre.y -= extra; wall.half.y += extra;
+            walls[index] = wall; bounded = null;
+        }
+
         public bool Breach(float3 point, float damage)
         {
             if (indestructible) return false;
@@ -155,10 +188,11 @@ namespace Infinigame.Core
         }
         public bool Visible(float3 from, float3 to, bool open)
         {
+            if (Outside(from, to, 0)) return true;
+            float3 delta = to - from;
             foreach (var wall in walls)
             {
                 if (wall.broken || open && wall.door) continue;
-                float3 delta = to - from;
                 float near = 0f, far = 1f;
                 for (int axis = 0; axis < 3 && near <= far; axis++)
                 {

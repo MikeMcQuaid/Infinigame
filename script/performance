@@ -32,15 +32,29 @@ print(session['title'])
 print('\n'.join(session['info']))
 rows = [row for row in session['rows'] if row['doing'] in ('foot', 'flying', 'autopilot', 'landed')]
 print('Medians across logged sample windows. Each p95 comes from its own window.')
+
+def mid(samples, key):
+    return median(float(row[key]) for row in samples)
+
 print('Activity      Samples     FPS    p95 ms   Worst ms   Work ms    GPU ms')
 for activity in ('foot', 'flying', 'autopilot', 'landed'):
     subset = [row for row in rows if row['doing'] == activity]
     if not subset:
         continue
-    def mid(key):
-        return median(float(row.get(key, 0)) for row in subset)
     worst = max(float(row['worst_ms']) for row in subset)
-    print(f'{activity:12} {len(subset):7d} {mid("fps"):7.1f} {mid("p95_ms"):9.1f} {worst:10.1f} {mid("work_ms"):9.1f} {mid("gpu_ms"):9.1f}')
+    work = f'{mid(subset, "work_ms"):.1f}' if "work_ms" in subset[0] else 'n/a'
+    print(f'{activity:12} {len(subset):7d} {mid(subset, "fps"):7.1f} {mid(subset, "p95_ms"):9.1f} {worst:10.1f} {work:>9} {mid(subset, "gpu_ms"):9.1f}')
+walking = {}
+for row in rows:
+    if row['doing'] == 'foot' and 'stage' in row and 'corpses' in row:
+        walking.setdefault((row['where'], int(row['stage'])), []).append(row)
+if walking:
+    print('\nOn foot by world and mission')
+    print('World        Stage  Windows    FPS   CPU ms   GPU ms   Foes   Corpses   Moving')
+    for (world, stage), samples in sorted(walking.items()):
+        moving = f'{mid(samples, "active_corpses"):.1f}' if 'active_corpses' in samples[0] else 'n/a'
+        print(f'{world:12} {stage:5} {len(samples):8} {mid(samples, "fps"):6.1f} {mid(samples, "work_ms"):8.1f}'
+              f' {mid(samples, "gpu_ms"):8.1f} {mid(samples, "foes"):6.1f} {mid(samples, "corpses"):9.1f} {moving:>8}')
 print('\nLargest active stalls:')
 for row in sorted(rows, key=lambda row: float(row['worst_ms']), reverse=True)[:8]:
     print(f'{row["time"]}s: {row["worst_ms"]} ms, {row["doing"]}, {row["where"]}, {row["pixels"]}, {row["detail"]}, {row["foes"]} foes')

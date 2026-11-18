@@ -2,7 +2,22 @@
 
 Run `script/play`, spend several minutes walking, fighting, expanding a factory and flying between worlds, then quit. Run `script/performance`. The script reads the latest real player session from `Logs/frames.log`, excluding title, pause and map samples. Logs remain local and ignored by Git.
 
-## Latest Mac session, 17 November 2026 at 15:01:23
+## Mac session, 18 November 2026 at 09:10
+
+The M5 Max ran at 2992 × 1874 with Burst active, HDR off and a 60 FPS target. These are medians across five-second sample windows in the session recorded before the changes below.
+
+| Activity | Windows | FPS | CPU work (ms) | GPU (ms) | Live foes | Corpses |
+|---|---:|---:|---:|---:|---:|---:|
+| First burrow on foot | 21 | 50.8 | 18.6 | 7.3 | 8 | 2 |
+| Branching nest on foot | 20 | 22.5 | 44.5 | 11.6 | 15 | 9 |
+| Deep brood on foot | 22 | 16.4 | 60.1 | 13.1 | 21.5 | 17.5 |
+| Orbital recovery on foot | 5 | 8.4 | 120.6 | 14.5 | 13 | 30 |
+
+Across 80 walking windows the median was 28 FPS. The median window p95 was 50.3 ms. The first burrow had the same 50.8 FPS the previous day. The deep brood had previously run at 35.6 FPS with seven corpses and fewer living enemies. The GPU cost also grew, but lowering resolution alone cannot recover a 60 ms main-thread frame. The largest single stall was 1.35 seconds at startup with zero foes. The frame log cannot attribute that stall to an individual method.
+
+A repeatable Unity test settled 18 eight-part ragdolls and measured twelve distant shots with the normal corpse update. The median was 45.291 ms before the fix and 0.014 ms afterwards on the same machine. Misses previously restarted physics on every local corpse. Resting bodies now sleep through misses, cache their floor samples and follow origin shifts. Hits still wake and dismember the parts they strike. The new `active_corpses` column distinguishes moving bodies from retained remains. Violet pools now sample the terrain once and spread in the shader. The built macOS test player also held 18 living motiles and 18 corpses in view during a 13-second encounter, including eight seconds holding the hand-beam trigger against the ground. Across all 26 half-second walking windows it recorded a median 57.9 FPS, 18.0 ms window p95 and 6.25 ms GPU time. All 18 bodies were asleep by the fourth window. A 1398.8 ms hitch remained in the first encounter window. The last 14 windows had a worst frame of 31.2 ms. This run used 1920 × 1080 with HDR on and Burst off. Compare the same crowded missions at 2992 × 1874 in a normal Burst-enabled player for a direct comparison to the play session. `script/performance` now groups walking samples by mission and reports both total and moving corpses.
+
+## Mac session, 17 November 2026 at 15:01:23
 
 Apple M5 Max, 2992 × 1878 on a 120 Hz display, PC detail, target 60, VSync disabled and **Burst active**. This session confirms the previous half-refresh cap is gone.
 

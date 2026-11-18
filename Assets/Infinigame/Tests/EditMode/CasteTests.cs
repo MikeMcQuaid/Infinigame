@@ -1,11 +1,27 @@
 using Infinigame.Core;
 using NUnit.Framework;
+using System.Linq;
 using Unity.Mathematics;
 
 namespace Infinigame.Tests
 {
     public class CasteTests
     {
+        [Test]
+        public void HitFromBehindAlertsAQuietStalker()
+        {
+            var foe = Combat.Spawn(FoeKind.Sentry, float3.zero, new float3(0, 0, 1), 0, 7);
+            Combat.Hurt(ref foe, 1);
+            Assert.AreEqual(Alert.Alarmed, Combat.Observe(ref foe, new float3(0, 0, -15), 0, 0, false, 1f / 60));
+        }
+
+        [Test]
+        public void BurrowSidesContinueBelowTheDownhillEndOfEachSegment()
+        {
+            foreach (var wall in Interior.Burrow().walls.Take(2))
+                Assert.LessOrEqual(wall.centre.y - wall.half.y, Interior.TunnelFloor(wall.centre.z + wall.half.z) - 4);
+        }
+
         [Test]
         public void GroundFeetPlantThroughStanceAndReturnWithoutSnapping()
         {

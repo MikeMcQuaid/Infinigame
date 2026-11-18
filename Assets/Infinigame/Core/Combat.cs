@@ -23,7 +23,7 @@ namespace Infinigame.Core
         public bool away, scattered, friendly, stationary, guardian, outerGuard, protectedCore;
         public Alert alert;
         public float suspicion, recoil, attack, shield, burrowing, stride, pace, windup;
-        public bool clever;
+        public bool clever, provoked;
         public bool patrol;
         public uint seed, random;
     }
@@ -97,7 +97,12 @@ namespace Infinigame.Core
 
         public static void Hurt(ref Foe foe, float damage)
         {
-            if (foe.protectedCore) return;
+            if (damage <= 0 || foe.protectedCore) return;
+            if (!foe.friendly)
+            {
+                foe.alert = Alert.Alarmed; foe.suspicion = 2; foe.scattered = false;
+                foe.provoked = true;
+            }
             float absorbed = math.min(foe.shield, damage);
             foe.shield -= absorbed; foe.health -= damage - absorbed;
         }

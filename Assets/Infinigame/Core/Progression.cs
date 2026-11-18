@@ -18,6 +18,17 @@ namespace Infinigame.Core
         public float Energy => 1 + ranks[3] * 0.18f;
         public float Recovery => 1 + ranks[4] * 0.18f;
         public Upgrade Choice(int index) => (Upgrade)((level * 3 + index) % ranks.Length);
+        public string Preview(Upgrade upgrade, float armour, float damage, float period)
+        {
+            return upgrade switch
+            {
+                Upgrade.Damage => $"HIT DAMAGE   {damage:0.#} → {damage / Damage * (Damage + 0.15f):0.#}",
+                Upgrade.FireRate => $"FISTS PER SECOND   {Rate / period:0.00} → {(Rate + 0.12f) / period:0.00}",
+                Upgrade.Toughness => $"SUIT ARMOUR   {armour:0} → {armour / Toughness * (Toughness + 0.15f):0}",
+                Upgrade.Energy => $"ENERGY / SEC   {Suit.Recharge * Energy:0.0} → {Suit.Recharge * (Energy + 0.18f):0.0}",
+                _ => $"REPAIR HP / SEC   {4 * Recovery:0.0} → {4 * (Recovery + 0.18f):0.0}",
+            };
+        }
         public int Cost(Upgrade upgrade) => 15 + ranks[(int)upgrade] * 10;
         public bool Improve(Upgrade upgrade, bool purchase)
         {

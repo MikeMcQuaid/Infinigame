@@ -51,11 +51,14 @@ namespace Infinigame.Tests
         }
         [UnityTest] public IEnumerator FlightRevisionRailChargesAndDeadBodiesRemain()
         {
-            game.Jump(3);
+            game.Jump(Campaign.Citadel);
+            float3 up = Campaign.Site(Solar.Descriptor, Campaign.Stranger);
+            Stand(up, World(up));
             yield return null;
             Assert.IsFalse(GameObject.Find("Traveller").transform.Find("Torso/Head").gameObject.activeSelf);
             Assert.IsTrue(GameObject.Find("Traveller").transform.Find("Left leg").gameObject.activeSelf);
             yield return Press(new Controls { select = 4 });
+            Assert.IsTrue(Player.Weapon.rail);
             float fired = game.Battle.Fired;
             input.fire = true; yield return Seconds(0.6f);
             Assert.AreEqual(fired, game.Battle.Fired);

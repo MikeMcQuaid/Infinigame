@@ -296,26 +296,35 @@ namespace Infinigame
         {
             foreach (var layer in layers)
             {
+                float reach = 1.1f * crater.w, cellSize = QuadtreeLod.NodeSize(body.radius, layer.depth);
                 if (layer.name == "conifer tree")
                 {
                     foreach (var cell in layer.cells.Values)
-                        if (cell.things != null) foreach (var tree in cell.things)
+                    {
+                        if (cell.things == null || math.distance(math.normalizesafe((float3)cell.centre), crater.xyz) * body.radius > cellSize + crater.w + 1) continue;
+                        foreach (var tree in cell.things)
                         {
                             Vector3 foot = tree.GetColumn(3);
                             if (math.distance(math.normalizesafe((float3)foot), crater.xyz) * body.radius > crater.w + 1) continue;
                             var key = TreeKey(foot); wounds.TryGetValue(key, out float hurt); wounds[key] = hurt + math.max(12, crater.w * 8);
                         }
+                    }
                     continue;
                 }
-                float reach = QuadtreeLod.NodeSize(body.radius, layer.depth) + 1.5f * crater.w;
-                stale.Clear();
-                foreach (var pair in layer.cells)
-                    if (math.distance(math.normalize(pair.Value.centre), crater.xyz) * body.radius < reach)
-                        stale.Add(pair.Key);
-                foreach (var id in stale)
+                foreach (var cell in layer.cells.Values)
                 {
-                    if (layer.cells[id].growing != null) growing--;
-                    layer.cells.Remove(id);
+                    if (math.distance(math.normalizesafe((float3)cell.centre), crater.xyz) * body.radius > cellSize + reach) continue;
+                    if (cell.growing != null) { cell.growing = null; growing--; }
+                    if (cell.things == null) continue;
+                    int survivors = 0;
+                    for (int i = 0; i < cell.things.Length; i++)
+                    {
+                        var plant = cell.things[i];
+                        if (math.distance(math.normalizesafe((float3)(Vector3)plant.GetColumn(3)), crater.xyz) * body.radius <= reach) continue;
+                        if (survivors != i) cell.things[survivors] = plant;
+                        survivors++;
+                    }
+                    if (survivors != cell.things.Length) Array.Resize(ref cell.things, survivors);
                 }
             }
         }

@@ -132,15 +132,16 @@ namespace Infinigame
                     buildings.Add(engine);
                 }
         }
-        public bool CanBuild(int choice) => choice == 0 ? !game.Player.flying && !game.System.ReferenceBody.Dry(game.Player.Position) && game.Player.Altitude < 5 && game.System.ReferenceBody.kind == BodyKind.Rock && !Local.factory && game.FactoryUnlocked && Local.kills >= War.RequiredKills(Local)
+        public bool CanBuild(int choice) => choice == 0 ? !game.Player.flying && !game.System.ReferenceBody.Dry(game.Player.Position) && game.Player.Altitude < 5 && game.System.ReferenceBody.kind == BodyKind.Rock && !Local.factory && game.FactoryUnlocked && (Local.mindDead || Local.kills >= War.RequiredKills(Local))
             : choice == 1 ? Local.factory && !Local.shipyard && GroundControlled(game.System.Reference)
             : game.Stage >= Campaign.Won && Local.shipyard && GroundControlled(game.System.Reference) && Total(game.System.Reference, front => front.alienShips) <= 0 && !game.Fall.active;
         public string FactoryHint(int choice)
         {
             var front = Local;
             return choice == 0 && front.factory ? "FACTORY BUILT · " + (front.mindDead ? "Its robodogs replace losses and will finish clearing this region." : "Kill the living mind to release the robodogs’ full strength.")
-                : choice == 0 && !game.FactoryUnlocked ? "RECOVER THE SECOND BURROW’S THRUSTERS TO UNLOCK FACTORIES"
+                : choice == 0 && !game.FactoryUnlocked ? "RECOVER THE FIRST CORE AND ESCAPE THE BLAST"
                 : choice == 0 && (game.Player.flying || game.System.ReferenceBody.Dry(game.Player.Position) || game.Player.Altitude >= 5) ? "LAND ON CLEAR SURFACE GROUND TO BUILD"
+                : choice == 0 && front.mindDead ? $"REGION {front.region + 1} · READY TO BUILD · MIND SILENCED"
                 : choice == 0 ? $"REGION {front.region + 1} · ROBODOG FACTORY · {front.kills}/{War.RequiredKills(front)} ALIENS DEFEATED\nReplicating laser robodogs hunt the remaining {math.ceil(front.aliens):0} bodies. Production stops when this region is clear."
                 : choice == 1 ? $"SHIPYARD UPGRADE · {(front.shipyard ? "BUILT" : !front.factory ? "BUILD A ROBODOG FACTORY FIRST" : !GroundControlled(front.world) ? "CONTROL EVERY REGION WITH A FACTORY" : "READY")}\nYour robots assemble ships to defend this planet and its immediate neighbours."
                 : $"MOON ENGINES · {(game.Stage < Campaign.Won ? "DESTROY ALL CITADEL MINDS" : !front.shipyard ? "BUILD THIS WORLD’S SHIPYARD" : Total(front.world, state => state.alienShips) > 0 ? $"{math.ceil(Total(front.world, state => state.alienShips)):0} HOSTILE SHIPS REMAIN" : game.Fall.active ? "ENGINES BUILT" : "READY")}\nThe impact collapses the buried mind into a singularity that consumes this system.";
@@ -364,7 +365,7 @@ namespace Infinigame
                 }
                 var beam = new GameObject("Dorsal laser").AddComponent<LineRenderer>();
                 beam.transform.SetParent(model, false); beam.positionCount = 2; beam.startWidth = beam.endWidth = ship ? 0.18f : 0.06f;
-                beam.sharedMaterial = Shapes.Material("Glow", new Color(0.2f, 2, 3)); beam.enabled = false;
+                beam.sharedMaterial = Shapes.Beam(new Color(0.2f, 2, 3)); beam.enabled = false;
                 var origin = escort ? source : front;
                 var colony = game.Colonies.FirstOrDefault(item => item.world == origin.world && item.region == origin.region);
                 float3 position = colony?.site ?? game.Player.Position, velocity = float3.zero;

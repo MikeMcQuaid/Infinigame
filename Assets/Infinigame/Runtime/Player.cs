@@ -458,11 +458,13 @@ namespace Infinigame
                     else { walker.position = resolved; walker.velocity = (resolved - before) / math.max(frame, 1e-4f); walker.grounded = true; }
                 }
             }
+            if (frame > 0 && !flying && game.Outpost.LandingLocked && game.Outpost.Shield.Bounce(before, ref walker.position, ref walker.velocity, 0))
+                game.Notify("CLEAR THE LANDING ZONE BEFORE ENTERING ON FOOT");
             if (frame > 0 && game.Outpost.Shield.Bounce(shipBefore, ref ship.position, ref ship.velocity, Combat.ShipRadius))
             {
                 ship.landed = landing = false; Destination = -1;
                 if (flying) Hurt(20, "Struck a shield"); else if (!game.GodMode) hull = math.max(1, hull - 20);
-                game.Outpost.Flash(); game.Notify("SHIELD CONTACT · DESTROY ITS DEFENCES");
+                game.Outpost.Flash(); game.Notify("SHIP REPELLED · LAND OUTSIDE THE FIELD");
             }
             walker.impact = ship.impact = 0f;
             // heat: a star cooks a ship that comes close, a giant one that sinks into it, and a furnace world anyone who steps outside

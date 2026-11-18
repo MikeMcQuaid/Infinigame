@@ -145,9 +145,13 @@ namespace Infinigame.Tests
             { int i = game.Battle.Foes.IndexOf(mind); var killed = mind; killed.health = 0; game.Battle.Foes[i] = killed; }
             yield return null; yield return null;
             Assert.AreEqual(1, game.Outpost.Left); Assert.IsFalse(game.Outpost.Fallen);
-            var pool = Object.FindAnyObjectByType<IchorPool>(); Assert.IsNotNull(pool);
+            yield return Until(() => Object.FindAnyObjectByType<IchorPool>() != null);
+            var pool = Object.FindAnyObjectByType<IchorPool>();
+            Vector3 centre = pool.transform.localPosition;
             yield return Seconds(0.3f);
             Assert.Greater(pool.GetComponent<MeshFilter>().sharedMesh.vertexCount, 100);
+            Assert.AreEqual(centre, pool.transform.localPosition);
+            Assert.AreEqual("Infinigame/Ichor", pool.GetComponent<Renderer>().sharedMaterial.shader.name);
             Assert.GreaterOrEqual(game.Corpses.Count, 2);
             HoverAt(game.Outpost.Place(game.Outpost.Rooms.route[5] + new float3(0, 0, -20)));
             yield return ReworkShot("revision3-citadel-remains");

@@ -20,7 +20,9 @@ namespace Infinigame
             if (canvas != null) return;
             canvas = new GameObject("Forearm console", typeof(Canvas)).GetComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
-            canvas.gameObject.AddComponent<Image>().color = new Color(0.005f, 0.015f, 0.025f, 0.99f);
+            var back = canvas.gameObject.AddComponent<Image>();
+            back.sprite = Hud.Panel; back.type = Image.Type.Sliced;
+            back.color = new Color(0.005f, 0.015f, 0.025f, 0.99f);
             canvas.GetComponent<RectTransform>().sizeDelta = new Vector2(480, 620);
             canvas.transform.localScale = Vector3.one * 0.0005f;
             var housing = new MeshKit(); housing.Box(new Vector3(0, 0, 18), new Vector3(500, 640, 24), 12);
@@ -37,6 +39,7 @@ namespace Infinigame
             for (int i = 0; i < labels.Length; i++)
             {
                 var plate = new GameObject(actions[i], typeof(RectTransform), typeof(Image)).GetComponent<Image>();
+                plate.sprite = Hud.Panel; plate.type = Image.Type.Sliced;
                 plate.transform.SetParent(canvas.transform, false); plate.color = new Color(0.01f, 0.04f, 0.06f, 0.98f);
                 plate.rectTransform.anchoredPosition = new Vector2(i % 2 == 0 ? -118 : 118, 207 - i / 2 * 91);
                 plate.rectTransform.sizeDelta = new Vector2(224, 79); plates[i] = plate;

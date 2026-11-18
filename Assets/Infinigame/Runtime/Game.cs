@@ -87,7 +87,7 @@ namespace Infinigame
         // the citadel has fallen) and how tough that makes the raiders.
         public Progression Progression => save.progression;
         public bool Levelling => Paused && Page == "Level up";
-        public bool FactoryUnlocked => Stage > Campaign.SecondBurrow;
+        public bool FactoryUnlocked => Stage > Campaign.FirstBurrow || Stage == Campaign.FirstBurrow && Outpost.SiteCleared;
         public int Depth => save.depth;
         public float Pressure => War.Pressure(save.deaths);
         public EscortOrders Escorts => save.escorts;
@@ -104,7 +104,7 @@ namespace Infinigame
         // Where the mission in hand leads on the world the player is at, relative to its centre:
         // the stranger's fire, the raiders' place or what they guarded. Nowhere, if it is on another world.
         public float3? Goal => Stage == Campaign.Recovery ? Player.ship.position : System.Reference == SolarSystemDescriptor.Home && save.stage == Campaign.Stranger ? Hermit.Position
-            : Outpost.World != System.Reference ? (float3?)null : Outpost.Fallen ? Outpost.Prize : save.stage == Campaign.Citadel ? (float3?)null : Outpost.Waypoint;
+            : Outpost.World != System.Reference ? (float3?)null : Outpost.Recovered ? Outpost.Exit : Outpost.Fallen ? Outpost.Prize : save.stage == Campaign.Citadel ? (float3?)null : Outpost.Waypoint;
         // Everything scanned so far, and the talk with this system's hermit as alternating lines.
         public List<Entry> Journal => save.journal;
         public List<string> Talk => save.talk;
@@ -137,7 +137,7 @@ namespace Infinigame
         public string Epitaph { get; private set; }
         public string Tally { get; private set; }
         // The menu on screen, if any.
-        public string[] Items => Levelling ? Enumerable.Range(0, 3).Select(i => Core.Progression.Name(save.progression.Choice(i))).ToArray()
+        public string[] Items => Levelling ? Enumerable.Range(0, 3).Select(i => Progression.Preview(Progression.Choice(i), Player.MaxHealth, Player.Weapon.damage, Combat.Arms[0].period)).ToArray()
             : Page == "Fleet orders" ? new[] { $"ESCORTS   ·   {Escorts.count}", $"ORDERS   ·   {Escorts.order.ToString().ToUpperInvariant()}", "Back" }
             : Page == "Equipment" ? Enumerable.Range(0, 5).Select(i => $"{Core.Progression.Name((Upgrade)i)} · {save.progression.Cost((Upgrade)i)} SALVAGE").Append("Back").ToArray()
             : Dead ? Over : Confirming ? new[] { "Cancel", "Confirm" }
@@ -400,7 +400,7 @@ namespace Infinigame
         void Update()
         {
             if (!Ready) return;
-            if (!Paused && !Dead && !Hermit.Talking && !ShowControls && !mapOpen && !Fall.active && Stage >= 3 && Progression.Pending)
+            if (!Paused && !Dead && !Hermit.Talking && !ShowControls && !mapOpen && !Fall.active && Player.Powered && Progression.Pending)
             { Pause(); Page = "Level up"; }
             var c = Player.controls();
             if (Paused && !string.IsNullOrEmpty(c.typed))
@@ -498,7 +498,6 @@ namespace Infinigame
                 else if (c.interact && Outpost.Near)
                 {
                     Outpost.ArmDemolition();
-                    Advance();
                     c = default;
                 }
                 if (Buried)
@@ -602,31 +601,46 @@ namespace Infinigame
             Outpost.Killed(kind);
             if (credited && Stage >= Campaign.FirstBurrow)
             {
-                Progression.experience += kind == FoeKind.Mind ? 35 : kind == FoeKind.Raider ? 20 : 10;
+                GainExperience(kind == FoeKind.Mind ? 35 : kind == FoeKind.Raider ? 20 : 10);
                 Progression.salvage += kind == FoeKind.Mind ? 12 : 3;
             }
         }
 
         // A mission done, which is to say what it was for has been taken: that is the player's
         // from now on, they are made whole, and the next begins.
-        public void Advance()
+        void GainExperience(int amount)
         {
-            if (save.stage >= Campaign.Won) return;
-            var done = Mission;
-            string spoils = Campaign.Spoils(save.stage);
-            bool crewed = Hermit.Aboard;
-            foreach (var gear in done.wins)
+            Progression.experience += amount;
+            if (Stage <= Campaign.FirstBurrow && Progression.level == 0)
+                Progression.experience = math.min(Progression.experience, Progression.Required);
+        }
+
+        public void FitRewards()
+        {
+            foreach (var gear in Mission.wins)
             {
                 save.kit |= 1 << (int)gear;
                 int fitted = Player.fitted | 1 << (int)gear;
                 if (Suit.Modules.Contains(gear) && Suit.Fits(save.kit, fitted)) Player.fitted = fitted;
             }
             Player.kit = save.kit;
-            if (Outpost.World >= 0) Presence.Liberate(Outpost.World);
             Player.energy = Player.Powered ? Suit.Capacity : 3;
             save.fitted = Player.fitted;
+            if (Stage == Campaign.FirstBurrow && Progression.level == 0)
+                Progression.experience = Progression.Required;
+            save.checkpoint = Progression.Copy();
+        }
+
+        public void Advance()
+        {
+            if (save.stage >= Campaign.Won) return;
+            var done = Mission;
+            string spoils = Campaign.Spoils(save.stage);
+            bool crewed = Hermit.Aboard;
+            if (!Outpost.SiteCleared) FitRewards();
+            if (Outpost.World >= 0) Presence.Liberate(Outpost.World);
             save.stage++;
-            if (done.count > 0) { Progression.experience += 20; Progression.salvage += 10; }
+            if (done.count > 0) { if (save.stage - 1 != Campaign.FirstBurrow) GainExperience(20); Progression.salvage += 10; }
             save.checkpoint = Progression.Copy();
             Frontier.Settle();
             Player.health = Player.MaxHealth;
@@ -783,6 +797,7 @@ namespace Infinigame
             if (Levelling)
             {
                 Progression.Improve(Progression.Choice(Selected), false);
+                if (Outpost.SiteCleared) save.checkpoint = Progression.Copy();
                 Write();
                 if (!Progression.Pending) Resume();
                 return;
@@ -989,8 +1004,8 @@ namespace Infinigame
             Dead = true;
             save.deaths++;
             save.progression = save.checkpoint.Copy();
-            save.ruins.RemoveAll(ruin => ruin.stage == Stage);
-            if (Outpost.World >= 0) Frontier.State(Outpost.World, Outpost.World == SolarSystemDescriptor.Home ? Stage - Campaign.FirstBurrow : 0).mindDead = false;
+            if (!Outpost.SiteCleared) save.ruins.RemoveAll(ruin => ruin.stage == Stage);
+            if (!Outpost.SiteCleared && Outpost.World >= 0) Frontier.State(Outpost.World, Outpost.World == SolarSystemDescriptor.Home ? Stage - Campaign.FirstBurrow : 0).mindDead = false;
             Write();
             Selected = 0;
             Epitaph = Player.Cause;
@@ -1034,7 +1049,7 @@ namespace Infinigame
         public void Remember(Entry entry)
         {
             save.journal.Add(entry);
-            Progression.experience += 15; Progression.salvage += 3;
+            GainExperience(15); Progression.salvage += 3;
             Sounds.Chime();
             Write();
         }

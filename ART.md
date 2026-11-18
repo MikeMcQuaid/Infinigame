@@ -1,5 +1,10 @@
 # Visual direction
 
+The flight chassis and gauntlet share the recovery robot’s ivory shell, dark mechanical joints and cyan optics. Four short outrigger engines sit on exposed joints. Overlapping shoulder plates lead to the split tail. Ceramic cheeks frame the cockpit instruments. The gauntlet carries two raised dorsal rails, a segmented cuff and a recessed palm lens. These parts share existing material batches. [Equipment concept](docs/art/flight-and-gauntlet-concept.jpg) · [In-game meshes](docs/art/flight-and-gauntlet.jpg)
+
+`RenderFlightEquipment` captures the exterior, cockpit and gauntlet from the generated gameplay meshes. The beam shader draws a moving filament inside a softer halo. Sparks brighten towards their head and explosion puffs carry a turbulent hot front. Violet ichor spreads across a terrain-fitted mesh beneath the resting body. Its feathered edge and shallow-angle reflection let the surface underneath show through.
+
+
 This is design guidance, not a runtime configuration file. `Models.cs`, `MeshKit.cs` and the faction model builders implement it. The game must look convincing at walking distance and from the cockpit, with smooth curved silhouettes and visible construction details.
 
 Build models in passes: primary proportions and curved volumes, articulated structure, overlapping shell panels and recesses, then fasteners, cables, vents and optics. Use real geometry for silhouette and parallax, and generated normal and roughness detail for small surface marks. Additional triangles alone do not make a convincing model.

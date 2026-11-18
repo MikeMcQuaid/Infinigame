@@ -45,7 +45,7 @@ namespace Infinigame.Core
         public static bool CanSpread(int origin, int destination) => math.abs(origin - destination) <= 1;
         public static bool Build(Front front, bool ships)
         {
-            if (ships ? front.shipyard || !front.factory || front.aliens > 0 : front.factory || front.kills < RequiredKills(front)) return false;
+            if (ships ? front.shipyard || !front.factory || front.aliens > 0 : front.factory || !front.mindDead && front.kills < RequiredKills(front)) return false;
             if (ships) { front.shipyard = true; front.ships = math.max(1, front.ships); }
             else { front.factory = true; front.dogs = math.max(8 + front.rank * 4, front.dogs); }
             return true;

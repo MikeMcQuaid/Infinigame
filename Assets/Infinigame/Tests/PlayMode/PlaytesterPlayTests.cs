@@ -178,7 +178,11 @@ namespace Infinigame.Tests
             Stand(math.normalizesafe(entrance), game.Outpost.Place(new float3(0, 0, -80)) - entrance);
             Player.walker.position = entrance;
             game.Outpost.Tick();
-            StringAssert.Contains("SHIELD", game.Objective);
+            StringAssert.Contains("LANDING ZONE", game.Objective);
+            var field = game.Outpost.Shield;
+            var outside = field.centre + math.normalizesafe(field.centre) * (field.radius + 20);
+            Assert.IsTrue(game.Outpost.Conceals(outside, game.Outpost.Core));
+            Assert.IsFalse(game.Outpost.Conceals(game.Outpost.Core, game.Outpost.Core));
             yield return Seconds(2);
             yield return ReworkShot("playtester-luna-shield");
             foreach (var guard in game.Battle.Foes.Where(foe => foe.outerGuard).ToArray())
@@ -188,6 +192,8 @@ namespace Infinigame.Tests
             }
             game.Battle.Tick(default); game.Outpost.Tick();
             Assert.AreEqual(0, game.Outpost.OuterLeft);
+            Assert.IsFalse(game.Outpost.LandingLocked);
+            Assert.IsTrue(game.Outpost.Shield.active, "The burrow still repels ships");
             var mind = game.Battle.Foes.Single(foe => foe.kind == FoeKind.Mind);
             Assert.IsFalse(mind.protectedCore);
             Assert.Greater(math.length(mind.position), Body.GroundRadius(math.normalize(mind.position)));

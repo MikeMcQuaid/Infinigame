@@ -34,6 +34,14 @@ namespace Infinigame
         public static float AirTop(BodyDescriptor body) => 1f + math.max(0.12f, 1.45f * body.terrain.MaxHeight / body.radius);
         public static float CloudDeck(BodyDescriptor body) => 1f + (body.cloud < 1f ? 0.55f : 1.15f) * body.terrain.MaxHeight / body.radius;
 
+        static readonly Dictionary<Color, Material> ribbons = new Dictionary<Color, Material>();
+        public static Material Beam(Color tint)
+        {
+            if (!ribbons.TryGetValue(tint, out var ribbon) || ribbon == null)
+                ribbons[tint] = ribbon = new Material(Resources.Load<Shader>("EnergyRibbon")) { color = tint };
+            return ribbon;
+        }
+
         public static Material Material(string resource, Color colour) =>
             new Material(Resources.Load<Material>(resource)) { color = colour };
 

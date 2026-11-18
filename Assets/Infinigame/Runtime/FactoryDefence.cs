@@ -19,7 +19,7 @@ namespace Infinigame
             mount.SetParent(transform, false); mount.localPosition = Vector3.up * 3.3f; mount.localScale = Vector3.one * 0.6f;
             beam = new GameObject("Factory beam").AddComponent<LineRenderer>(); beam.transform.SetParent(mount, false);
             beam.positionCount = 2; beam.startWidth = beam.endWidth = 0.07f;
-            beam.sharedMaterial = Shapes.Material("Glow", new Color(0.2f, 1.2f, 2)); beam.enabled = false;
+            beam.sharedMaterial = Shapes.Beam(new Color(0.2f, 1.2f, 2)); beam.enabled = false;
         }
         void Update()
         {

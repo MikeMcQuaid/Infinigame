@@ -121,7 +121,7 @@ namespace Infinigame
         static Vector3 Fin(float round, float along)
         {
             Vector2 p = Aerofoil(round, Mathf.Lerp(1.9f, 0.7f, along), Mathf.Lerp(0.07f, 0.06f, along));
-            return new Vector3(-p.y, Mathf.Lerp(0.45f, 1.95f, along), Mathf.Lerp(-1.45f, -2.95f, along) - p.x);
+            return new Vector3(-p.y, Mathf.Lerp(0.45f, 0.8f, along), Mathf.Lerp(-1.45f, -2.95f, along) - p.x);
         }
 
         // The right engine's cowling, from where its nozzle begins to just behind its intake lip.
@@ -256,7 +256,7 @@ namespace Infinigame
 
             // Lights: white at the tail and under the nose, red beacons on the fin and the belly.
             white.Ball(new Vector3(0f, 0.28f, Tail - 0.01f), 0.04f, 10);
-            red.Ball(new Vector3(0f, 1.955f, -3.3f), 0.035f, 10);
+            red.Ball(new Vector3(0f, 0.805f, -3.3f), 0.035f, 10);
             red.Ball(new Vector3(0f, Key(-0.6f, BodyBottom), -0.6f), 0.04f, 10);
 
             hull.Mirror(() =>
@@ -669,9 +669,41 @@ namespace Infinigame
             leather.Place(Move(0f, 0.6f, 0.85f) * Turn(78f, 0f, 0f), () => Pillow(leather, Vector3.zero, new Vector3(0.44f, 0.09f, 0.7f)));
             leather.Place(Move(0f, 1.06f, 0.79f) * Turn(80f, 0f, 0f), () => Pillow(leather, Vector3.zero, new Vector3(0.26f, 0.09f, 0.2f)));
 
+            // The flight chassis repeats the companion's overlapping shoulder plates and optical cluster.
+            foreach (float side in new[] { -1f, 1f })
+            {
+                Scute(hull, new Vector3(side * 2.8f, 0.15f, -1.8f), new Vector3(side * 0.65f, 0.5f, 1.5f), Vector3.right, 0.40f, 0.21f, 16);
+                Scute(plate, new Vector3(side * 1.75f, 0.49f, -4.15f), new Vector3(side * 0.60f, 0.53f, -1.28f), Vector3.right, 0.30f, 0.28f, 16);
+                foreach (float bank in new[] { -1f, 1f })
+                {
+                    Vector3 gimbal = new Vector3(side * 3.27f, bank * 0.60f, -1.59f);
+                    dark.Rod(new Vector3(side * 2.43f, 0.02f, -1.15f), gimbal, 0.11f, 12);
+                    steel.Ball(gimbal, new Vector3(0.21f, 0.24f, 0.20f), 16);
+                    dark.Place(Move(gimbal) * Turn(90, 0, 0), () =>
+                        dark.Lathe(new[] { 0.09f, -0.65f, 0.25f, -0.62f, 0.27f, -0.42f, 0.22f, 0.28f, 0.13f, 0.41f, 0, 0.41f }, 24));
+                    jet.Ball(gimbal + Vector3.back * 0.62f, new Vector3(0.17f, 0.17f, 0.034f), 16);
+                    Scute(hull, gimbal + new Vector3(0, 0.16f, -0.39f), gimbal + new Vector3(0, 0.17f, 0.42f), Vector3.right, 0.21f, 0.07f);
+                }
+                // Ceramic cheek pieces flank the dash. Keep the central sightline and switch faces free.
+                var rim = Path(16, new Vector3(side * 0.57f, 0.36f, 1.76f), new Vector3(side * 0.55f, 0.64f, 1.89f),
+                    new Vector3(side * 0.42f, 0.72f, 1.94f), new Vector3(side * 0.14f, 0.72f, 1.975f));
+                noseHull.Tube(rim, 0.023f, 12);
+                Scute(noseHull, new Vector3(side * 0.61f, 0.54f, 1.54f), new Vector3(side * 0.49f, 0.67f, 1.94f), Vector3.right, 0.065f, 0.035f);
+                var brace = Path(18, new Vector3(side * 0.54f, 0.57f, 1.87f), new Vector3(side * 0.54f, 0.93f, 1.91f),
+                    new Vector3(side * 0.39f, 1.22f, 1.90f), new Vector3(side * 0.20f, 1.33f, 1.83f));
+                noseDark.Tube(brace, 0.031f, 12);
+                noseHull.Tube(brace, 0.021f, 12);
+                for (int i = 0; i < 3; i++)
+                    marks.Ball(new Vector3(side * (0.47f - 0.026f * i), 0.698f + (i == 1 ? 0.012f : 0), 1.902f),
+                        new Vector3(0.009f, 0.008f, 0.010f), 12);
+                Vector3 brow = Fuselage(side > 0 ? Sill : 0.5f - Sill, Along(1.82f));
+                Scute(noseHull, brow + new Vector3(0, 0, -0.44f), brow + new Vector3(0, 0.02f, 0.34f), Vector3.right, 0.042f, 0.033f);
+                for (int lens = 0; lens < 3; lens++)
+                    marks.Ball(brow + new Vector3(-side * 0.044f, 0.018f + (lens == 1 ? 0.014f : 0), lens * 0.046f), new Vector3(0.013f, 0.013f, 0.013f), 8);
+            }
             foreach (var kit in new[] { hull, plate, accent, noseHull, nosePlate, hazard }) kit.tiling = 5f;
-            Material shell = Paint(new Color(0.98f, 1f, 1.02f), 0.15f, 0.4f), grey = Paint(new Color(0.52f, 0.55f, 0.58f), 0.3f, 0.4f), gunmetal = Paint(new Color(0.1f, 0.105f, 0.12f), 0.5f, 0.35f);
-            Material orange = Paint(new Color(1f, 0.36f, 0.1f), 0.1f, 0.4f), bare = Paint(new Color(0.62f, 0.64f, 0.66f), 0.85f, 0.6f), burnt = Paint(new Color(0.3f, 0.21f, 0.16f), 0.8f, 0.45f);
+            Material shell = Paint(new Color(0.94f, 0.91f, 0.81f), 0.15f, 0.4f), grey = Paint(new Color(0.52f, 0.55f, 0.58f), 0.3f, 0.4f), gunmetal = Paint(new Color(0.1f, 0.105f, 0.12f), 0.5f, 0.35f);
+            Material flightStripe = Paint(new Color(0.15f, 0.42f, 0.45f), 0.1f, 0.4f), bare = Paint(new Color(0.62f, 0.64f, 0.66f), 0.85f, 0.6f), burnt = Paint(new Color(0.3f, 0.21f, 0.16f), 0.8f, 0.45f);
             Material yellow = Paint(new Color(1.2f, 0.9f, 0.1f), 0f, 0.35f), panes = Shapes.Material("Water", new Color(0.35f, 0.75f, 0.95f, 0.4f));
 
             void Add(Transform parent, string name, Mesh mesh, Material material, bool shadows = true)
@@ -680,7 +712,7 @@ namespace Infinigame
             }
             Add(exterior, "Hull", hull.Mesh("Hull"), shell);
             Add(exterior, "Hatches", plate.Mesh("Hatches"), grey);
-            Add(exterior, "Paint", accent.Mesh("Paint"), orange);
+            Add(exterior, "Paint", accent.Mesh("Paint"), flightStripe);
             Add(exterior, "Mechanism", dark.Mesh("Mechanism"), gunmetal);
             Add(exterior, "Metal", steel.Mesh("Metal"), bare);
             Add(exterior, "Nozzles", scorched.Mesh("Nozzles"), burnt);
