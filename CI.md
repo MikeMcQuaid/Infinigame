@@ -48,7 +48,7 @@ If MinMaxCal uses the same Apple team and an API key with permission to upload b
 
 ### Install the private beta
 
-1. Push the workflow to `main`. Open **Actions > TestFlight > Run workflow**, select `main`, enter a three-part version, select `private` and run it. The workflow allocates a fresh build number above Apple's build and upload history, including on retries, and keeps the newest 20 private builds. [Open the TestFlight workflow](https://github.com/MikeMcQuaid/Infinigame/actions/workflows/release.yml)
+1. Push the workflow to `main`. Open **Actions > TestFlight > Run workflow**, select `main`, enter a three-part version, select `private` and run it. The build number starts at the commit count shown by `script/build-number`. If Apple’s upload history or a saved public upload has reached that number, the workflow uses the next integer above both. The workflow keeps the newest 20 private builds. [Open the TestFlight workflow](https://github.com/MikeMcQuaid/Infinigame/actions/workflows/release.yml)
 2. After Apple processes the build, your internal group receives it through automatic distribution. If necessary, open **Apps > Infinigame > TestFlight > Playtesting > Add Builds**, choose the processed build and enter **What to Test**. [Apple’s internal testing guide](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers/)
 3. Install **TestFlight** on your iPhone and iPad. Accept the invitation with your Apple Account and tap **Install** beside Infinigame on each device. [Get TestFlight](https://testflight.apple.com/)
 

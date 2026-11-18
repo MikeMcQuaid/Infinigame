@@ -28,6 +28,7 @@ namespace Infinigame.Editor
             foreach (string file in Directory.GetFiles("Build/Speech/Voice")) File.Copy(file, Path.Combine(data, Path.GetFileName(file)), true);
             if (target == BuildTarget.StandaloneOSX)
             {
+                Run("script/build-number", Path.Combine(path, "Contents/Info.plist"));
                 string plugins = Path.Combine(path, "Contents/Plugins"); Directory.CreateDirectory(plugins);
                 File.Copy("Build/Speech/macOS/libInfinigameSpeech.dylib", Path.Combine(plugins, "libInfinigameSpeech.dylib"), true);
                 string library = Path.Combine(plugins, "libInfinigameVoice.dylib");
@@ -51,6 +52,7 @@ namespace Infinigame.Editor
                 plist.root.SetString("NSSpeechRecognitionUsageDescription", "Turn your voice into text locally for your robot companion.");
                 plist.root.SetBoolean("ITSAppUsesNonExemptEncryption", false);
                 plist.WriteToFile(plistPath);
+                Run("script/build-number", plistPath);
                 string projectPath = PBXProject.GetPBXProjectPath(path); var project = new PBXProject(); project.ReadFromFile(projectPath);
                 project.AddFrameworkToProject(project.GetUnityFrameworkTargetGuid(), "SafariServices.framework", false);
                 project.AddFrameworkToProject(project.GetUnityFrameworkTargetGuid(), "Speech.framework", false);

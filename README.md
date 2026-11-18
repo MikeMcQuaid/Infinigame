@@ -45,6 +45,7 @@ These follow [scripts to rule them all](https://github.com/github/scripts-to-rul
 | `script/play` | Plays the game as a standalone app, building it first if the project has changed or the last build has no Burst-compiled code. The game's log goes to `Logs/Player.log` and its frame rate to `Logs/frames.log`. |
 | `script/package macOS` | Packages existing output; also accepts `Windows`, `SteamDeck` or `iOS`. |
 | `script/testflight --dry-run` | Checks signing of an existing iOS export. Use the **TestFlight** GitHub workflow to distribute private and public betas. See [CI.md](CI.md). |
+| `script/build-number` | Prints the Git commit count used for macOS and iOS builds. |
 | `script/build-ios` | Exports `Build/iOS`, then compiles and links the device app with Xcode. Reuses the existing signing team and prints installation steps. |
 | `script/build-windows` | Builds `Build/Windows/Infinigame.exe` with OpenXR and packages `Build/Infinigame-Windows.zip`, with installation steps. |
 | `script/build-steam-deck` | Packages a desktop build without automatic XR as `Build/Infinigame-SteamDeck.zip`, with Proton installation steps. |

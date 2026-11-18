@@ -119,18 +119,21 @@ def build(id, time, audience = 'INTERNAL_ONLY', **attributes)
 end
 
 api = TestFlightFixture.new
-assert(api.next_build_number == '1', 'An app without builds starts at one')
+assert(api.next_build_number(18) == '18', 'Start TestFlight numbering at the main commit count')
+api.records = [build('previous', now, version: '18')]
+assert(api.next_build_number(23) == '23', 'Commits between uploads advance the build number')
+assert(api.next_build_number(18) == '19', 'A second upload of the same commit needs a fresh number')
 api.records = [build('old-run', now, version: '42.1'), build('newer-run', now, version: '43.1')]
-assert(api.next_build_number == '44', 'Retrying run 42 must exceed run 43, irrespective of workflow run number')
+assert(api.next_build_number(18) == '44', 'A private retry must exceed later uploads')
 api.uploads = [
   { 'attributes' => { 'platform' => 'IOS', 'cfBundleVersion' => '44.9.99' } },
   { 'attributes' => { 'platform' => 'MAC_OS', 'cfBundleVersion' => '999' } }
 ]
-assert(api.next_build_number == '45', 'Include unfinished iOS uploads but exclude other platforms')
+assert(api.next_build_number(18) == '45', 'Include unfinished iOS uploads but exclude other platforms')
 api.records = [build('expired', now, version: '100.2', expired: true)]
-assert(api.next_build_number == '101', 'Compare numerically and never reuse expired build numbers')
+assert(api.next_build_number(18) == '101', 'Compare numerically and never reuse expired build numbers')
 api.records[0]['attributes']['version'] = 'not-a-number'
-rejects('build number') { api.next_build_number }
+rejects('build number') { api.next_build_number(18) }
 
 api = TestFlightFixture.new
 api.records = [build('submitted', now, 'APP_STORE_ELIGIBLE', marketingVersion: '1.2.3')]
@@ -161,7 +164,7 @@ assert(api.public_upload_needed?, 'An awaiting upload for another version must n
 
 api = TestFlightFixture.new
 api.artifacts = [artifact('testflight-upload-80', now)]
-assert(api.next_build_number == '81', 'Unuploaded public intents reserve their build number too')
+assert(api.next_build_number(18) == '81', 'Unuploaded public intents reserve their build number too')
 api.artifacts = (1..3).map { |n| artifact("testflight-upload-#{n}", now - 172_800) }
 api.uploads = (1..3).map { |n| upload(n.to_s, now - n, 'FAILED') }
 rejects('three public uploads') { api.check_public_limit }

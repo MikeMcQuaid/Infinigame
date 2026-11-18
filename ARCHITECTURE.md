@@ -93,7 +93,7 @@ A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, 
 
 ## TestFlight distribution
 
-The manually dispatched TestFlight workflow keeps private and public uploads in one fixed queue. It allocates build numbers from Apple's builds, upload history and saved public intents within the queue before signing, overriding the Unity export's placeholder number. Private retries keep the requested marketing version, allocate a fresh number and retire internal-only builds beyond the newest 20 after processing succeeds.
+The manually dispatched TestFlight workflow keeps private and public uploads in one fixed queue. macOS and iOS exports count commits on `main`. A detached checkout uses its exact revision so reruns keep the original number. Before signing, TestFlight raises that number when needed to exceed Apple's builds, upload history and saved public intents. Private retries keep the requested marketing version, allocate a fresh number and retire internal-only builds beyond the newest 20 after processing succeeds.
 
 Public uploads use the same Ruby lifecycle checks as MinMaxCal and Sanductor. The workflow saves the marketing version, build number, commit and run ID as an artefact before uploading. A retry restores that identity, checks both Apple endpoints and resumes an accepted upload without sending another binary. Another accepted public build number for the marketing version blocks a new upload; an exact accepted identity can resume. A later usable transfer supersedes failed or awaiting transfers with the same identity. A rejected or awaiting-only public upload needs a fresh version; private failures instruct the operator to correct the problem and retry.
 

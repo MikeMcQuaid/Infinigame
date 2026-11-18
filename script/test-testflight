@@ -10,6 +10,14 @@ destination = events.dig('workflow_dispatch', 'inputs', 'destination')
 abort 'Private beta must be the default' unless destination['default'] == 'private'
 jobs = workflow.fetch('jobs')
 build = YAML.load_file('.github/workflows/build.yml')
+builder = YAML.load_file('.github/actions/export-unity/action.yml').dig('runs', 'steps')
+              .find { |step| step['uses'].to_s.start_with?('game-ci/unity-builder@') }.fetch('with')
+abort 'Use GameCI custom versioning only for releases' unless
+  builder['versioning'] == "${{ inputs.version != '' && 'Custom' || 'None' }}" && builder['version'] == '${{ inputs.version }}'
+[build.dig('jobs', 'build'), jobs.fetch('testflight')].each do |job|
+  checkout = job.fetch('steps').find { |step| step['uses'].to_s.start_with?('actions/checkout@') }
+  abort 'Build numbers need the full commit history' unless checkout.dig('with', 'fetch-depth') == 0
+end
 credentials = %w[UNITY_EMAIL UNITY_PASSWORD].to_h { |key| [key, "${{ secrets.#{key} }}"] }
 events = build['on'] || build.fetch(true)
 required = events.fetch('workflow_call').fetch('secrets').select { |_, value| value['required'] }.keys
@@ -68,6 +76,24 @@ cp TESTFLIGHT.md "$scratch/TESTFLIGHT.md"
 touch "$scratch/Build/iOS/Unity-iPhone.xcodeproj/project.pbxproj"
 plutil -create xml1 "$scratch/Build/iOS/Info.plist"
 /usr/libexec/PlistBuddy -c 'Add :CFBundleVersion string 1.1' -c 'Add :CFBundleShortVersionString string 0.1.0' "$scratch/Build/iOS/Info.plist"
+(
+  cp script/build-number "$scratch/script/"
+  cd "$scratch"
+  git init -q -b main
+  git config user.name Tester
+  git config user.email tester@example.com
+  git config commit.gpgsign false
+  git commit -q --allow-empty -m First
+  git commit -q --allow-empty -m Second
+  script/build-number Build/iOS/Info.plist
+  [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Build/iOS/Info.plist)" = 2 ]
+  [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Build/iOS/Info.plist)" = 0.1.0 ]
+  git checkout -qb feature
+  git commit -q --allow-empty -m Feature
+  [ "$(script/build-number)" = 2 ]
+  git checkout -q --detach main^
+  [ "$(script/build-number)" = 1 ]
+)
 export TESTFLIGHT_TEST_DIRECTORY="$scratch"
 export PATH="$scratch/bin:$PATH"
 cat > "$scratch/bin/security" <<'SECURITY'

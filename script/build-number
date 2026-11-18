@@ -1,0 +1,18 @@
+#!/bin/bash
+# Print the main build number, or stamp it into an Apple app's Info.plist.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+if [[ "$(git rev-parse --is-shallow-repository)" == true ]]; then
+  echo 'Build numbers need the full Git history. Run git fetch --unshallow.' >&2
+  exit 1
+fi
+case "$(git branch --show-current)" in
+  main|'') number=$(git rev-list --count HEAD) ;;
+  *) number=$(git rev-list --count origin/main 2>/dev/null ||
+              git rev-list --count main 2>/dev/null || git rev-list --count HEAD) ;;
+esac
+if [[ $# == 0 ]]; then
+  echo "$number"
+else
+  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $number" "$1"
+fi

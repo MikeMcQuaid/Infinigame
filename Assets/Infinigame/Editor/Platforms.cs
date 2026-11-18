@@ -27,18 +27,19 @@ namespace Infinigame.Editor
             };
 #endif
         }
-        static void ConfigureCI()
+        static void BuildCI(Action build)
         {
             var args = Environment.GetCommandLineArgs();
-            for (int i = 0; i + 1 < args.Length; i++)
-            {
-                if (args[i] == "-releaseVersion" && !string.IsNullOrWhiteSpace(args[i + 1]) && !args[i + 1].StartsWith("-")) PlayerSettings.bundleVersion = args[i + 1];
-                if (args[i] == "-buildNumber") PlayerSettings.iOS.buildNumber = args[i + 1];
-            }
+            int version = Array.IndexOf(args, "-buildVersion");
+            if (version >= 0 && version + 1 < args.Length && args[version + 1] != "none")
+                PlayerSettings.bundleVersion = args[version + 1];
+            build();
+            // GameCI checks its reporter's exact success message after Unity exits.
+            Console.WriteLine("Build succeeded!");
         }
-        public static void CIMac() { ConfigureCI(); Build("Build/Infinigame.app", BuildTarget.StandaloneOSX); }
-        public static void CIWindows() { ConfigureCI(); Windows(); SteamDeck(); }
-        public static void CIIOS() { ConfigureCI(); IOS(); }
+        public static void CIMac() => BuildCI(() => Build("Build/StandaloneOSX/Infinigame.app", BuildTarget.StandaloneOSX));
+        public static void CIWindows() => BuildCI(() => { Windows(); SteamDeck(); });
+        public static void CIIOS() => BuildCI(IOS);
         public static void Windows()
         {
 #if INFINIGAME_XR

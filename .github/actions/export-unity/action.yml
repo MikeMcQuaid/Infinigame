@@ -55,6 +55,12 @@ runs:
         cliVersion: v0.1.76
         targetPlatform: ${{ inputs.target }}
         buildMethod: ${{ inputs.method }}
-        versioning: None
-        customParameters: -releaseVersion "${{ inputs.version }}" -buildNumber "${{ github.run_number }}.${{ github.run_attempt }}"
+        buildsPath: Build
+        buildName: Infinigame
+        versioning: ${{ inputs.version != '' && 'Custom' || 'None' }}
+        version: ${{ inputs.version }}
         cacheUnityInstallationOnMac: true
+    - name: Move the macOS player into place for packaging
+      if: inputs.target == 'StandaloneOSX'
+      shell: bash
+      run: mv Build/StandaloneOSX/Infinigame.app Build/Infinigame.app

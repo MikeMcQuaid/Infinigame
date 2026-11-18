@@ -123,7 +123,7 @@ class TestFlight
     end
   end
 
-  def next_build_number
+  def next_build_number(commit_count)
     versions = builds.map { |build| build.fetch('attributes').fetch('version') }
     versions.concat(build_uploads.map { |upload| upload.fetch('attributes').fetch('cfBundleVersion') })
     versions.concat(public_artifacts.map { |artifact| PUBLIC_ARTIFACT.match(artifact.fetch('name'))[2] })
@@ -131,7 +131,7 @@ class TestFlight
       raise "Invalid Apple build number: #{version.inspect}" unless version.match?(/\A[0-9]+(?:\.[0-9]+){0,2}\z/)
       version.split('.').first.to_i
     end.max || 0
-    (major + 1).to_s
+    [commit_count, major + 1].max.to_s
   end
 
   def public_group
@@ -388,7 +388,7 @@ if $PROGRAM_NAME == __FILE__
     case ARGV
     when ['check-release-limit']
       TestFlight.check_release_limit(TestFlight.github_pages('releases?per_page=100').flatten)
-    when ['next-build-number'] then puts TestFlight.new.next_build_number
+    when ['next-build-number'] then puts TestFlight.new.next_build_number(Integer(`script/build-number`, 10))
     when ['record-public'] then TestFlight.record_public
     when ['resume-public'] then puts TestFlight.resume_public
     when ['prepare-public'] then TestFlight.new.prepare_public
