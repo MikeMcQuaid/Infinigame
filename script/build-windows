@@ -3,11 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 script/lib/build-target Win64 Infinigame.Editor.Platforms.Windows Logs/build-windows.log
-mkdir -p Build/Packages/Windows
-rm -rf Build/Packages/Windows/Infinigame
-/usr/bin/ditto Build/Windows Build/Packages/Windows/Infinigame
-cp Assets/Infinigame/Icon.png Build/Packages/Windows/Infinigame/Infinigame.png
-/usr/bin/ditto -c -k --keepParent Build/Packages/Windows/Infinigame Build/Infinigame-Windows.zip
+script/package Windows
 echo "Built: $PWD/Build/Windows/Infinigame.exe"
 echo "Copy $PWD/Build/Infinigame-Windows.zip to Windows, extract it and run Infinigame/Infinigame.exe. Keep the whole folder together."
 echo "For VR: install SteamVR, set it as the OpenXR runtime in SteamVR Settings > OpenXR, connect your headset and launch the game."

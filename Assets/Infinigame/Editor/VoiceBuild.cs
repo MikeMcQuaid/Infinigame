@@ -49,6 +49,7 @@ namespace Infinigame.Editor
                 string plistPath = Path.Combine(path, "Info.plist"); var plist = new PlistDocument(); plist.ReadFromFile(plistPath);
                 plist.root.SetString("NSMicrophoneUsageDescription", "Speak to your robot companion.");
                 plist.root.SetString("NSSpeechRecognitionUsageDescription", "Turn your voice into text locally for your robot companion.");
+                plist.root.SetBoolean("ITSAppUsesNonExemptEncryption", false);
                 plist.WriteToFile(plistPath);
                 string projectPath = PBXProject.GetPBXProjectPath(path); var project = new PBXProject(); project.ReadFromFile(projectPath);
                 project.AddFrameworkToProject(project.GetUnityFrameworkTargetGuid(), "SafariServices.framework", false);
@@ -56,6 +57,7 @@ namespace Infinigame.Editor
                 project.AddFrameworkToProject(project.GetUnityFrameworkTargetGuid(), "AVFoundation.framework", false);
                 File.Copy("Build/Speech/iOS/libInfinigameSpeech.a", Path.Combine(path, "Libraries/libInfinigameSpeech.a"), true);
                 project.AddFileToBuild(project.GetUnityFrameworkTargetGuid(), project.AddFile("Libraries/libInfinigameSpeech.a", "Libraries/libInfinigameSpeech.a"));
+                project.SetBuildProperty(project.GetUnityMainTargetGuid(), "PROVISIONING_PROFILE_SPECIFIER", "$(INFINIGAME_PROFILE)");
                 project.WriteToFile(projectPath);
             }
 #endif

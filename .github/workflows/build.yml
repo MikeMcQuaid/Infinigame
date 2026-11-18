@@ -1,0 +1,105 @@
+name: Platform builds
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        default: ''
+    secrets:
+      UNITY_EMAIL:
+        required: true
+      UNITY_PASSWORD:
+        required: true
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - name: macOS
+            archive: macOS
+            runner: macos-26
+            target: StandaloneOSX
+            method: Infinigame.Editor.Platforms.CIMac
+          - name: Windows-and-SteamDeck
+            archive: Windows
+            runner: ubuntu-24.04
+            target: StandaloneWindows64
+            method: Infinigame.Editor.Platforms.CIWindows
+          - name: iOS
+            archive: iOS
+            runner: macos-26
+            target: iOS
+            method: Infinigame.Editor.Platforms.CIIOS
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate version
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ -n "$RELEASE_VERSION" && ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo '::error::Version must be three numbers, such as 0.2.0.'
+            exit 1
+          fi
+      - name: Export Unity player
+        uses: ./.github/actions/export-unity
+        with:
+          platform: ${{ matrix.name }}
+          target: ${{ matrix.target }}
+          method: ${{ matrix.method }}
+          version: ${{ inputs.version }}
+          unity-email: ${{ secrets.UNITY_EMAIL }}
+          unity-password: ${{ secrets.UNITY_PASSWORD }}
+      - name: Compile the iPhone and iPad app
+        if: matrix.target == 'iOS'
+        run: script/lib/build-ios-xcode --unsigned
+      - name: Package builds
+        env:
+          PLATFORM: ${{ matrix.name }}
+        run: |
+          case "$PLATFORM" in
+            Windows-and-SteamDeck) script/package Windows; script/package SteamDeck ;;
+            *) script/package "$PLATFORM" ;;
+          esac
+      - name: Upload playable builds and Xcode project
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Infinigame-${{ matrix.archive }}
+          path: Build/Infinigame-${{ matrix.archive }}.zip
+          if-no-files-found: error
+          retention-days: ${{ inputs.version != '' && 30 || 1 }}
+          compression-level: 0
+      - name: Upload the Steam Deck build
+        if: matrix.target == 'StandaloneWindows64'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Infinigame-SteamDeck
+          path: Build/Infinigame-SteamDeck.zip
+          if-no-files-found: error
+          retention-days: ${{ inputs.version != '' && 30 || 1 }}
+          compression-level: 0
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Logs-${{ matrix.name }}
+          path: |
+            Logs/*.log
+            **/Editor.log
+          if-no-files-found: ignore
+          retention-days: 1

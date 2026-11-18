@@ -1,0 +1,182 @@
+#!/bin/bash
+# Check release gating and signing cleanup without contacting Apple.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+ruby -ryaml <<'WORKFLOW'
+workflow = YAML.load_file('.github/workflows/release.yml')
+events = workflow['on'] || workflow.fetch(true)
+abort 'TestFlight must be dispatched manually' unless events.keys == ['workflow_dispatch']
+destination = events.dig('workflow_dispatch', 'inputs', 'destination')
+abort 'Private beta must be the default' unless destination['default'] == 'private'
+jobs = workflow.fetch('jobs')
+build = YAML.load_file('.github/workflows/build.yml')
+credentials = %w[UNITY_EMAIL UNITY_PASSWORD].to_h { |key| [key, "${{ secrets.#{key} }}"] }
+events = build['on'] || build.fetch(true)
+required = events.fetch('workflow_call').fetch('secrets').select { |_, value| value['required'] }.keys
+abort 'Hosted builds require Unity Personal credentials' unless required.sort == credentials.keys.sort
+ci = YAML.load_file('.github/workflows/ci.yml').fetch('jobs')
+[ci, jobs].each do |caller|
+  abort 'Missing platform build credentials' unless caller.dig('platforms', 'secrets') == credentials
+end
+build.dig('jobs', 'build', 'steps').select { |step| step.dig('with', 'name').to_s.start_with?('Infinigame-') }.each do |step|
+  abort 'Release archives expire before the rerun window ends' unless step.dig('with', 'retention-days') == "${{ inputs.version != '' && 30 || 1 }}"
+end
+abort 'Beta uploads need successful validation' unless jobs.dig('testflight', 'needs') == %w[validate platforms]
+abort 'Publication must wait for signing' unless jobs.dig('publish', 'needs') == %w[platforms testflight]
+def runs?(expression, mode, platforms, upload, validated, cancelled)
+  eval(expression.gsub('inputs.destination', mode.inspect)
+                 .gsub('needs.platforms.result', platforms.inspect)
+                 .gsub('needs.validate.result', validated.inspect)
+                 .gsub('needs.testflight.result', upload.inspect)
+                 .gsub('cancelled()', cancelled.to_s))
+end
+modes = %w[private public github github-with-private]
+abort 'Unknown destination' unless destination['options'] == modes
+states = %w[success failure cancelled skipped]
+modes.product(states, states, states, [true, false]).each do |mode, platforms, upload, validated, cancelled|
+  platform_build = %w[github github-with-private].include?(mode)
+  beta = mode != 'github' && !cancelled && validated == 'success' && platforms == (platform_build ? 'success' : 'skipped')
+  release = platform_build && !cancelled && platforms == 'success' && upload == (mode == 'github' ? 'skipped' : 'success')
+  { 'platforms' => platform_build, 'testflight' => beta, 'publish' => release }.each do |job, expected|
+    abort "Unexpected #{job} for #{mode}" unless runs?(jobs[job].fetch('if'), mode, platforms, upload, validated, cancelled) == expected
+  end
+end
+steps = jobs.dig('testflight', 'steps')
+export = steps.find { |step| step.dig('with', 'target') == 'iOS' }
+abort 'Beta must build iOS once' unless export && export['if'] == "inputs.destination != 'github-with-private' && (inputs.destination != 'public' || steps.plan.outputs.needed == 'true')"
+archive = steps.find { |step| step.dig('with', 'name') == 'Infinigame-iOS' }
+abort 'Combined releases must sign the built artifact' unless archive.dig('with', 'name') == 'Infinigame-iOS' && archive['if'] == "inputs.destination == 'github-with-private'"
+abort 'Uploads must share a fixed queue' unless workflow.fetch('concurrency') == { 'group' => 'infinigame-release', 'cancel-in-progress' => false, 'queue' => 'max' }
+identity = steps.index { |step| step['id'] == 'prepare' }
+save = steps.index { |step| step['name'] == 'Save public TestFlight upload intent' }
+plan = steps.index { |step| step['id'] == 'plan' }
+reserve = steps.index { |step| step['name'] == 'Reserve public TestFlight upload slot' }
+upload = steps.index { |step| step['id'] == 'upload' }
+abort 'Save and reconcile identity before reserving and uploading' unless [identity, save, plan, reserve, upload].all? && identity < save && save < plan && plan < reserve && reserve < upload
+abort 'Reserve only actual public attempts' unless steps[reserve]['if'] == "inputs.destination == 'public' && steps.plan.outputs.needed == 'true'"
+abort 'Signing/upload cannot outlive the reservation window' unless steps[upload]['timeout-minutes'] == 60
+abort 'Public intent must outlive reruns' unless steps[save].dig('with', 'retention-days') == 90
+abort 'Private uploads must pass processing' unless steps.any? { |step| step['name'] == 'Distribute TestFlight build' && step['run'].include?('ruby .github/testflight.rb') }
+puts 'TestFlight workflow checks passed'
+WORKFLOW
+mkdir -p tmp
+scratch="$(mktemp -d "$PWD/tmp/test-testflight.XXXXXX")"
+trap 'rm -rf "$scratch"' EXIT
+mkdir -p "$scratch/bin" "$scratch/script" "$scratch/Build/iOS/Unity-iPhone.xcodeproj"
+cp script/testflight "$scratch/script/testflight"
+cp TESTFLIGHT.md "$scratch/TESTFLIGHT.md"
+touch "$scratch/Build/iOS/Unity-iPhone.xcodeproj/project.pbxproj"
+plutil -create xml1 "$scratch/Build/iOS/Info.plist"
+/usr/libexec/PlistBuddy -c 'Add :CFBundleVersion string 1.1' -c 'Add :CFBundleShortVersionString string 0.1.0' "$scratch/Build/iOS/Info.plist"
+export TESTFLIGHT_TEST_DIRECTORY="$scratch"
+export PATH="$scratch/bin:$PATH"
+cat > "$scratch/bin/security" <<'SECURITY'
+#!/bin/bash
+set -euo pipefail
+echo "$1" >> "$TESTFLIGHT_TEST_DIRECTORY/security.log"
+case "$1" in
+  list-keychains)
+    if [[ $# == 3 ]]; then
+      cat "${TESTFLIGHT_TEST_DIRECTORY}/keychains"
+      [[ "$TESTFLIGHT_TEST_FAILURE" != list ]]
+    else
+      shift 4
+      printf '%s\n' "$@" > "$TESTFLIGHT_TEST_DIRECTORY/keychains"
+    fi
+    ;;
+  create-keychain)
+    echo /created-concurrently.keychain-db >>"${TESTFLIGHT_TEST_DIRECTORY}/keychains"
+    dirname "$4" > "$TESTFLIGHT_TEST_DIRECTORY/credentials"
+    [[ "$TESTFLIGHT_TEST_FAILURE" != create ]]
+    ;;
+  delete-keychain)
+    awk -v removed="$2" '$0 != removed' "${TESTFLIGHT_TEST_DIRECTORY}/keychains" >"${TESTFLIGHT_TEST_DIRECTORY}/remaining"
+    mv "${TESTFLIGHT_TEST_DIRECTORY}/remaining" "${TESTFLIGHT_TEST_DIRECTORY}/keychains"
+    ;;
+  cms)
+    echo /concurrent.keychain-db > "$TESTFLIGHT_TEST_DIRECTORY/keychains"
+    cat "$4"
+    ;;
+  import) [[ "$TESTFLIGHT_TEST_FAILURE" != import ]] ;;
+esac
+SECURITY
+cat > "$scratch/bin/xcodebuild" <<'XCODEBUILD'
+#!/bin/bash
+set -euo pipefail
+echo /archive-concurrent.keychain-db >>"${TESTFLIGHT_TEST_DIRECTORY}/keychains"
+if [[ "$1" == -exportArchive ]]; then
+  if [[ "$TESTFLIGHT_TEST_FAILURE" == external* ]]; then
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print :testFlightInternalTestingOnly' "$5")" == false ]]
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print :destination' "$5")" == upload ]]
+  else
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print :testFlightInternalTestingOnly' "$5")" == true ]]
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print :destination' "$5")" == upload ]]
+  fi
+  echo export >> "$TESTFLIGHT_TEST_DIRECTORY/calls"
+  /usr/libexec/PlistBuddy -c 'Print :provisioningProfiles:com.mikemcquaid.Infinigame' "$5" > "$TESTFLIGHT_TEST_DIRECTORY/exported-profile"
+  [[ "$TESTFLIGHT_TEST_FAILURE" != export ]]
+else
+  [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Build/iOS/Info.plist)" == 44 ]]
+  [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Build/iOS/Info.plist)" == 1.2.3 ]]
+  echo archive >> "$TESTFLIGHT_TEST_DIRECTORY/calls"
+  [[ "$TESTFLIGHT_TEST_FAILURE" != archive ]]
+fi
+XCODEBUILD
+chmod +x "$scratch/bin/"*
+export APP_STORE_KEY='test API key' APP_STORE_KEY_ID=KEY1234567 APP_STORE_ISSUER_ID=issuer
+export APP_STORE_CERTIFICATES=dGVzdA== APP_STORE_CERTIFICATES_PASSWORD=password
+export APP_STORE_IOS_PROFILE RELEASE_VERSION=1.2.3 BUILD_NUMBER=44
+uuid="$(uuidgen)"
+plutil -create xml1 "$scratch/profile.plist"
+/usr/libexec/PlistBuddy -c "Add :UUID string $uuid" \
+  -c 'Add :TeamIdentifier array' -c 'Add :TeamIdentifier:0 string ABCDEFGHIJ' \
+  -c 'Add :Entitlements dict' \
+  -c 'Add :Entitlements:application-identifier string OLDPREFIX1.com.mikemcquaid.Infinigame' "$scratch/profile.plist"
+cp "$scratch/profile.plist" "$scratch/invalid.plist"
+for failure in profile-case profile-prefix list create import archive export none external; do
+  export TESTFLIGHT_TEST_FAILURE="$failure"
+  APP_STORE_IOS_PROFILE="$(base64 -i "$scratch/profile.plist")"
+  if [[ "$failure" == profile-* ]]; then
+    invalid=OLDPREFIX1.com.mikemcquaid.infinigame
+    [[ "$failure" != profile-prefix ]] || invalid=OLDPREFIX1.other.com.mikemcquaid.Infinigame
+    /usr/libexec/PlistBuddy -c "Set :Entitlements:application-identifier $invalid" "$scratch/invalid.plist"
+    APP_STORE_IOS_PROFILE="$(base64 -i "$scratch/invalid.plist")"
+  fi
+  rm -f "$scratch/security.log" "$scratch/calls"
+  flag=--internal
+  [[ "$failure" != external* ]] || flag=--external
+  if "$scratch/script/testflight" "$flag" > "$scratch/run.log" 2>&1; then
+    [[ "$failure" == none || "$failure" == external ]] || { echo "Ignored $failure failure" >&2; exit 1; }
+  else
+    [[ "$failure" != none && "$failure" != external ]] || { cat "$scratch/run.log"; exit 1; }
+  fi
+  [[ ! -e "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$uuid.mobileprovision" ]]
+  [[ -z "$(ls -A "$scratch/tmp")" ]]
+  if [[ "$failure" == profile-* ]]; then
+    [[ "$(cat "$scratch/security.log")" == cms ]] || {
+      echo 'Profile validation changed the signing keychain' >&2; exit 1
+    }
+    [[ "$(cat "$scratch/keychains")" == /concurrent.keychain-db ]]
+  else
+    [[ ! -d "$(cat "$scratch/credentials")" ]]
+    grep -qx delete-keychain "$scratch/security.log"
+    grep -qx /concurrent.keychain-db "$scratch/keychains"
+    grep -qx /created-concurrently.keychain-db "$scratch/keychains"
+    if [[ -e "$scratch/calls" ]]; then
+      grep -qx /archive-concurrent.keychain-db "$scratch/keychains"
+    fi
+    if grep -q signing.keychain-db "$scratch/keychains"; then
+      echo 'Temporary keychain remained in the search list' >&2; exit 1
+    fi
+  fi
+  case "$failure" in
+    profile-*|list|create|import) [[ ! -e "$scratch/calls" ]] ;;
+    archive) [[ "$(cat "$scratch/calls")" == archive ]] ;;
+    external*) [[ "$(cat "$scratch/calls")" == $'archive\nexport' ]] ;;
+    export|none) [[ "$(cat "$scratch/calls")" == $'archive\nexport' ]] ;;
+  esac
+done
+[[ "$(cat "$scratch/exported-profile")" == "$uuid" ]]
+echo 'TestFlight signing cleanup tests passed'
+
+ruby script/test-testflight-automation.rb

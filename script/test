@@ -12,6 +12,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+script/test-testflight
 script/bootstrap
 resources="$(dirname "$(dirname "$(script/unity --path)")")/Resources"
 scripting=$resources/Scripting

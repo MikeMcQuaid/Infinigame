@@ -27,6 +27,18 @@ namespace Infinigame.Editor
             };
 #endif
         }
+        static void ConfigureCI()
+        {
+            var args = Environment.GetCommandLineArgs();
+            for (int i = 0; i + 1 < args.Length; i++)
+            {
+                if (args[i] == "-releaseVersion" && !string.IsNullOrWhiteSpace(args[i + 1]) && !args[i + 1].StartsWith("-")) PlayerSettings.bundleVersion = args[i + 1];
+                if (args[i] == "-buildNumber") PlayerSettings.iOS.buildNumber = args[i + 1];
+            }
+        }
+        public static void CIMac() { ConfigureCI(); Build("Build/Infinigame.app", BuildTarget.StandaloneOSX); }
+        public static void CIWindows() { ConfigureCI(); Windows(); SteamDeck(); }
+        public static void CIIOS() { ConfigureCI(); IOS(); }
         public static void Windows()
         {
 #if INFINIGAME_XR

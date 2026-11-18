@@ -1,0 +1,60 @@
+name: Export Unity player
+description: Restore imported assets and build the native speech library and Unity player
+inputs:
+  platform:
+    description: Archive platform
+    required: true
+  target:
+    description: Unity target
+    required: true
+  method:
+    description: Unity build method
+    required: true
+  version:
+    description: Release version
+    required: true
+  unity-email:
+    description: Unity Personal account
+    required: true
+  unity-password:
+    description: Unity Personal password
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Restore imported assets and incremental builds
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: Library
+        key: unity-${{ runner.os }}-${{ runner.arch }}-${{ inputs.target }}-${{ hashFiles('ProjectSettings/ProjectVersion.txt', 'Packages/**') }}-${{ hashFiles('Assets/**', 'ProjectSettings/**', '*.md') }}
+        restore-keys: unity-${{ runner.os }}-${{ runner.arch }}-${{ inputs.target }}-${{ hashFiles('ProjectSettings/ProjectVersion.txt', 'Packages/**') }}-
+    - name: Restore the offline speech library
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: Build/Speech
+        key: speech-${{ runner.os }}-${{ runner.arch }}-${{ inputs.target }}-${{ hashFiles('ThirdParty/Festival/**', 'script/build-speech') }}
+    - name: Build the shared Festival voice
+      env:
+        PLATFORM: ${{ inputs.platform }}
+      shell: bash
+      run: |
+        case "$PLATFORM" in
+          Windows-and-SteamDeck) script/build-speech Windows ;;
+          *) script/build-speech "$PLATFORM" ;;
+        esac
+    - name: Check native speech without playing audio
+      if: inputs.target == 'StandaloneOSX'
+      shell: bash
+      run: script/test-speech
+    - name: Build with Unity
+      uses: game-ci/unity-builder@eb1b9fba120c6e62c9fb7a7a81d6c107ce004c45 # v6.0.0
+      env:
+        UNITY_EMAIL: ${{ inputs.unity-email }}
+        UNITY_PASSWORD: ${{ inputs.unity-password }}
+      with:
+        cliVersion: v0.1.76
+        targetPlatform: ${{ inputs.target }}
+        buildMethod: ${{ inputs.method }}
+        versioning: None
+        customParameters: -releaseVersion "${{ inputs.version }}" -buildNumber "${{ github.run_number }}.${{ github.run_attempt }}"
+        cacheUnityInstallationOnMac: true

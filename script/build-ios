@@ -14,19 +14,4 @@ if [ -z "${INFINIGAME_APPLE_TEAM:-}" ] && [ -f Build/iOS/Unity-iPhone.xcodeproj/
   export INFINIGAME_APPLE_TEAM
 fi
 script/lib/build-target iOS Infinigame.Editor.Platforms.IOS Logs/build-ios.log
-build_signing=(CODE_SIGNING_ALLOWED=NO)
-if [ -n "${INFINIGAME_APPLE_TEAM:-}" ] && [ "$build_unsigned" = false ]; then
-  build_signing=("DEVELOPMENT_TEAM=$INFINIGAME_APPLE_TEAM" CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates)
-fi
-echo 'Unity export finished. Xcode is now compiling and linking the device app.'
-if ! xcodebuild -project Build/iOS/Unity-iPhone.xcodeproj -scheme Unity-iPhone -configuration Release -destination 'generic/platform=iOS' -derivedDataPath Build/iOSDerived "${build_signing[@]}" build 2>&1 | tee Logs/build-ios-xcode.log; then
-  echo 'Xcode build failed. See Logs/build-ios-xcode.log. For signing errors, add your Apple Account and choose a Team in Xcode; --unsigned checks compilation without installing.' >&2
-  exit 1
-fi
-echo "Built: $PWD/Build/iOSDerived/Build/Products/Release-iphoneos/Infinigame.app"
-echo "Connect your unlocked iPhone/iPad by USB, trust this Mac and enable Settings > Privacy & Security > Developer Mode."
-echo "Open $PWD/Build/iOS/Unity-iPhone.xcodeproj. Select Unity-iPhone, your device and your signing Team, leave Automatically manage signing enabled, then Product > Run."
-echo 'For an already signed app: Xcode > Window > Devices and Simulators > Installed Apps > +, choose the .app printed above.'
-if [ -z "${INFINIGAME_APPLE_TEAM:-}" ] || [ "$build_unsigned" = true ]; then
-  echo 'This compile was unsigned. Choose your Apple ID Team in Xcode before installing, or rerun with INFINIGAME_APPLE_TEAM set to your Team ID.'
-fi
+script/lib/build-ios-xcode "$@"

@@ -43,6 +43,8 @@ These follow [scripts to rule them all](https://github.com/github/scripts-to-rul
 | `script/setup` | Bootstraps, makes sure the current user has a Unity licence and, if they can reach neither Claude nor ChatGPT, signs them in to Claude for the scanner and the robot. See Setup below. |
 | `script/editor` | Opens the game in the Unity editor, on the game scene. Press Play. |
 | `script/play` | Plays the game as a standalone app, building it first if the project has changed or the last build has no Burst-compiled code. The game's log goes to `Logs/Player.log` and its frame rate to `Logs/frames.log`. |
+| `script/package macOS` | Packages existing output; also accepts `Windows`, `SteamDeck` or `iOS`. |
+| `script/testflight --dry-run` | Checks signing of an existing iOS export. Use the **TestFlight** GitHub workflow to distribute private and public betas. See [CI.md](CI.md). |
 | `script/build-ios` | Exports `Build/iOS`, then compiles and links the device app with Xcode. Reuses the existing signing team and prints installation steps. |
 | `script/build-windows` | Builds `Build/Windows/Infinigame.exe` with OpenXR and packages `Build/Infinigame-Windows.zip`, with installation steps. |
 | `script/build-steam-deck` | Packages a desktop build without automatic XR as `Build/Infinigame-SteamDeck.zip`, with Proton installation steps. |
@@ -50,9 +52,14 @@ These follow [scripts to rule them all](https://github.com/github/scripts-to-rul
 | `script/build` | Builds `Build/Infinigame.app` for macOS. Unity's build log goes to `Logs/build.log`. |
 | `script/build-speech [macOS\|Windows\|iOS]` | Builds the offline Festival voice library; ordinary builds call this automatically. |
 | `script/test-speech` | Checks native speech without playing sound and writes `Build/Festival-preview.wav`. |
-| `script/test` | Compiles every assembly and runs the EditMode tests. Needs no Unity licence. |
+| `script/test-testflight` | Checks release gating and signing cleanup without credentials or uploads. |
+| `script/test` | Checks TestFlight automation, compiles every assembly and runs the EditMode tests. Needs no Unity licence. |
 | `script/test --unity` | Also runs the EditMode and PlayMode tests inside Unity and saves pictures to `Logs/Screenshots`. |
 | `script/unity` | Runs the pinned editor against this project with any arguments. |
+
+The root [Infinigame.xcodeproj](Infinigame.xcodeproj) shortcut points at the generated iOS project. [CI.md](CI.md) describes the GitHub Actions builds, release artifacts and private and public TestFlight distribution, including recoverable public uploads and the three-per-day release limit.
+
+Read the [privacy policy](PRIVACY.md) for local storage, optional AI services and TestFlight diagnostics. [TESTFLIGHT.md](TESTFLIGHT.md) contains public beta submission copy and preparation steps.
 
 `script/play`, `script/build` and `script/test --unity` need a licence for whoever runs them and the project closed in the editor.
 
