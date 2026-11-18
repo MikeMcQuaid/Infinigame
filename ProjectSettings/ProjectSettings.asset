@@ -172,7 +172,7 @@ PlayerSettings:
   applicationIdentifier:
     Android: com.mikemcquaid.infinigame
     Standalone: com.mikemcquaid.infinigame
-    iPhone: com.mikemcquaid.infinigame
+    iPhone: com.mikemcquaid.Infinigame
     tvOS: com.mikemcquaid.infinigame
   buildNumber:
     Standalone: 0

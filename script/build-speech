@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 import urllib.request
 
 os.chdir(Path(__file__).resolve().parent.parent)
@@ -26,64 +27,70 @@ if output.exists() and stamp.exists() and stamp.read_text() == digest and (root 
     print(f"Festival speech ready: {output}")
     sys.exit(0)
 print(f"Building offline Festival speech for {target}", flush=True)
-sources = root / "sources"
-sources.mkdir(exist_ok=True)
-for name, sha in {
-    "flite-hts-1.02.tar.gz": "e4abb5831dbf1daffdcb06f22590bea941d297297b3d33726294d59276872b67",
-    "hts-engine-1.05.tar.gz": "881f43e414c87b31f8a1cc95d052ad30b48460b3b041b34d51c7b741f9ad67a9",
-    "cmu_us_slt_arctic_hts.tar.gz": "642e2d659fd7f30396343394a62a3643d0714a5c0e6a1491063b841fd053a0cc",
-}.items():
-    archive = vendor / name
-    if hashlib.sha256(archive.read_bytes()).hexdigest() != sha:
-        sys.exit(f"Unexpected source checksum: {archive}")
-    with tarfile.open(archive) as bundle:
-        bundle.extractall(sources)
-flite = sources / "flite+hts_engine-1.02"
-hts = sources / "hts_engine_API-1.05"
-voice = sources / "festival/lib/voices/us/cmu_us_slt_arctic_hts"
-shutil.copytree(voice / "hts", root / "Voice", dirs_exist_ok=True)
-shutil.copyfile(vendor / "LICENSES.txt", root / "Voice/LICENSES.txt")
-# Retain samples until the adapter copies them into Unity's audio buffer.
-synthesis = flite / "lib/flite_hts_engine.c"
-synthesis.write_text(synthesis.read_text().replace("   HTS_Engine_refresh(&f->engine);", "   /* Infinigame: the adapter refreshes after copying PCM. */"))
-files = [vendor.resolve() / "bridge.c", *sorted((hts / "lib").glob("*.c"))]
-for name in re.findall(r"(?:\$\(top_srcdir\)/)?([\w/]+\.c)\b", (flite / "lib/Makefile.am").read_text()):
-    files.append(flite / name if name.startswith("flite/") else flite / "lib" / name)
-flags = ["-O2", "-std=c99", "-fvisibility=hidden", "-DAUDIO_PLAY_NONE", "-DFLITE_PLUS_HTS_ENGINE", "-DCST_NO_SOCKETS", "-Wno-deprecated-declarations"]
-for path in [flite / "include", flite / "flite/include", hts / "include", *sorted((flite / "flite/lang").iterdir())]:
-    flags.append(f"-I{path}")
-output.parent.mkdir(exist_ok=True)
-if target == "Windows":
-    # Zig supplies a reproducible Windows cross compiler without a system install.
-    host = ("aarch64" if platform.machine() == "arm64" else "x86_64") + ("-macos" if sys.platform == "darwin" else "-linux")
-    checksum = {
-        "aarch64-macos": "3cc2bab367e185cdfb27501c4b30b1b0653c28d9f73df8dc91488e66ece5fa6b",
-        "x86_64-macos": "375b6909fc1495d16fc2c7db9538f707456bfc3373b14ee83fdd3e22b3d43f7f",
-        "x86_64-linux": "02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239",
-    }[host]
-    tools = Path("tmp/speech-tools").resolve()
-    compiler = tools / f"zig-{host}-0.15.2/zig"
-    if not compiler.exists():
-        tools.mkdir(parents=True, exist_ok=True)
-        archive = tools / "zig.tar.xz"
-        print("Downloading the pinned Windows speech compiler", flush=True)
-        urllib.request.urlretrieve(f"https://ziglang.org/download/0.15.2/zig-{host}-0.15.2.tar.xz", archive)
-        if hashlib.sha256(archive.read_bytes()).hexdigest() != checksum:
-            sys.exit("Unexpected Zig compiler checksum")
+# Build in fresh files so another user can replace a read-only cache entry.
+with tempfile.TemporaryDirectory(dir=root) as directory:
+    sources = Path(directory)
+    for name, sha in {
+        "flite-hts-1.02.tar.gz": "e4abb5831dbf1daffdcb06f22590bea941d297297b3d33726294d59276872b67",
+        "hts-engine-1.05.tar.gz": "881f43e414c87b31f8a1cc95d052ad30b48460b3b041b34d51c7b741f9ad67a9",
+        "cmu_us_slt_arctic_hts.tar.gz": "642e2d659fd7f30396343394a62a3643d0714a5c0e6a1491063b841fd053a0cc",
+    }.items():
+        archive = vendor / name
+        if hashlib.sha256(archive.read_bytes()).hexdigest() != sha:
+            sys.exit(f"Unexpected source checksum: {archive}")
         with tarfile.open(archive) as bundle:
-            bundle.extractall(tools)
-    os.environ["ZIG_GLOBAL_CACHE_DIR"] = str(tools / "cache")
-    subprocess.run([str(compiler), "cc", "-target", "x86_64-windows-gnu", *flags, "-shared", *map(str, files), "-o", str(output)], check=True)
-elif target == "macOS":
-    subprocess.run(["xcrun", "clang", "-arch", "arm64", "-arch", "x86_64", "-mmacosx-version-min=10.15", *flags, "-dynamiclib", "-install_name", "@rpath/libInfinigameSpeech.dylib", *map(str, files), "-o", str(output)], check=True)
-    subprocess.run(["codesign", "--force", "--sign", "-", str(output)], check=True)
-else:
-    sdk = subprocess.check_output(["xcrun", "--sdk", "iphoneos", "--show-sdk-path"], text=True).strip()
-    objects = []
-    for i, source in enumerate(files):
-        obj = output.parent / f"{i}.o"
-        subprocess.run(["xcrun", "clang", "-target", "arm64-apple-ios15.0", "-isysroot", sdk, *flags, "-c", str(source), "-o", str(obj)], check=True)
-        objects.append(str(obj))
-    subprocess.run(["xcrun", "libtool", "-static", "-o", str(output), *objects], check=True)
-stamp.write_text(digest)
+            bundle.extractall(sources)
+    flite = sources / "flite+hts_engine-1.02"
+    hts = sources / "hts_engine_API-1.05"
+    voice = sources / "festival/lib/voices/us/cmu_us_slt_arctic_hts"
+    # Retain samples until the adapter copies them into Unity's audio buffer.
+    synthesis = flite / "lib/flite_hts_engine.c"
+    synthesis.write_text(synthesis.read_text().replace("   HTS_Engine_refresh(&f->engine);", "   /* Infinigame: the adapter refreshes after copying PCM. */"))
+    files = [vendor.resolve() / "bridge.c", *sorted((hts / "lib").glob("*.c"))]
+    for name in re.findall(r"(?:\$\(top_srcdir\)/)?([\w/]+\.c)\b", (flite / "lib/Makefile.am").read_text()):
+        files.append(flite / name if name.startswith("flite/") else flite / "lib" / name)
+    flags = ["-O2", "-std=c99", "-fvisibility=hidden", "-DAUDIO_PLAY_NONE", "-DFLITE_PLUS_HTS_ENGINE", "-DCST_NO_SOCKETS", "-Wno-deprecated-declarations"]
+    for path in [flite / "include", flite / "flite/include", hts / "include", *sorted((flite / "flite/lang").iterdir())]:
+        flags.append(f"-I{path}")
+    library = sources / output.name
+    if target == "Windows":
+        # Zig supplies a reproducible Windows cross compiler without a system install.
+        host = ("aarch64" if platform.machine() == "arm64" else "x86_64") + ("-macos" if sys.platform == "darwin" else "-linux")
+        checksum = {
+            "aarch64-macos": "3cc2bab367e185cdfb27501c4b30b1b0653c28d9f73df8dc91488e66ece5fa6b",
+            "x86_64-macos": "375b6909fc1495d16fc2c7db9538f707456bfc3373b14ee83fdd3e22b3d43f7f",
+            "x86_64-linux": "02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239",
+        }[host]
+        tools = Path("tmp/speech-tools").resolve()
+        compiler = tools / f"zig-{host}-0.15.2/zig"
+        if not compiler.exists():
+            tools.mkdir(parents=True, exist_ok=True)
+            archive = tools / "zig.tar.xz"
+            print("Downloading the pinned Windows speech compiler", flush=True)
+            urllib.request.urlretrieve(f"https://ziglang.org/download/0.15.2/zig-{host}-0.15.2.tar.xz", archive)
+            if hashlib.sha256(archive.read_bytes()).hexdigest() != checksum:
+                sys.exit("Unexpected Zig compiler checksum")
+            with tarfile.open(archive) as bundle:
+                bundle.extractall(tools)
+        os.environ["ZIG_GLOBAL_CACHE_DIR"] = str(tools / "cache")
+        subprocess.run([str(compiler), "cc", "-target", "x86_64-windows-gnu", *flags, "-shared", *map(str, files), "-o", str(library)], check=True)
+    elif target == "macOS":
+        subprocess.run(["xcrun", "clang", "-arch", "arm64", "-arch", "x86_64", "-mmacosx-version-min=10.15", *flags, "-dynamiclib", "-install_name", "@rpath/libInfinigameSpeech.dylib", *map(str, files), "-o", str(library)], check=True)
+        subprocess.run(["codesign", "--force", "--sign", "-", str(library)], check=True)
+    else:
+        sdk = subprocess.check_output(["xcrun", "--sdk", "iphoneos", "--show-sdk-path"], text=True).strip()
+        objects = []
+        for i, source in enumerate(files):
+            obj = sources / f"{i}.o"
+            subprocess.run(["xcrun", "clang", "-target", "arm64-apple-ios15.0", "-isysroot", sdk, *flags, "-c", str(source), "-o", str(obj)], check=True)
+            objects.append(str(obj))
+        subprocess.run(["xcrun", "libtool", "-static", "-o", str(library), *objects], check=True)
+    shutil.copyfile(vendor / "LICENSES.txt", voice / "hts/LICENSES.txt")
+    (root / "Voice").mkdir(exist_ok=True)
+    for model_file in (voice / "hts").iterdir():
+        model_file.replace(root / "Voice" / model_file.name)
+    output.parent.mkdir(exist_ok=True)
+    library.replace(output)
+    (sources / "digest").write_text(digest)
+    (sources / "digest").replace(stamp)
 print(f"Festival speech built: {output}")

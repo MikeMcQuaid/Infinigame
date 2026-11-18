@@ -88,7 +88,6 @@ namespace Infinigame.Editor
         {
             PlayerSettings.iOS.targetDevice = iOSTargetDevice.iPhoneAndiPad;
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
-            PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.iOS, "com.mikemcquaid.infinigame");
             string previousTeam = PlayerSettings.iOS.appleDeveloperTeamID;
             string team = Environment.GetEnvironmentVariable("INFINIGAME_APPLE_TEAM");
             if (!string.IsNullOrEmpty(team)) PlayerSettings.iOS.appleDeveloperTeamID = team;
@@ -98,7 +97,7 @@ namespace Infinigame.Editor
         }
         static void Build(string path, BuildTarget target, bool deck = false)
         {
-            var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions { scenes = new[] { "Assets/Scenes/Main.unity" }, locationPathName = path, target = target, extraScriptingDefines = deck ? new[] { "INFINIGAME_DECK" } : Array.Empty<string>() });
+            var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions { scenes = new[] { "Assets/Scenes/Main.unity" }, locationPathName = path, target = target, options = target == BuildTarget.iOS ? BuildOptions.StrictMode : BuildOptions.None, extraScriptingDefines = deck ? new[] { "INFINIGAME_DECK" } : Array.Empty<string>() });
             if (report.summary.result != BuildResult.Succeeded) throw new InvalidOperationException($"{target} build failed: {report.summary.result}");
         }
     }

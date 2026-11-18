@@ -5,11 +5,27 @@ import ctypes
 import math
 import os
 from pathlib import Path
+import shutil
 import subprocess
+import tempfile
 import time
 import wave
 
 os.chdir(Path(__file__).resolve().parent.parent)
+Path("tmp").mkdir(exist_ok=True)
+with tempfile.TemporaryDirectory(dir="tmp") as directory:
+    project = Path(directory)
+    (project / "script").mkdir()
+    shutil.copy("script/build-speech", project / "script")
+    (project / "ThirdParty").symlink_to(Path("ThirdParty").resolve())
+    old_voice = project / "Build/Speech/Voice/dur.pdf"
+    old_voice.parent.mkdir(parents=True)
+    old_voice.write_bytes(b"incomplete")
+    subprocess.run(["chmod", "-N", old_voice], check=True)
+    old_voice.chmod(0o444)
+    subprocess.run(["script/build-speech", "macOS"], cwd=project, check=True)
+    assert old_voice.stat().st_size > len(b"incomplete")
+
 subprocess.run(["script/build-speech", "macOS"], check=True)
 library = ctypes.CDLL(str(Path("Build/Speech/macOS/libInfinigameSpeech.dylib").resolve()))
 library.InfinigameSynthesise.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)]
