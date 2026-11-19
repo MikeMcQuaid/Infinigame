@@ -6,28 +6,22 @@ require 'net/http'
 require 'openssl'
 require 'time'
 require 'timeout'
-require 'tmpdir'
 
 class TestFlight
   UPLOAD_RECORD = 'tmp/testflight-upload.json'
-  PUBLIC_ARTIFACT = /\Atestflight-(upload|attempt)-([0-9]+(?:\.[0-9]+){0,2})(?:-v([0-9]+\.[0-9]+\.[0-9]+))?(?:-[0-9]+)?\z/
-
-  def self.check_release_limit(releases, now = Time.now)
-    count = releases.count do |release|
-      !release['draft'] && release['published_at'] && Time.iso8601(release['published_at']) > now - 86_400
-    end
-    raise 'Already published three releases in the past 24 hours; wait before retrying.' if count >= 3
-  end
+  PUBLIC_ARTIFACT = /\Atestflight-(?:macos-)?(upload|attempt)-([0-9]+(?:\.[0-9]+){0,2})(?:-v([0-9]+\.[0-9]+\.[0-9]+))?(?:-[0-9]+)?\z/
+  PLATFORMS = { 'iOS' => 'IOS', 'macOS' => 'MAC_OS' }.freeze
 
   def self.record_public
     FileUtils.mkdir_p(File.dirname(UPLOAD_RECORD))
-    File.write(UPLOAD_RECORD, JSON.generate(ENV.to_h.slice('BUILD_NUMBER', 'RELEASE_VERSION', 'GITHUB_SHA', 'GITHUB_RUN_ID')))
+    File.write(UPLOAD_RECORD, JSON.generate(ENV.to_h.slice('BUILD_NUMBER', 'RELEASE_VERSION', 'GITHUB_SHA', 'GITHUB_RUN_ID', 'TESTFLIGHT_PLATFORM')))
   end
 
   def self.resume_public
     record = JSON.parse(File.read(UPLOAD_RECORD))
-    unless %w[RELEASE_VERSION GITHUB_SHA GITHUB_RUN_ID].all? { |key| record.fetch(key) == ENV.fetch(key) }
-      raise 'The saved TestFlight upload does not match this release, commit or workflow run'
+    unless record.fetch('TESTFLIGHT_PLATFORM', 'iOS') == ENV.fetch('TESTFLIGHT_PLATFORM', 'iOS') &&
+           %w[RELEASE_VERSION GITHUB_SHA GITHUB_RUN_ID].all? { |key| record.fetch(key) == ENV.fetch(key) }
+      raise 'The saved TestFlight upload does not match this platform, release, commit or workflow run'
     end
     number = record.fetch('BUILD_NUMBER')
     raise 'Invalid saved build number' unless number.match?(/\A[0-9]+(?:\.[0-9]+){0,2}\z/)
@@ -36,13 +30,14 @@ class TestFlight
 
   def self.github_pages(path)
     output = IO.popen(['gh', 'api', '--paginate', '--slurp', "repos/#{ENV.fetch('GITHUB_REPOSITORY')}/#{path}"], &:read)
-    raise 'Could not read GitHub release history' unless $?.success?
+    raise 'Could not read GitHub upload history' unless $?.success?
     JSON.parse(output)
   end
 
   def public_artifacts
     self.class.github_pages('actions/artifacts?per_page=100').flat_map { |page| page.fetch('artifacts') }.select do |artifact|
-      next false unless artifact.fetch('name').match?(PUBLIC_ARTIFACT)
+      name = artifact.fetch('name')
+      next false unless name.match?(PUBLIC_ARTIFACT) && name.start_with?('testflight-macos-') == (@platform == 'MAC_OS')
       run = artifact['workflow_run']
       next false unless run
       run.fetch('head_branch') == 'main' && run.fetch('head_repository_id') == run.fetch('repository_id')
@@ -50,15 +45,12 @@ class TestFlight
   end
 
   def build_uploads(deadline = nil)
-    @included_upload_builds = {}
-    list("/v1/apps/#{@app.fetch('id')}/buildUploads", { 'include' => 'build' }, deadline) do |page|
-      page.fetch('included', []).each do |build|
-        @included_upload_builds[build.fetch('id')] = build if build['type'] == 'builds'
-      end
-    end.select { |upload| upload.dig('attributes', 'platform') == 'IOS' }
+    list("/v1/apps/#{@app.fetch('id')}/buildUploads", {}, deadline)
+      .select { |upload| upload.dig('attributes', 'platform') == @platform }
   end
 
-  def initialize
+  def initialize(platform = ENV.fetch('TESTFLIGHT_PLATFORM', 'iOS'))
+    @platform = PLATFORMS.fetch(platform)
     @key = OpenSSL::PKey.read(ENV.fetch('APP_STORE_KEY'))
     apps = list('/v1/apps', 'filter[bundleId]' => 'com.mikemcquaid.Infinigame')
     raise 'Expected one Infinigame App Store Connect record' unless apps.length == 1
@@ -113,12 +105,14 @@ class TestFlight
 
   def builds(query = {}, deadline = nil)
     list('/v1/builds', {
-      'filter[app]' => @app.fetch('id'), 'filter[preReleaseVersion.platform]' => 'IOS',
-      'sort' => '-uploadedDate', 'include' => 'preReleaseVersion,buildUpload'
+      'filter[app]' => @app.fetch('id'), 'filter[preReleaseVersion.platform]' => @platform,
+      'sort' => '-uploadedDate', 'include' => 'preReleaseVersion,buildBetaDetail'
     }.merge(query), deadline) do |page|
       @versions ||= {}
+      @details_by_id ||= {}
       page.fetch('included', []).each do |record|
         @versions[record.fetch('id')] = record.dig('attributes', 'version') if record['type'] == 'preReleaseVersions'
+        @details_by_id[record.fetch('id')] = record if record['type'] == 'buildBetaDetails'
       end
     end
   end
@@ -137,33 +131,25 @@ class TestFlight
   def public_group
     name = ENV['TESTFLIGHT_PUBLIC_GROUP'].to_s
     name = 'Public Beta' if name.empty?
-    groups = list("/v1/apps/#{@app.fetch('id')}/betaGroups").select do |group|
+    groups = tester_groups.select do |group|
       group.dig('attributes', 'name') == name && group.dig('attributes', 'isInternalGroup') == false
     end
     raise "Expected one external group named #{name.inspect}; complete the TestFlight setup." unless groups.length == 1
     groups.first.fetch('id')
   end
 
-  def artifact_identity(artifact)
-    match = PUBLIC_ARTIFACT.match(artifact.fetch('name'))
-    return [match[3], match[2]] if match[3]
-    # Older workflow runs saved the version only inside their intent.
-    @intents ||= {}
-    @intents[artifact.fetch('name')] ||= begin
-      FileUtils.mkdir_p('tmp')
-      Dir.mktmpdir('testflight-intent.', 'tmp') do |directory|
-        run = artifact.fetch('workflow_run').fetch('id').to_s
-        unless system('gh', 'run', 'download', run, '--repo', ENV.fetch('GITHUB_REPOSITORY'),
-                      '--name', artifact.fetch('name'), '--dir', directory)
-          raise 'Could not read the saved public upload identity'
-        end
-        record = JSON.parse(File.read(File.join(directory, 'testflight-upload.json')))
-        unless record.fetch('GITHUB_RUN_ID') == run && record.fetch('BUILD_NUMBER') == match[2]
-          raise 'The saved public upload identity does not match its artefact'
-        end
-        [record.fetch('RELEASE_VERSION'), record.fetch('BUILD_NUMBER')]
-      end
-    end
+  def tester_groups
+    @tester_groups ||= list("/v1/apps/#{@app.fetch('id')}/betaGroups")
+  end
+
+  def internal_group
+    groups = tester_groups.select { |group| group.dig('attributes', 'isInternalGroup') }
+    name = ENV['TESTFLIGHT_INTERNAL_GROUP'].to_s
+    groups = groups.select { |group| group.dig('attributes', 'name') == name } unless name.empty?
+    # Apple already distributes eligible uploads to these groups during processing.
+    return if groups.any? { |group| group.dig('attributes', 'hasAccessToAllBuilds') }
+    raise 'Enable internal automatic distribution or set TESTFLIGHT_INTERNAL_GROUP to one internal group.' unless groups.one?
+    groups.first.fetch('id')
   end
 
   def build_identity(build)
@@ -175,136 +161,26 @@ class TestFlight
     [upload.fetch('attributes').fetch('cfBundleShortVersionString'), upload.fetch('attributes').fetch('cfBundleVersion')]
   end
 
-  def public_uploads(records, artifacts, now = Time.now)
-    public_identities = records.select { |build| build.dig('attributes', 'buildAudienceType') == 'APP_STORE_ELIGIBLE' }
-                               .map { |build| build_identity(build) }
-    private_identities = records.select { |build| build.dig('attributes', 'buildAudienceType') == 'INTERNAL_ONLY' }
-                                .map { |build| build_identity(build) }
-    build_uploads.select do |upload|
-      linked = @included_upload_builds[upload.dig('relationships', 'build', 'data', 'id')] || records.find do |build|
-        build['id'] == upload.dig('relationships', 'build', 'data', 'id') ||
-          build.dig('relationships', 'buildUpload', 'data', 'id') == upload.fetch('id')
-      end
-      if %w[APP_STORE_ELIGIBLE INTERNAL_ONLY].include?(linked&.dig('attributes', 'buildAudienceType'))
-        linked.dig('attributes', 'buildAudienceType') == 'APP_STORE_ELIGIBLE'
-      else
-        identity = upload_identity(upload)
-        next false if private_identities.include?(identity)
-        known_public = public_identities.include?(identity) || artifacts.any? do |artifact|
-          PUBLIC_ARTIFACT.match(artifact.fetch('name'))[2] == identity[1] && artifact_identity(artifact) == identity
-        end
-        unless known_public
-          timestamps = [upload.fetch('attributes').fetch('createdDate'), upload.dig('attributes', 'uploadedDate')].compact
-          if timestamps.any? { |timestamp| Time.iso8601(timestamp) > now - 86_400 }
-            raise "Cannot determine the audience of upload #{identity.join(' / ')}; wait for Apple to identify its build audience or for its timestamps to leave the 24-hour window."
-          end
-        end
-        known_public
-      end
-    end
-  end
-
-  def prepare_public
-    public_group
-    check_public_version
-    check_public_limit
-  end
-
-  def check_public_version(accepted_number = nil)
-    records = builds
-    if records.any? { |build| build.dig('attributes', 'buildAudienceType') == 'APP_STORE_ELIGIBLE' &&
-                             build_identity(build)[0] == ENV.fetch('RELEASE_VERSION') &&
-                             build_identity(build)[1] != accepted_number } ||
-       public_uploads(records, public_artifacts).any? do |upload|
-         upload_identity(upload)[0] == ENV.fetch('RELEASE_VERSION') && upload_identity(upload)[1] != accepted_number
-       end
-      raise 'A public build or upload already exists for this version; retry its original workflow or use a new version.'
-    end
-  end
-
-  def check_public_limit(now = Time.now)
-    cutoff = now - 86_400
-    records = builds
-    artifacts = public_artifacts
-    accepted = public_uploads(records, artifacts, now)
-    attempts = accepted.map do |upload|
-      attributes = upload.fetch('attributes')
-      { identity: upload_identity(upload), created: Time.iso8601(attributes.fetch('createdDate')),
-        finished: attributes['uploadedDate'] && Time.iso8601(attributes['uploadedDate']) }
-    end
-    records.select { |build| build.dig('attributes', 'buildAudienceType') == 'APP_STORE_ELIGIBLE' }.each do |build|
-      identity = build_identity(build)
-      uploaded = Time.iso8601(build.fetch('attributes').fetch('uploadedDate'))
-      match = accepted.index do |upload|
-        upload.dig('relationships', 'build', 'data', 'id') == build['id'] ||
-          build.dig('relationships', 'buildUpload', 'data', 'id') == upload['id']
-      end
-      match ||= accepted.index do |upload|
-        upload_identity(upload) == identity && upload.dig('attributes', 'state', 'state') != 'FAILED'
-      end
-      if match
-        attempts[match][:finished] = [attempts[match][:finished], uploaded].compact.max
-      else
-        attempts << { identity: identity, created: uploaded, processed: true }
-      end
-    end
-    count = attempts.count { |attempt| attempt[:created] > cutoff || (attempt[:finished] && attempt[:finished] > cutoff) }
-    # A retry's upload can only confirm the reservation for that attempt.
-    artifacts.select { |artifact| artifact.fetch('name').start_with?('testflight-attempt-') }
-             .sort_by { |artifact| artifact.fetch('created_at') }
-             .group_by { |artifact| artifact_identity(artifact) }.each do |identity, reservations|
-      reservations.each_with_index do |artifact, index|
-        start = Time.iso8601(artifact.fetch('created_at'))
-        next_start = reservations[index + 1]&.fetch('created_at')
-        match = attempts.index do |attempt|
-          attempt[:identity] == identity && attempt[:created] >= start &&
-            (attempt[:processed] || attempt[:created] <= start + 3600) &&
-            (!next_start || attempt[:created] < Time.iso8601(next_start))
-        end
-        if match
-          attempts.delete_at(match)
-        elsif start + 3600 > cutoff
-          count += 1
-        end
-      end
-    end
-    raise 'Already made or reserved three public uploads in the past 24 hours; wait before retrying.' if count >= 3
-  end
-
   def public_upload_needed?
     return false unless builds('filter[version]' => ENV.fetch('BUILD_NUMBER'),
                                'filter[preReleaseVersion.version]' => ENV.fetch('RELEASE_VERSION')).empty?
-    return false unless matching_uploads.empty?
-    check_public_version(ENV.fetch('BUILD_NUMBER'))
-    true
+    matching_uploads.empty?
   end
 
-  def matching_uploads(audience = 'public', deadline = nil)
+  def matching_uploads(deadline = nil)
     accepted = build_uploads(deadline).select do |upload|
       upload_identity(upload) == [ENV.fetch('RELEASE_VERSION'), ENV.fetch('BUILD_NUMBER')]
     end
     usable = accepted.reject { |upload| %w[FAILED AWAITING_UPLOAD].include?(upload.dig('attributes', 'state', 'state')) }
     return usable unless usable.empty?
-    recovery = audience == 'private' ? 'retry the workflow after correcting the upload problem.' : 'start a new TestFlight run with a fresh version.'
+    recovery = 'correct the upload problem and push a new build to main.'
     if accepted.any? { |upload| upload.dig('attributes', 'state', 'state') == 'AWAITING_UPLOAD' }
       raise "Apple has not received the binary: AWAITING_UPLOAD; #{recovery}"
     end
     if accepted.any? { |upload| upload.dig('attributes', 'state', 'state') == 'FAILED' }
-      recovery = 'use a new release version.' if audience == 'public'
       raise "Apple rejected this upload; #{recovery}"
     end
     usable
-  end
-
-  def retire_private
-    builds.select do |build|
-      build.dig('attributes', 'buildAudienceType') == 'INTERNAL_ONLY' && build.dig('attributes', 'expired') == false
-    end.sort_by { |build| Time.iso8601(build.fetch('attributes').fetch('uploadedDate')) }.reverse.drop(20).each do |build|
-      request('PATCH', "/v1/builds/#{build.fetch('id')}", data: {
-        type: 'builds', id: build.fetch('id'), attributes: { expired: true }
-      })
-      puts "Expired private build #{build.fetch('id')}"
-    end
   end
 
   def processing_time_left(deadline)
@@ -313,28 +189,23 @@ class TestFlight
     remaining
   end
 
-  def distribute(audience)
+  def distribute
     deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 1200
     loop do
       processing_time_left(deadline)
       build = builds({ 'filter[version]' => ENV.fetch('BUILD_NUMBER'),
                        'filter[preReleaseVersion.version]' => ENV.fetch('RELEASE_VERSION') }, deadline).first
       processing_time_left(deadline)
-      matching_uploads(audience, deadline) unless build
+      matching_uploads(deadline) unless build
       state = build&.dig('attributes', 'processingState')
       raise "Apple processing failed: #{state}" if %w[FAILED INVALID].include?(state)
       if state == 'VALID'
-        expected = audience == 'private' ? 'INTERNAL_ONLY' : 'APP_STORE_ELIGIBLE'
-        raise 'Unexpected build audience' unless build.dig('attributes', 'buildAudienceType') == expected
+        raise 'Unexpected build audience' unless build.dig('attributes', 'buildAudienceType') == 'APP_STORE_ELIGIBLE'
         raise 'The uploaded build has expired' if build.dig('attributes', 'expired')
         detail = request('GET', "/v1/builds/#{build.fetch('id')}/buildBetaDetail", nil, deadline).fetch('data')
         processing_time_left(deadline)
-        state = detail&.dig('attributes', audience == 'private' ? 'internalBuildState' : 'externalBuildState')
+        state = detail&.dig('attributes', 'externalBuildState')
         unless state.nil? || state == 'PROCESSING'
-          if audience == 'private'
-            raise "Build is not ready for internal testing: #{state}" unless %w[READY_FOR_BETA_TESTING IN_BETA_TESTING].include?(state)
-            return retire_private
-          end
           return distribute_public(build.fetch('id'), detail)
         end
       end
@@ -343,7 +214,11 @@ class TestFlight
     end
   end
 
-  def distribute_public(id, detail)
+  def distribute_public(id, detail, already_assigned: false)
+    group = internal_group
+    if group
+      request('POST', "/v1/betaGroups/#{group}/relationships/builds", data: [{ type: 'builds', id: id }])
+    end
     group = public_group
     state = detail.fetch('attributes').fetch('externalBuildState')
     case state
@@ -373,7 +248,9 @@ class TestFlight
     else
       raise "Build is not ready for external testing: #{state}"
     end
-    request('POST', "/v1/betaGroups/#{group}/relationships/builds", data: [{ type: 'builds', id: id }])
+    unless already_assigned
+      request('POST', "/v1/betaGroups/#{group}/relationships/builds", data: [{ type: 'builds', id: id }])
+    end
     if %w[READY_FOR_BETA_TESTING BETA_APPROVED].include?(state)
       request('POST', '/v1/buildBetaNotifications', data: {
         type: 'buildBetaNotifications', relationships: { build: { data: { type: 'builds', id: id } } }
@@ -381,24 +258,48 @@ class TestFlight
     end
     puts 'Build added to the configured external group; testers will be notified after any required Apple approval.'
   end
+
+  # Only revisit builds reserved by this repository, including when Apple deferred review.
+  def retry_distribution
+    identities = public_artifacts.map do |artifact|
+      match = PUBLIC_ARTIFACT.match(artifact.fetch('name'))
+      [match[3], match[2]] if match[1] == 'upload' && match[3] && !artifact['expired']
+    end.compact
+    return if identities.empty?
+    assigned = list("/v1/betaGroups/#{public_group}/builds", 'fields[builds]' => 'version').map { |build| build.fetch('id') }
+    failed = []
+    builds.reverse_each do |build|
+      id = build.fetch('id')
+      next unless build.dig('attributes', 'processingState') == 'VALID' && !build.dig('attributes', 'expired') &&
+                  build.dig('attributes', 'buildAudienceType') == 'APP_STORE_ELIGIBLE' && identities.include?(build_identity(build))
+      detail = @details_by_id[build.dig('relationships', 'buildBetaDetail', 'data', 'id')]
+      state = detail&.dig('attributes', 'externalBuildState')
+      next if state.nil? || %w[PROCESSING EXPIRED BETA_REJECTED].include?(state)
+      next if assigned.include?(id) && %w[WAITING_FOR_BETA_REVIEW IN_BETA_REVIEW IN_BETA_TESTING].include?(state)
+      begin
+        distribute_public(id, detail, already_assigned: assigned.include?(id))
+      rescue RuntimeError => e
+        warn "Build #{id}: #{e.message}"
+        failed << id
+      end
+    end
+    raise "Distribution pending for #{failed.join(', ')}" unless failed.empty?
+  end
 end
 
 if $PROGRAM_NAME == __FILE__
   begin
     case ARGV
-    when ['check-release-limit']
-      TestFlight.check_release_limit(TestFlight.github_pages('releases?per_page=100').flatten)
     when ['next-build-number'] then puts TestFlight.new.next_build_number(Integer(`script/build-number`, 10))
     when ['record-public'] then TestFlight.record_public
     when ['resume-public'] then puts TestFlight.resume_public
-    when ['prepare-public'] then TestFlight.new.prepare_public
     when ['plan-public']
       api = TestFlight.new
       needed = api.public_upload_needed?
-      api.check_public_limit if needed
       File.open(ENV.fetch('GITHUB_OUTPUT'), 'a') { |file| file.puts "needed=#{needed}" }
-    when ['private'], ['public'] then TestFlight.new.distribute(ARGV.first)
-    else raise 'Usage: ruby .github/testflight.rb check-release-limit|next-build-number|prepare-public|record-public|resume-public|plan-public|private|public'
+    when ['public'] then TestFlight.new.distribute
+    when ['retry-distribution'] then TestFlight.new.retry_distribution
+    else raise 'Usage: ruby .github/testflight.rb next-build-number|record-public|resume-public|plan-public|public|retry-distribution'
     end
   rescue StandardError => error
     warn error.message

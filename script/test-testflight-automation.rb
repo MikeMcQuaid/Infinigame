@@ -25,20 +25,18 @@ end
 class TestFlightFixture < TestFlight
   NOW = Time.utc(2026, 11, 18, 10, 5)
 
-  def check_public_limit
-    super(NOW)
-  end
-
   attr_reader :writes
-  attr_accessor :records, :groups, :processing, :state, :details, :uploads, :upload_builds, :fail_group_once, :artifacts
+  attr_accessor :records, :groups, :processing, :state, :details, :uploads, :assigned, :fail_group_once, :artifacts
 
-  def initialize
+  def initialize(platform = 'iOS')
+    @platform = PLATFORMS.fetch(platform)
     @app = { 'id' => 'app', 'attributes' => { 'primaryLocale' => 'en-GB' } }
     @records = []
     @uploads = []
-    @upload_builds = []
+    @assigned = []
     @artifacts = []
     @groups = [{ 'id' => 'public', 'attributes' => { 'name' => 'Public Beta', 'isInternalGroup' => false } }]
+    @groups << { 'id' => 'team', 'attributes' => { 'name' => 'Team', 'isInternalGroup' => true, 'hasAccessToAllBuilds' => true } }
     @writes = []
     @processing = []
     @state = 'READY_FOR_BETA_SUBMISSION'
@@ -59,9 +57,9 @@ class TestFlightFixture < TestFlight
     case uri.path
     when '/v1/builds'
       query = URI.decode_www_form(uri.query).to_h
-      assert(query['include'] == 'preReleaseVersion,buildUpload', 'Request marketing versions and upload relationships')
+      assert(query['include'] == 'preReleaseVersion,buildBetaDetail', 'Request marketing versions and beta states')
       assert(query.fetch('filter[app]') == 'app', 'Build query must be scoped to this app')
-      assert(query.fetch('filter[preReleaseVersion.platform]') == 'IOS', 'Build query must be scoped to iOS')
+      assert(query.fetch('filter[preReleaseVersion.platform]') == @platform, 'Build query must be scoped to the selected platform')
       if query['filter[version]']
         assert(query['filter[version]'] == ENV.fetch('BUILD_NUMBER'), 'Must match the saved build number')
         assert(query['filter[preReleaseVersion.version]'] == '1.2.3', 'Must match marketing version too')
@@ -74,10 +72,13 @@ class TestFlightFixture < TestFlight
       { 'data' => records, 'included' => records.map do |build|
         { 'type' => 'preReleaseVersions', 'id' => build.dig('relationships', 'preReleaseVersion', 'data', 'id'),
           'attributes' => { 'version' => build.dig('attributes', 'marketingVersion') || '1.2.3' } }
+      end + records.map do |build|
+        { 'type' => 'buildBetaDetails', 'id' => build.fetch('id'), 'attributes' => { 'externalBuildState' => @state } }
       end }
     when '/v1/apps/app/buildUploads'
-      assert(URI.decode_www_form(uri.query).to_h['include'] == 'build', 'Request the upload/build relationship')
-      { 'data' => @uploads, 'included' => @upload_builds }
+      { 'data' => @uploads }
+    when '/v1/betaGroups/public/builds'
+      { 'data' => @assigned.map { |id| { 'id' => id } } }
     when '/v1/apps/app/betaGroups'
       { 'data' => @groups }
     when '/v1/builds/current/betaBuildLocalizations'
@@ -102,20 +103,15 @@ end
 ENV['RELEASE_VERSION'] = '1.2.3'
 ENV['BUILD_NUMBER'] = '42.2'
 ENV.delete('TESTFLIGHT_PUBLIC_GROUP')
+ENV.delete('TESTFLIGHT_INTERNAL_GROUP')
 now = TestFlightFixture::NOW
-release = { 'draft' => false, 'published_at' => (now - 60).iso8601 }
-TestFlight.check_release_limit([release, release], now)
-rejects('three releases') { TestFlight.check_release_limit([release] * 3, now) }
-TestFlight.check_release_limit([release, release, { 'draft' => true, 'published_at' => now.iso8601 }], now)
-TestFlight.check_release_limit([release, release, { 'published_at' => (now - 86_400).iso8601 }], now)
-TestFlight.check_release_limit([{ 'published_at' => nil }], now)
-
 def build(id, time, audience = 'INTERNAL_ONLY', **attributes)
   { 'id' => id, 'type' => 'builds', 'attributes' => {
     'uploadedDate' => time.iso8601, 'buildAudienceType' => audience,
     'processingState' => 'VALID', 'expired' => false, 'version' => '42.2'
   }.merge(attributes.transform_keys(&:to_s)),
-    'relationships' => { 'preReleaseVersion' => { 'data' => { 'id' => attributes.fetch(:marketingVersion, '1.2.3') } } } }
+    'relationships' => { 'preReleaseVersion' => { 'data' => { 'id' => attributes.fetch(:marketingVersion, '1.2.3') } },
+                         'buildBetaDetail' => { 'data' => { 'id' => id } } } }
 end
 
 api = TestFlightFixture.new
@@ -130,15 +126,13 @@ api.uploads = [
   { 'attributes' => { 'platform' => 'MAC_OS', 'cfBundleVersion' => '999' } }
 ]
 assert(api.next_build_number(18) == '45', 'Include unfinished iOS uploads but exclude other platforms')
+mac = TestFlightFixture.new('macOS')
+mac.uploads = api.uploads
+assert(mac.next_build_number(18) == '1000', 'Use the native Mac upload history for Mac builds')
 api.records = [build('expired', now, version: '100.2', expired: true)]
 assert(api.next_build_number(18) == '101', 'Compare numerically and never reuse expired build numbers')
 api.records[0]['attributes']['version'] = 'not-a-number'
 rejects('build number') { api.next_build_number(18) }
-
-api = TestFlightFixture.new
-api.records = [build('submitted', now, 'APP_STORE_ELIGIBLE', marketingVersion: '1.2.3')]
-rejects('original workflow') { api.prepare_public }
-assert(api.writes.empty?, 'An existing public version without a saved upload must fail before uploading')
 
 def artifact(name, time)
   name = name.sub(/\A(testflight-(?:upload|attempt)-[0-9.]+)/, '\1-v1.2.3')
@@ -154,178 +148,20 @@ def upload(number, time, state = 'PROCESSING', **attributes)
 end
 
 api = TestFlightFixture.new
-api.uploads = [upload('42.2', now, 'AWAITING_UPLOAD')]
-rejects('AWAITING_UPLOAD; start a new TestFlight run with a fresh version') { api.public_upload_needed? }
-rejects('AWAITING_UPLOAD; start a new TestFlight run with a fresh version') { api.distribute('public') }
-assert(api.writes.empty?, 'An upload without its binary must stop before distribution')
-api.uploads[0]['attributes']['cfBundleShortVersionString'] = '1.2.4'
-api.records = [build('other-version', now, 'APP_STORE_ELIGIBLE', marketingVersion: '1.2.4')]
-assert(api.public_upload_needed?, 'An awaiting upload for another version must not block this identity')
-
-api = TestFlightFixture.new
 api.artifacts = [artifact('testflight-upload-80', now)]
-assert(api.next_build_number(18) == '81', 'Unuploaded public intents reserve their build number too')
-api.artifacts = (1..3).map { |n| artifact("testflight-upload-#{n}", now - 172_800) }
-api.uploads = (1..3).map { |n| upload(n.to_s, now - n, 'FAILED') }
-rejects('three public uploads') { api.check_public_limit }
-api.uploads.each { |item| item['attributes']['state']['state'] = 'PROCESSING' }
-rejects('three public uploads') { api.check_public_limit }
-api.artifacts = []
-rejects('Cannot determine the audience') { api.check_public_limit }
-assert(api.writes.empty?, 'Unclassified manual uploads must block public uploads without guessing their audience')
-api.artifacts = (1..3).map { |n| artifact("testflight-attempt-#{n}-1", now) }
-api.uploads = []
-rejects('three public uploads') { api.check_public_limit }
-api.artifacts.each { |item| item['created_at'] = (now - 86_500).iso8601 }
-rejects('three public uploads') { api.check_public_limit }
-api.artifacts.each { |item| item['created_at'] = (now - 90_001).iso8601 }
-api.check_public_limit
-api.uploads = [upload('1', now - 90_001, uploadedDate: now.iso8601)]
-api.artifacts += [artifact('testflight-attempt-2-1', now), artifact('testflight-attempt-3-1', now)]
-rejects('three public uploads') { api.check_public_limit }
-api.uploads = [upload('1', now)]
-api.records = [build('one', now, 'APP_STORE_ELIGIBLE', version: '1')]
-api.artifacts = [artifact('testflight-upload-1', now), artifact('testflight-attempt-1-1', now)]
-api.check_public_limit
-api.artifacts += [artifact('testflight-attempt-1-2', now), artifact('testflight-attempt-1-3', now)]
-rejects('three public uploads') { api.check_public_limit }
-api.artifacts = [artifact('testflight-upload-1', now)]
-api.uploads = [upload('1', now, platform: 'MAC_OS')]
-api.check_public_limit
-
-api = TestFlightFixture.new
-api.artifacts = (1..2).map { |n| artifact("testflight-attempt-#{n}-1", now - 10) }
-api.records = (1..2).map { |n| build(n.to_s, now, 'APP_STORE_ELIGIBLE', version: n.to_s) }
-api.uploads = (1..2).map { |n| upload(n.to_s, now) }
-api.check_public_limit
-# The first reservation is old but its accepted upload is recent; a later
-# failed command using that identity is a separate attempt, not a duplicate.
-api.artifacts = [artifact('testflight-attempt-1-1', now - 90_000),
-                 artifact('testflight-attempt-1-2', now), artifact('testflight-attempt-2-1', now)]
-api.records = []
-api.uploads = [upload('1', now - 86_401, uploadedDate: (now - 86_399).iso8601)]
-rejects('three public uploads') { api.check_public_limit }
-
-# A retry's upload cannot confirm the earlier failed reservation, including
-# when Apple receives it exactly as the retry's reservation starts.
-[87_900, 88_500].each do |age|
-  api = TestFlightFixture.new
-  api.artifacts = [artifact('testflight-attempt-1-1', now - 90_300),
-                   artifact('testflight-attempt-1-2', now - 88_500)]
-  api.records = (2..3).map { |n| build(n.to_s, now, 'APP_STORE_ELIGIBLE', version: n.to_s) }
-  api.uploads = [upload('1', now - age), upload('2', now), upload('3', now)]
-  api.check_public_limit
-end
-
-# Legacy run artefacts retain recoverable identities in their JSON content.
-api = TestFlightFixture.new
-legacy = { 'name' => 'testflight-attempt-42.2-1', 'workflow_run' => { 'id' => 42 } }
-ENV['GITHUB_REPOSITORY'] = 'owner/repo'
-downloads = 0
-api.define_singleton_method(:system) do |*args|
-  assert(args[0, 4] == %w[gh run download 42], 'Download only the original run intent')
-  assert(args[args.index('--name') + 1] == legacy['name'], 'Select the exact legacy artefact')
-  File.write(File.join(args.last, 'testflight-upload.json'), JSON.generate(
-    'BUILD_NUMBER' => '42.2', 'RELEASE_VERSION' => '1.2.0', 'GITHUB_RUN_ID' => '42'))
-  downloads += 1
-  true
-end
-2.times do
-  assert(api.artifact_identity(legacy) == ['1.2.0', '42.2'], 'Read both versions from legacy intents')
-end
-assert(downloads == 1, 'Do not repeatedly download an intent while reconciling')
-
-# A processed build confirms its reservation even before its upload record appears.
-api = TestFlightFixture.new
-api.artifacts = [artifact('testflight-attempt-1-1', now - 10)]
-api.records = [build('one', now, 'APP_STORE_ELIGIBLE', version: '1'),
-               build('two', now, 'APP_STORE_ELIGIBLE', version: '2')]
-api.check_public_limit
-api.artifacts << artifact('testflight-attempt-3-1', now)
-rejects('three public uploads') { api.check_public_limit }
-
-# Processing can finish after the upload job's one-hour reservation window.
-api = TestFlightFixture.new
-api.records = [build('one', now, 'APP_STORE_ELIGIBLE', version: '1'),
-               build('two', now, 'APP_STORE_ELIGIBLE', version: '2')]
-api.artifacts = [artifact('testflight-attempt-1-1', now - 7200)]
-api.check_public_limit
-
-# Old public numbers must not classify a new marketing version's private upload.
-api = TestFlightFixture.new
-api.records = [build('old', now - 172_800, 'APP_STORE_ELIGIBLE', version: '1', marketingVersion: '1.2.0')]
-api.records += (2..3).map { |n| build(n.to_s, now, 'APP_STORE_ELIGIBLE', version: n.to_s) }
-api.artifacts = [artifact('testflight-upload-1', now - 172_800)]
-api.artifacts[0]['name'].sub!('v1.2.3', 'v1.2.0')
-api.uploads = [upload('1', now, cfBundleShortVersionString: '1.3.0')]
-api.records << build('new-private', now, version: '1', marketingVersion: '1.3.0')
-api.check_public_limit
-# A linked private build overrides an ambiguous saved public intent.
-api.records << build('private', now, version: '1')
-api.artifacts = [artifact('testflight-upload-1', now)]
-api.uploads = [upload('1', now)]
-api.uploads[0]['relationships'] = { 'build' => { 'data' => { 'id' => 'private' } } }
-api.check_public_limit
-# A linked public build classifies a failed upload even without saved artefacts.
-api.artifacts = []
-api.uploads = [upload('1', now, 'FAILED', cfBundleShortVersionString: '1.2.0')]
-api.uploads[0]['relationships'] = { 'build' => { 'data' => { 'id' => 'old' } } }
-rejects('three public uploads') { api.check_public_limit }
-
-# A manual upload can finish after the builds list was read.
-api = TestFlightFixture.new
-api.records = (1..2).map { |n| build(n.to_s, now, 'APP_STORE_ELIGIBLE', version: n.to_s) }
-api.uploads = [upload('3', now)]
-api.uploads[0]['relationships'] = { 'build' => { 'data' => { 'id' => 'manual' } } }
-api.upload_builds = [build('manual', now, 'APP_STORE_ELIGIBLE', version: '3')]
-rejects('three public uploads') { api.check_public_limit }
-# Prefer the later response over stale records and ambiguous intents.
-api.records << build('manual', now, 'APP_STORE_ELIGIBLE', version: '3')
-api.upload_builds[0]['attributes']['buildAudienceType'] = 'INTERNAL_ONLY'
-assert(api.public_uploads(api.builds, [artifact('testflight-upload-3', now)]).empty?,
-       'The included private build must override earlier public classification')
-api.upload_builds = []
-assert(api.public_uploads(api.builds, []).length == 1, 'A later response must not reuse stale included builds')
-
-# An unclassified manual upload cannot silently allow a fourth public upload.
-api = TestFlightFixture.new
-api.records = (1..2).map { |n| build(n.to_s, now, 'APP_STORE_ELIGIBLE', version: n.to_s) }
-api.uploads = [upload('3', now)]
-rejects('Cannot determine the audience') { api.check_public_limit }
-api.uploads[0]['attributes']['createdDate'] = (now - 86_400).iso8601
-api.check_public_limit
-api.uploads[0]['attributes']['uploadedDate'] = now.iso8601
-rejects('Cannot determine the audience') { api.check_public_limit }
-api.uploads[0]['relationships'] = { 'build' => { 'data' => { 'id' => 'manual' } } }
-api.upload_builds = [build('manual', now, version: '3')]
-api.check_public_limit
-api.upload_builds[0]['attributes']['buildAudienceType'] = 'APP_STORE_ELIGIBLE'
-rejects('three public uploads') { api.check_public_limit }
-api.uploads[0]['attributes']['createdDate'] = (now - 86_399).iso8601
-api.uploads[0]['attributes']['uploadedDate'] = nil
-rejects('three public uploads') { api.check_public_limit }
-
-api = TestFlightFixture.new
-api.artifacts = [artifact('testflight-upload-42.2', now)]
-api.uploads = [upload('42.2', now)]
-rejects('original workflow') { api.prepare_public }
-api.uploads[0]['attributes']['cfBundleShortVersionString'] = '1.2.4'
-api.records = [build('other-version', now, 'APP_STORE_ELIGIBLE', marketingVersion: '1.2.4')]
-api.prepare_public
+assert(api.next_build_number(18) == '81', 'Unuploaded intents reserve their build number too')
 
 # Reconciliation can initially reuse processing work that later fails.
-%w[public private].each do |audience|
-  api = TestFlightFixture.new
-  api.uploads = [upload('42.2', now)]
-  assert(!api.public_upload_needed?, 'Reuse the processing upload')
-  api.uploads[0]['attributes']['state']['state'] = 'FAILED'
-  guidance = audience == 'private' ? 'retry the workflow after correcting the upload problem' : 'use a new release version'
-  rejects(guidance) { api.distribute(audience) }
-end
+api = TestFlightFixture.new
+api.uploads = [upload('42.2', now)]
+assert(!api.public_upload_needed?, 'Reuse the processing upload')
+api.uploads[0]['attributes']['state']['state'] = 'FAILED'
+rejects('push a new build') { api.distribute }
+
 api = TestFlightFixture.new
 api.uploads = [upload('42.2', now)]
 api.processing = [[], [build('current', now, 'APP_STORE_ELIGIBLE')]]
-api.distribute('public')
+api.distribute
 assert(api.writes.count { |w| w[1] == '/v1/betaAppReviewSubmissions' } == 1,
        'A resumed upload still needs its first beta review submission')
 
@@ -336,7 +172,7 @@ assert(!api.public_upload_needed?, 'An accepted build must never be uploaded aga
 api.uploads = [upload('42.2', now)]
 assert(!api.public_upload_needed?, 'An accepted upload without a build must resume processing')
 api.uploads[0]['attributes']['state']['state'] = 'FAILED'
-rejects('new release version') { api.public_upload_needed? }
+rejects('push a new build') { api.public_upload_needed? }
 api.uploads[0]['attributes']['cfBundleShortVersionString'] = '1.2.4'
 api.records = [build('other-version', now, 'APP_STORE_ELIGIBLE', marketingVersion: '1.2.4')]
 assert(api.public_upload_needed?, 'Reconciliation must match the release version too')
@@ -345,33 +181,16 @@ api.uploads[0]['attributes']['platform'] = 'MAC_OS'
 assert(api.public_upload_needed?, 'Reconciliation must ignore other platforms')
 
 # Earlier failed transfers must not hide a later accepted upload.
-%w[public private].each do |audience|
-  api = TestFlightFixture.new
-  api.uploads = [upload('42.2', now - 60, 'FAILED'), upload('42.2', now)]
-  assert(!api.public_upload_needed?, 'Reuse a later transfer after a failed attempt with the same identity')
-  api.processing = [[], [build('current', now, audience == 'private' ? 'INTERNAL_ONLY' : 'APP_STORE_ELIGIBLE')]]
-  api.distribute(audience)
-  api = TestFlightFixture.new
-  api.uploads = [upload('42.2', now, 'AWAITING_UPLOAD')]
-  guidance = audience == 'private' ? 'retry the workflow after correcting the upload problem' : 'fresh version'
-  rejects(guidance) { api.distribute(audience) }
-end
-
-# Restoring an intent cannot create a second public build for its version.
 api = TestFlightFixture.new
-api.records = [build('other', now, 'APP_STORE_ELIGIBLE', version: '45')]
-rejects('original workflow') { api.public_upload_needed? }
-api.processing = [[build('current', now, 'APP_STORE_ELIGIBLE')]]
-assert(!api.public_upload_needed?, 'An accepted exact build must still resume even when another build exists')
-api.records = []
-api.artifacts = [artifact('testflight-upload-45', now)]
-api.uploads = [upload('45', now)]
-rejects('original workflow') { api.public_upload_needed? }
-api.uploads << upload('42.2', now)
-assert(!api.public_upload_needed?, 'An accepted exact match must still resume without a new upload')
-api.uploads = []
-api.records = [build('private-other', now, version: '45')]
-assert(api.public_upload_needed?, 'Private builds do not prevent a public upload of the same marketing version')
+api.uploads = [upload('42.2', now - 60, 'FAILED'), upload('42.2', now)]
+assert(!api.public_upload_needed?, 'Reuse a later transfer after a failed attempt with the same identity')
+api.uploads = [upload('42.2', now, 'AWAITING_UPLOAD')]
+rejects('AWAITING_UPLOAD') { api.public_upload_needed? }
+
+api = TestFlightFixture.new
+api.records = (1..6).map { |n| build("previous-#{n}", now, 'APP_STORE_ELIGIBLE', version: n.to_s) }
+assert(api.public_upload_needed?, 'Existing public builds of this marketing version must allow another push')
+assert(api.next_build_number(4) == '7', 'Later pushes advance even after multiple public uploads on the same day')
 
 FileUtils.mkdir_p('tmp')
 Dir.mktmpdir('testflight-retry.', 'tmp') do |scratch|
@@ -393,10 +212,10 @@ Dir.mktmpdir('testflight-retry.', 'tmp') do |scratch|
     api = TestFlightFixture.new
     api.fail_group_once = true
     api.processing = [[build('current', now, 'APP_STORE_ELIGIBLE')]] * 2
-    rejects('Group assignment failed') { api.distribute('public') }
+    rejects('Group assignment failed') { api.distribute }
     previous_writes = api.writes.length
     ENV['BUILD_NUMBER'] = TestFlight.resume_public
-    api.distribute('public')
+    api.distribute
     assert(api.writes.count { |w| w[1] == '/v1/betaAppReviewSubmissions' } == 1, 'A retry must reuse the accepted review submission')
     assert(api.writes.drop(previous_writes).map { |w| w[1] } == ['/v1/betaGroups/public/relationships/builds'],
            'Resume group assignment without rewriting a build already in review')
@@ -404,38 +223,43 @@ Dir.mktmpdir('testflight-retry.', 'tmp') do |scratch|
 end
 
 api = TestFlightFixture.new
-api.records = (1..22).map { |n| build("private-#{n}", now - n * 60) }.reverse
-api.records += [build('public-old', now - 9999, 'APP_STORE_ELIGIBLE'),
-                build('unknown', now - 9999, nil),
-                build('already-expired', now, expired: true)]
-api.retire_private
-assert(api.writes.map { |w| w[1] }.sort == ['/v1/builds/private-21', '/v1/builds/private-22'],
-       'Retire only private builds beyond the newest 20, across all versions')
-assert(api.writes.all? { |w| w[0] == 'PATCH' && w[2].dig(:data, :attributes, :expired) == true },
-       'Old builds must be expired')
-api = TestFlightFixture.new
-api.records = (1..20).map { |n| build(n.to_s, now - n) }
-api.retire_private
-assert(api.writes.empty?, 'Exactly 20 builds must be retained')
-api.prepare_public
-api.records += (1..3).map { |n| build("public-#{n}", now - n, 'APP_STORE_ELIGIBLE', expired: true) }
-rejects('three public uploads') { api.check_public_limit }
-assert(api.writes.empty?, 'Preflight must not mutate Apple state')
-api.groups[0]['attributes']['isInternalGroup'] = true
-rejects('external group') { api.prepare_public }
-
-api = TestFlightFixture.new
-api.processing = [[], [build('current', now, processingState: 'PROCESSING')], [build('current', now)]]
-api.distribute('private')
-assert(api.writes.empty?, 'Private builds must never be submitted or assigned to external groups')
 api.processing = [[build('current', now, processingState: 'INVALID')]]
-rejects('INVALID') { api.distribute('private') }
+rejects('INVALID') { api.distribute }
+api.processing = [[build('current', now, 'INTERNAL_ONLY')]]
+rejects('audience') { api.distribute }
+
+api = TestFlightFixture.new
+api.groups.last['attributes']['hasAccessToAllBuilds'] = false
 api.processing = [[build('current', now, 'APP_STORE_ELIGIBLE')]]
-rejects('audience') { api.distribute('private') }
+api.distribute
+assert(api.writes.first[1] == '/v1/betaGroups/team/relationships/builds', 'Assign the internal group before attempting external review')
+api = TestFlightFixture.new
+api.groups.last['attributes']['hasAccessToAllBuilds'] = false
+api.groups << { 'id' => 'other', 'attributes' => { 'name' => 'Other', 'isInternalGroup' => true } }
+rejects('TESTFLIGHT_INTERNAL_GROUP') { api.internal_group }
+ENV['TESTFLIGHT_INTERNAL_GROUP'] = 'Team'
+assert(api.internal_group == 'team', 'Resolve the intended internal group by name')
+ENV.delete('TESTFLIGHT_INTERNAL_GROUP')
+
+api = TestFlightFixture.new
+api.records = [build('current', now, 'APP_STORE_ELIGIBLE'), build('manual', now, 'APP_STORE_ELIGIBLE', version: '0'),
+               build('old', now, 'APP_STORE_ELIGIBLE', expired: true, version: '41')]
+api.artifacts = %w[42.2 41].map { |n| artifact("testflight-upload-#{n}", now) }
+api.retry_distribution
+assert(api.writes.any? { |w| w[1] == '/v1/betaGroups/public/relationships/builds' } &&
+       api.writes.none? { |w| %w[manual old].any? { |id| w.inspect.include?(id) } }, 'Retry only live builds reserved by main')
+api.assigned = ['current']
+api.state = 'IN_BETA_TESTING'
+api.writes.clear
+api.retry_distribution
+assert(api.writes.empty?, 'Hourly checks leave distributed builds alone')
+api.state = 'READY_FOR_BETA_TESTING'
+api.retry_distribution
+assert(api.writes.map { |w| w[1] } == ['/v1/buildBetaNotifications'], 'Notify approved builds already in the public group')
 
 api = TestFlightFixture.new
 api.processing = [[build('current', now, 'APP_STORE_ELIGIBLE')]]
-api.distribute('public')
+api.distribute
 assert(api.writes.any? { |w| w[1] == '/v1/betaGroups/public/relationships/builds' && w[2][:data] == [{ type: 'builds', id: 'current' }] },
        'Release build must be added to the external group')
 assert(api.writes.any? { |w| w[1] == '/v1/buildBetaDetails/detail' && w[2].dig(:data, :attributes, :autoNotifyEnabled) == true },
@@ -450,7 +274,7 @@ assert(api.writes.index { |w| w[1] == '/v1/betaAppReviewSubmissions' } <
   api = TestFlightFixture.new
   api.state = state
   api.processing = [[build('current', now, 'APP_STORE_ELIGIBLE')]]
-  api.distribute('public')
+  api.distribute
   assert(api.writes.none? { |w| w[1] == '/v1/betaAppReviewSubmissions' }, 'Do not resubmit reviewed builds')
   if %w[READY_FOR_BETA_TESTING BETA_APPROVED].include?(state)
     assert(api.writes.index { |w| w[1] == '/v1/betaGroups/public/relationships/builds' } <
@@ -461,11 +285,11 @@ end
 api = TestFlightFixture.new
 api.state = 'BETA_REJECTED'
 api.processing = [[build('current', now, 'APP_STORE_ELIGIBLE')]]
-rejects('BETA_REJECTED') { api.distribute('public') }
+rejects('BETA_REJECTED') { api.distribute }
 api = TestFlightFixture.new
 api.details = ['PROCESSING', 'READY_FOR_BETA_SUBMISSION']
 api.processing = [[build('current', now, 'APP_STORE_ELIGIBLE')]] * 2
-api.distribute('public')
+api.distribute
 assert(api.writes.count { |w| w[1] == '/v1/betaAppReviewSubmissions' } == 1,
        'Wait for TestFlight processing even after archive processing is VALID')
 # Exercise real pagination, JWT signing and HTTP errors with a fake transport.
@@ -505,7 +329,7 @@ Net::HTTP.define_singleton_method(:start) { |*_args, &block| block.call(transpor
 begin
   api = TestFlight.new
   assert(api.list('/v1/builds').map { |b| b['id'] } == %w[first second], 'Read every page')
-  rejects('HTTP 403') { api.retire_private }
+  rejects('HTTP 403') { api.public_group }
   rejects('pagination URL') { api.request('GET', 'https://example.org/steal-token') }
 ensure
   Net::HTTP.define_singleton_method(:start, original_http)
@@ -534,7 +358,7 @@ original_clock = Process.method(:clock_gettime)
   api.instance_variable_set(:@key, key)
   api.instance_variable_set(:@app, { 'id' => 'app' })
   begin
-    rejects('20 minutes') { api.distribute('public') }
+    rejects('20 minutes') { api.distribute }
     expected = late_path == '/v1/builds' ? ['/v1/builds'] : ['/v1/builds', late_path]
     assert(paths == expected, 'Do not fetch a second page after the processing deadline')
   ensure
@@ -574,7 +398,7 @@ original_clock = Process.method(:clock_gettime)
 clock = 0
 Process.define_singleton_method(:clock_gettime) { |_clock| clock += 1201 }
 begin
-  rejects('20 minutes') { TestFlightFixture.new.distribute('private') }
+  rejects('20 minutes') { TestFlightFixture.new.distribute }
 ensure
   Process.define_singleton_method(:clock_gettime, original_clock)
 end
@@ -592,7 +416,7 @@ end
     super(method, path, body, deadline)
   end
   begin
-    rejects('20 minutes') { api.distribute('public') }
+    rejects('20 minutes') { api.distribute }
     assert(api.writes.empty?, 'A late processing response must never distribute')
     assert(reads.last == slow_path, 'Do not start another request after a late response')
   ensure
@@ -615,12 +439,12 @@ api.define_singleton_method(:sleep) do |seconds|
   clock += seconds
 end
 begin
-  rejects('20 minutes') { api.distribute('public') }
+  rejects('20 minutes') { api.distribute }
   assert(sleeps == [1], 'Sleep only for the remaining processing window')
   assert(api.processing.length == 1, 'Do not poll again once the deadline is reached')
   assert(api.writes.empty?, 'Do not distribute a build found after the deadline')
   clock = 0
-  api.distribute('public')
+  api.distribute
   assert(!api.writes.empty?, 'A build ready before the deadline must still distribute')
 ensure
   Process.define_singleton_method(:clock_gettime, original_clock)
@@ -631,7 +455,8 @@ steps = workflow.fetch('jobs').fetch('testflight').fetch('steps')
 helper = File.expand_path('../.github/testflight.rb', __dir__)
 Dir.mktmpdir('testflight-workflow.', 'tmp') do |scratch|
   Dir.chdir(scratch) do
-    FileUtils.mkdir_p(%w[bin script])
+    FileUtils.mkdir_p(%w[bin script ProjectSettings])
+    File.write('ProjectSettings/ProjectSettings.asset', "  bundleVersion: 1.2.3\n")
     File.write('script/testflight', <<~'SH')
       #!/bin/bash
       printf '%s %s\n' "${BUILD_NUMBER}" "$*" >>uploads
@@ -645,7 +470,6 @@ Dir.mktmpdir('testflight-workflow.', 'tmp') do |scratch|
       #!/bin/bash
       case "$2" in
         next-build-number) echo "${NEXT_NUMBER}" ;;
-        prepare-public) exit "${PREPARE_STATUS:-0}" ;;
         plan-public)
           [[ "${PLAN_STATUS:-0}" == 0 ]] || exit 1
           if [[ -f accepted ]]; then echo 'needed=false'; else echo 'needed=true'; fi >>"${GITHUB_OUTPUT}"
@@ -659,10 +483,8 @@ Dir.mktmpdir('testflight-workflow.', 'tmp') do |scratch|
       'PATH' => "#{Dir.pwd}/bin:#{ENV.fetch('PATH')}",
       'TEST_RUBY' => RbConfig.ruby, 'TEST_HELPER' => helper,
       'GITHUB_SHA' => 'original-commit', 'GITHUB_RUN_ID' => '42',
-      'GITHUB_RUN_NUMBER' => '42', 'GITHUB_RUN_ATTEMPT' => '2',
-      'DESTINATION' => 'private', 'GITHUB_OUTPUT' => File.expand_path('outputs'),
-      'RELEASE_VERSION' => '1.2.3', 'BUILD_NUMBER' => '42.2', 'NEXT_NUMBER' => '44',
-      'UPLOAD_NEEDED' => ''
+      'GITHUB_OUTPUT' => File.expand_path('outputs'),
+      'RELEASE_VERSION' => '1.2.3', 'BUILD_NUMBER' => '42.2', 'NEXT_NUMBER' => '44'
     }
     execute = lambda do |id|
       File.write('outputs', '')
@@ -673,16 +495,6 @@ Dir.mktmpdir('testflight-workflow.', 'tmp') do |scratch|
     end
     success, outputs, err = execute.call('prepare')
     assert(success, err)
-    assert(outputs.fetch('build_number') == '44', 'Private retry must use a freshly allocated number')
-    assert(outputs.fetch('release_version') == '1.2.3', 'Prepare the private version without bootstrapping')
-    env['BUILD_NUMBER'] = outputs.fetch('build_number')
-    assert(execute.call('upload')[0], 'Private upload failed')
-    assert(File.read('uploads') == "44 --internal\n", 'Private upload must use the allocated number')
-    assert(!File.exist?(TestFlight::UPLOAD_RECORD), 'Private uploads must not create public intents')
-
-    env['DESTINATION'] = 'public'
-    success, outputs, err = execute.call('prepare')
-    assert(success, err)
     env['BUILD_NUMBER'] = outputs.fetch('build_number')
     assert(outputs.fetch('fresh') == 'true', 'Save a new intent before uploading')
     receipt = File.read(TestFlight::UPLOAD_RECORD)
@@ -690,7 +502,6 @@ Dir.mktmpdir('testflight-workflow.', 'tmp') do |scratch|
     File.write('saved-intent', receipt)
     success, outputs, err = execute.call('plan')
     assert(success && outputs.fetch('needed') == 'true', err)
-    env['UPLOAD_NEEDED'] = outputs.fetch('needed')
     env['UPLOAD_STATUS'] = '1'
     assert(!execute.call('upload')[0], 'Simulate failure after Apple accepted the upload')
     uploaded = File.read('uploads')
@@ -706,11 +517,15 @@ Dir.mktmpdir('testflight-workflow.', 'tmp') do |scratch|
     assert(!outputs.key?('fresh'), 'A retry must preserve the original intent')
     success, outputs, err = execute.call('plan')
     assert(success && outputs.fetch('needed') == 'false', err)
-    env['UPLOAD_NEEDED'] = outputs.fetch('needed')
-    assert(execute.call('upload')[0], 'An accepted upload must skip the failing upload command')
+    upload_step = steps.find { |item| item['id'] == 'upload' }
+    assert(upload_step.fetch('if') == "steps.plan.outputs.needed == 'true'" && outputs.fetch('needed') == 'false',
+           'An accepted upload must skip the upload step')
     assert(File.read('uploads') == uploaded, 'Public retry must not upload another build')
     assert(File.read(TestFlight::UPLOAD_RECORD) == receipt, 'Preserve the identity across clean retries')
 
+    env['TESTFLIGHT_PLATFORM'] = 'macOS'
+    assert(!execute.call('prepare')[0], 'A Mac job must reject a legacy iOS upload intent')
+    env.delete('TESTFLIGHT_PLATFORM')
     env['GITHUB_SHA'] = 'another-commit'
     assert(!execute.call('prepare')[0], 'Mismatched recovery must fail')
     assert(File.read('uploads') == uploaded, 'Mismatched recovery must not upload')
@@ -721,7 +536,7 @@ Dir.mktmpdir('testflight-workflow.', 'tmp') do |scratch|
     env['PLAN_STATUS'] = '1'
     assert(!execute.call('plan')[0], 'Reconciliation API errors must fail closed')
     FileUtils.rm_f(TestFlight::UPLOAD_RECORD)
-    env['PREPARE_STATUS'] = '1'
+    File.write('ProjectSettings/ProjectSettings.asset', "  bundleVersion: invalid\n")
     assert(!execute.call('prepare')[0], 'Failed preflight must stop preparation')
     assert(!File.exist?(TestFlight::UPLOAD_RECORD), 'Do not create an intent when preparation fails')
   end
@@ -739,13 +554,14 @@ Dir.mktmpdir('testflight-history.', 'tmp') do |scratch|
   run = { 'head_branch' => 'main', 'repository_id' => 1, 'head_repository_id' => 1 }
   intent = artifact('testflight-upload-50', now).merge('workflow_run' => run)
   attempt = artifact('testflight-attempt-50-1', now).merge('workflow_run' => run)
+  mac_intent = intent.merge('name' => 'testflight-macos-upload-50-v1.2.3')
   other_branch = intent.merge('workflow_run' => run.merge('head_branch' => 'feature'))
   fork = intent.merge('workflow_run' => run.merge('head_repository_id' => 2))
   unrelated = { 'name' => 'Mac app' }
   missing_run = intent.reject { |key, _| key == 'workflow_run' }
   null_run = intent.merge('workflow_run' => nil)
   File.write("#{scratch}/history.json", JSON.generate([
-    { 'artifacts' => [unrelated, missing_run, null_run, intent, other_branch] }, { 'artifacts' => [fork, attempt] }
+    { 'artifacts' => [unrelated, missing_run, null_run, intent, mac_intent, other_branch] }, { 'artifacts' => [fork, attempt] }
   ]))
   env = { 'PATH' => "#{File.expand_path(scratch)}/bin:#{ENV.fetch('PATH')}",
           'GITHUB_REPOSITORY' => 'test/repo', 'HISTORY_FILE' => File.expand_path("#{scratch}/history.json"),
@@ -756,6 +572,9 @@ Dir.mktmpdir('testflight-history.', 'tmp') do |scratch|
   assert(JSON.parse(out) == [intent, attempt], 'Read all pages and trust only same-repository main upload records')
   assert(File.read("#{scratch}/arguments").strip == 'api --paginate --slurp repos/test/repo/actions/artifacts?per_page=100',
          'Read quota records across workflow runs, with pagination')
+  command[-1] = "api = TestFlight.allocate; api.instance_variable_set(:@platform, 'MAC_OS'); puts JSON.generate(api.public_artifacts)"
+  out, err, status = Open3.capture3(env, *command)
+  assert(status.success? && JSON.parse(out) == [mac_intent], "Read only native Mac intents: #{err}")
   _out, err, status = Open3.capture3(env.merge('HISTORY_STATUS' => '1'), *command)
   assert(!status.success? && err.include?('Could not read GitHub'), 'History API errors must fail closed')
 end

@@ -2,6 +2,8 @@
 
 A procedural solar system to explore in powered armour and by ship. The first system is a tiny copy of our own, with spherical worlds, seas, forests, weather and strange life. Beyond its singularity are generated systems with their own worlds, living moons and sometimes two stars. Scan anything and Claude or ChatGPT writes its journal entry.
 
+**TestFlight beta for iPhone, iPad and Apple silicon Mac.** Open the invitation on the device you want to play on. [Join the Infinigame beta](https://testflight.apple.com/join/1GUH8Zjn) · [Get TestFlight](https://apps.apple.com/app/testflight/id899247664)
+
 You wake buried in sealed armour. The screen starts black: your suit restores its neural link, visor and emergency actuators. “You are not dead. You are not dead. Fight.” Punch through the wreckage with crackling fists. The reactor is critical, leaving thrusters and other weapons offline. A recovery robot waits beside the hole.
 
 Earth is occupied by roaming alien bodies. Your first target is a mind in a descending burrow defended only by basic stalkers. Kill it, collect its power core and escape the demolition to unlock powered fists, a basic hand beam and your first suit level. Build a regional robodog factory to advance. Two more regional burrows, with two and three linked minds, unlock surface thrusters and then orbital flight. Later worlds supply missiles, rail weapons and hemisphere lasers. Later burrows introduce breachers and spitters. There are no hacking terminals. Alien impacts shed purple fluid and tissue, leaving stained bodies, ground and armour.
@@ -44,7 +46,7 @@ These follow [scripts to rule them all](https://github.com/github/scripts-to-rul
 | `script/editor` | Opens the game in the Unity editor, on the game scene. Press Play. |
 | `script/play` | Plays the game as a standalone app, building it first if the project has changed or the last build has no Burst-compiled code. The game's log goes to `Logs/Player.log` and its frame rate to `Logs/frames.log`. |
 | `script/package macOS` | Packages existing output; also accepts `Windows`, `SteamDeck` or `iOS`. |
-| `script/testflight --dry-run` | Checks signing of an existing iOS export. Use the **TestFlight** GitHub workflow to distribute private and public betas. See [CI.md](CI.md). |
+| `script/testflight --dry-run` | Checks signing of an existing iOS export or a native Mac export with `TESTFLIGHT_PLATFORM=macOS`. GitHub Actions distributes internal and public betas on pushes to `main`. See [CI.md](CI.md). |
 | `script/build-number` | Prints the Git commit count used for macOS and iOS builds. |
 | `script/build-ios` | Exports `Build/iOS`, then compiles and links the device app with Xcode. Reuses the existing signing team and prints installation steps. |
 | `script/build-windows` | Builds `Build/Windows/Infinigame.exe` with OpenXR and packages `Build/Infinigame-Windows.zip`, with installation steps. |
@@ -58,7 +60,7 @@ These follow [scripts to rule them all](https://github.com/github/scripts-to-rul
 | `script/test --unity` | Also runs the EditMode and PlayMode tests inside Unity and saves pictures to `Logs/Screenshots`. |
 | `script/unity` | Runs the pinned editor against this project with any arguments. |
 
-The root [Infinigame.xcodeproj](Infinigame.xcodeproj) shortcut points at the generated iOS project. [CI.md](CI.md) describes the GitHub Actions builds, release artifacts and private and public TestFlight distribution, including recoverable public uploads and the three-per-day release limit.
+The root [Infinigame.xcodeproj](Infinigame.xcodeproj) shortcut points at the generated iOS project. [CI.md](CI.md) describes the desktop downloads and how each push to `main` reaches internal and public TestFlight testers.
 
 Read the [privacy policy](PRIVACY.md) for local storage, optional AI services and TestFlight diagnostics. [TESTFLIGHT.md](TESTFLIGHT.md) contains public beta submission copy and preparation steps.
 

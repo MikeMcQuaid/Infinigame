@@ -1,10 +1,10 @@
 # TestFlight through GitHub Actions
 
-Run **Actions > TestFlight > Run workflow** from `main` with a version such as `0.2.0` and leave **destination** set to `private`. The hosted Mac exports, signs and uploads the iPhone and iPad build for your internal tester group. The workflow runs only when requested and needs no local build.
+Each push to `main` starts the TestFlight workflow. It uploads one signed build for iPhone and iPad and one native Apple silicon Mac build. Internal testers receive each build after processing. External testers use the same builds through the public invitation once Apple approves them. [TestFlight runs](https://github.com/MikeMcQuaid/Infinigame/actions/workflows/release.yml) · [Join the beta](https://testflight.apple.com/join/1GUH8Zjn)
 
 ## Unity setup
 
-The GitHub-hosted runners activate Unity Personal online with the pinned GameCI CLI. Add these two repository secrets under **Settings > Secrets and variables > Actions > New repository secret**. [Repository secrets](https://github.com/MikeMcQuaid/Infinigame/settings/secrets/actions) · [Pinned GameCI activation logic](https://github.com/game-ci/cli/blob/v0.1.76/dist/platforms/mac/steps/licensing_method.sh)
+The GitHub-hosted runners activate Unity Personal online with the pinned GameCI CLI. The two Unity credentials are already configured under **Settings > Secrets and variables > Actions**. [Repository secrets](https://github.com/MikeMcQuaid/Infinigame/settings/secrets/actions) · [Pinned GameCI activation logic](https://github.com/game-ci/cli/blob/v0.1.76/dist/platforms/mac/steps/licensing_method.sh)
 
 | Secret | Value |
 |---|---|
@@ -20,7 +20,7 @@ The GitHub-hosted runners activate Unity Personal online with the pinned GameCI 
 1. Open **App Store Connect > Apps**. If Infinigame already appears, open it. Otherwise choose **+ > New App**, select **iOS** for both iPhone and iPad, enter `Infinigame` as the name if available and choose your primary language. Select your registered bundle ID `com.mikemcquaid.Infinigame`, enter a unique private SKU such as `INFINIGAME-IOS`, choose user access and click **Create**. [Open Apps](https://appstoreconnect.apple.com/apps) · [Apple’s app record guide](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-a-new-app/)
 2. Open **Infinigame > TestFlight**. Click **+** beside **Internal Testing**, name the group (for example, `Playtesting`), enable **automatic distribution** to receive future uploads and click **Create**. Select **Invite Testers**, tick your own App Store Connect account and click **Add**. Other internal testers need an eligible App Store Connect account with access to Infinigame. [Apple’s internal testing guide](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers/)
 
-### Create the iOS provisioning profile
+### Renew the iOS provisioning profile
 
 1. As the Apple Developer Account Holder or an Admin, go to **Certificates, Identifiers & Profiles > Profiles > +**. Under **Distribution**, choose **App Store Connect** and click **Continue**. Select the existing App ID for `com.mikemcquaid.Infinigame`. Choose the **Apple Distribution** certificate whose private key is in the `.p12` you will use for `APP_STORE_CERTIFICATES`. [Open Profiles](https://developer.apple.com/account/resources/profiles/list) · [Apple’s provisioning profile instructions](https://developer.apple.com/help/account/provisioning-profiles/create-an-app-store-provisioning-profile/)
 2. Name the profile `Infinigame_App_Store`, choose **Generate** and **Download**. Save it as `~/Downloads/Infinigame_App_Store.mobileprovision`. The same profile covers iPhone and iPad.
@@ -33,6 +33,20 @@ base64 -i "$HOME/Downloads/Infinigame_App_Store.mobileprovision" |
 
 For the GitHub web form, replace the `gh secret set` command with `pbcopy` and paste into a new secret with that same name. Renew the profile and update the secret when the profile expires or its signing certificate changes.
 
+### Add the native Mac beta
+
+The repository already has the Unity credentials, App Store Connect API key, certificate bundle and password, and both provisioning profile secrets. The workflow selects `INFINIGAME_APP_STORE_MACOS_PROFILE` for Mac and `INFINIGAME_APP_STORE_IOS_PROFILE` for iPhone and iPad. [Repository secrets](https://github.com/MikeMcQuaid/Infinigame/settings/secrets/actions)
+
+1. **Check the existing certificate bundle.** Import the original `.p12` into an empty keychain and open **My Certificates**. Look for **Apple Distribution** (signs the app) and **3rd Party Mac Developer Installer** (the Mac Installer Distribution identity). Expand each entry to confirm it has a private key. If both are present for your team, use the existing secrets as they are. [Apple’s certificate guide](https://developer.apple.com/help/account/certificates/certificates-overview/) · [Mac signing identities](https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution)
+2. **If the installer identity is missing**, obtain a **Mac Installer Distribution** certificate, then export it together with the existing Apple Distribution identity and both private keys. Replace `APP_STORE_CERTIFICATES` with the base64-encoded bundle. Update `APP_STORE_CERTIFICATES_PASSWORD` only if the export password changes. [Open Certificates](https://developer.apple.com/account/resources/certificates/list) · [Create a signing request](https://developer.apple.com/help/account/certificates/create-a-certificate-signing-request/) · [Export from Keychain Access](https://support.apple.com/guide/keychain-access/import-and-export-keychain-items-kyca35961/mac)
+
+   ```sh
+   base64 -i "$HOME/Downloads/Infinigame_Distribution.p12" |
+     gh secret set APP_STORE_CERTIFICATES --repo MikeMcQuaid/Infinigame
+   ```
+
+3. **Enable the Mac platform.** In the existing Infinigame app record, choose **Distribution > Add Platform > macOS** if needed. Use the same bundle ID, `com.mikemcquaid.Infinigame`. If the Public Beta invitation uses device criteria, include Mac. [Open Apps](https://appstoreconnect.apple.com/apps) · [Add a platform](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-platforms/)
+
 ### TestFlight signing secrets
 
 | Secret | Value |
@@ -40,36 +54,28 @@ For the GitHub web form, replace the `gh secret set` command with `pbcopy` and p
 | `NOTARIZATION_KEY` | Contents of the App Store Connect `.p8` API key |
 | `NOTARIZATION_KEY_ID` | API key ID |
 | `NOTARIZATION_ISSUER_ID` | API issuer ID |
-| `APP_STORE_CERTIFICATES` | Base64-encoded Apple Distribution certificate and private key exported as `.p12` |
+| `APP_STORE_CERTIFICATES` | Base64-encoded `.p12` containing Apple Distribution and, for macOS, Mac Installer Distribution with their private keys |
 | `APP_STORE_CERTIFICATES_PASSWORD` | That export's password |
-| `INFINIGAME_APP_STORE_IOS_PROFILE` | Base64-encoded App Store profile for this game's bundle identifier |
+| `INFINIGAME_APP_STORE_IOS_PROFILE` | Base64-encoded iOS App Store profile for this game's bundle identifier |
+| `INFINIGAME_APP_STORE_MACOS_PROFILE` | Base64-encoded Mac App Store profile for the same bundle identifier |
 
-If MinMaxCal uses the same Apple team and an API key with permission to upload builds, you can use the original five credential values here too. Add them to the Infinigame repository or grant it access to the corresponding organisation secrets. To create a team key, go to **App Store Connect > Users and Access > Integrations > Team Keys**, generate a key with upload access and download its `.p8`. Keep the original file, Key ID and Issuer ID together. To export your signing identity on the Mac, select **Apple Distribution** under **Keychain Access > My Certificates** and export it as a password-protected `.p12` with its private key. [Apple’s team API key guide](https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api/)
+Both platforms use the same team API key. To replace it, go to **App Store Connect > Users and Access > Integrations > Team Keys**, generate a key with upload access and download its `.p8`. Update the three corresponding `NOTARIZATION_*` secrets together. [Apple’s team API key guide](https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api/)
 
-### Install the private beta
+## Tester groups
 
-1. Push the workflow to `main`. Open **Actions > TestFlight > Run workflow**, select `main`, enter a three-part version, select `private` and run it. The build number starts at the commit count shown by `script/build-number`. If Apple’s upload history or a saved public upload has reached that number, the workflow uses the next integer above both. The workflow keeps the newest 20 private builds. [Open the TestFlight workflow](https://github.com/MikeMcQuaid/Infinigame/actions/workflows/release.yml)
-2. After Apple processes the build, your internal group receives it through automatic distribution. If necessary, open **Apps > Infinigame > TestFlight > Playtesting > Add Builds**, choose the processed build and enter **What to Test**. [Apple’s internal testing guide](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers/)
-3. Install **TestFlight** on your iPhone and iPad. Accept the invitation with your Apple Account and tap **Install** beside Infinigame on each device. [Get TestFlight](https://testflight.apple.com/)
+- **Internal testers.** Enable automatic distribution on your internal group in App Store Connect. For a manually managed group, the workflow assigns the build to the sole internal group or the one named by the `TESTFLIGHT_INTERNAL_GROUP` Actions variable. Testers accept the invitation with their App Store Connect account. [Internal testing](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers/)
+- **Public testers.** Use the external group that owns the invitation. The default name is **Public Beta**. If its name differs, set the `TESTFLIGHT_PUBLIC_GROUP` Actions variable. Complete the beta test information and review contact using the copy in `TESTFLIGHT.md`. Use a team API key with the App Manager or Admin role to manage testers and submit for review. Testers open the invitation on their device and install Infinigame with TestFlight. [Actions variables](https://github.com/MikeMcQuaid/Infinigame/settings/variables/actions) · [External testing](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers/) · [Join the beta](https://testflight.apple.com/join/1GUH8Zjn)
 
-## Distribute to external testers
+## Builds and retries
 
-In App Store Connect, create the configured external group (**Public Beta** by default, or the name set in the `TESTFLIGHT_PUBLIC_GROUP` Actions variable) and complete the beta test information and review contact. The team API key used for public distribution needs the **App Manager** or **Admin** role so it can submit for review and manage testers. Use the submission copy in [TESTFLIGHT.md](TESTFLIGHT.md) and publish [PRIVACY.md](PRIVACY.md) at the privacy URL you supply. [Apple’s external testing guide](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers/)
+A push builds its tip commit using the Unity project's `bundleVersion`. Each Apple build number starts with the commit count from `script/build-number` and advances past numbers already accepted by Apple or reserved by an earlier run. Successive pushes can use the same marketing version. Pull requests compile the players for testing. The upload happens when the changes reach `main`.
 
-Run **Actions > TestFlight** again, this time selecting `public` with a fresh marketing version. The workflow saves the upload identity before uploading, waits up to 20 minutes for processing, supplies **What to Test** from `TESTFLIGHT.md`, submits a ready build for review and assigns it to the configured external group. It reuses an existing submission on retry. Apple controls review and availability. Enable that group's public invitation link in App Store Connect when ready to share it.
+The workflow reads **What to Test** from `TESTFLIGHT.md` and submits each eligible build for external testing. Apple allows one build of each version in review at a time and up to six TestFlight review submissions in 24 hours. An hourly job retries pending distribution for this repository's uploads, so a later push can reach public testers when a review slot opens. Check **Infinigame > TestFlight > Public Beta > Builds** for approval and expiry. [App Store Connect](https://appstoreconnect.apple.com/apps) · [Apple's review limits](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers/)
 
-Public uploads and GitHub releases each have a three-per-24-hour limit. A failed public attempt that Apple received still counts; an unconfirmed reservation blocks a slot for 25 hours. Private uploads do not use public slots. If an unrelated manual upload has no known audience yet, wait for Apple to classify it before starting another public upload.
+For signing or upload failures, inspect the job log with `gh run view RUN_ID --log-failed`. After fixing the cause, choose **Re-run failed jobs** on the original run. GitHub retains its upload record for 90 days. The job uses the saved number and resumes distribution if Apple already received the binary. If Apple rejected the binary, push the fix to `main` for a new build number. [TestFlight runs](https://github.com/MikeMcQuaid/Infinigame/actions/workflows/release.yml) · [GitHub workflow reruns](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)
 
-## Other workflow destinations
+## Desktop builds and caching
 
-| Workflow or destination | Result |
-|---|---|
-| TestFlight · `private` (default) | iPhone/iPad upload for an internal group with automatic distribution |
-| TestFlight · `public` | iPhone/iPad upload for the configured external group (**Public Beta** by default) |
-| TestFlight · `github` | Builds all platforms and publishes their archives in a versioned GitHub release |
-| TestFlight · `github-with-private` | Signs the same iOS export from the platform builds and publishes the GitHub release after the internal upload succeeds |
-| CI / Platform builds | Builds the four platform archives on pushes to `main` or manual dispatch |
+The macOS, Windows and Steam Deck ZIPs are available from the Actions run for one day. On pull requests, **Compile macOS** and **Compile iOS** run on one Mac with a shared Unity editor, Bee compiler cache and speech assets. Each target restores and saves its own Unity `Library`. The unsigned iOS device build also caches IL2CPP objects for its Unity editor, Xcode and SDK. **Compile Windows** builds the Windows and Steam Deck players in one Unity invocation. On `main`, the signed TestFlight jobs handle the Apple archives and each platform can be retried independently.
 
-Both TestFlight-only destinations run only iOS. They create no GitHub release. Platform artifacts and GitHub release assets use the same zip files. Each zip expands to `Infinigame/` and includes installation instructions. The Windows and Steam Deck packages share a Unity invocation. macOS and iOS run separately. All workflows share the Unity and native voice caches for their platform.
-
-CI keeps build artifacts and logs for one day. Platform archives from a release are kept for 30 days. Public upload intents and attempt reservations are kept for 90 days. Within GitHub's 30-day rerun window, choose **Re-run failed jobs** on the original run to recover a public upload: an accepted build resumes processing and distribution without another upload. A ready build is submitted for review only if it has no existing submission. Do not dispatch another public run with the same marketing version. If Apple rejected the public upload, it remains awaiting its binary or the original run is too old to rerun, use a fresh version. Private retries allocate a fresh build number without changing the marketing version, including when reusing a platform archive. Correct the upload problem before retrying. GitHub publication can be retried on its original run if the tag exists but release creation failed; inspect the tag's commit first. Use a fresh tag for a new GitHub release. [GitHub workflow reruns](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)
+To measure a warm build, use **Re-run all jobs** on a successful pull request run. In **Compile iOS**, compare the IL2CPP elapsed time and items updated. **Show the most frequent IL2CPP rebuild reasons** lists the inputs that triggered work. When the generated C++ or runner image changes, CI restores the latest compatible native cache and saves the updated objects after the build. [GameCI caching](https://game.ci/docs/github/builder/#caching) · [GitHub cache access](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache)

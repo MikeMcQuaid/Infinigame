@@ -17,26 +17,36 @@ namespace Infinigame.Editor
             using var process = Process.Start(start); process.WaitForExit();
             if (process.ExitCode != 0) throw new System.Exception(command + " failed while building voice support");
         }
+        internal static void MacPlugins(string plugins)
+        {
+            Run("/usr/bin/env", "python3", "script/build-speech", "macOS");
+            Directory.CreateDirectory(plugins);
+            File.Copy("Build/Speech/macOS/libInfinigameSpeech.dylib", Path.Combine(plugins, "libInfinigameSpeech.dylib"), true);
+            Run("/usr/bin/xcrun", "clang++", "-dynamiclib", "-fobjc-arc", "-arch", "arm64", "-arch", "x86_64",
+                "-mmacosx-version-min=10.15", "-install_name", "@rpath/libInfinigameVoice.dylib",
+                "-framework", "Foundation", "-framework", "AVFoundation", "-framework", "Speech",
+                "Assets/Plugins/iOS/InfinigameVoice.mm", "-o", Path.Combine(plugins, "libInfinigameVoice.dylib"));
+        }
         [PostProcessBuild(100)] public static void Finish(BuildTarget target, string path)
         {
             string speechTarget = target == BuildTarget.StandaloneOSX ? "macOS" : target == BuildTarget.StandaloneWindows64 ? "Windows" : target == BuildTarget.iOS ? "iOS" : null;
             if (speechTarget == null) return;
-            Run("/usr/bin/env", "python3", "script/build-speech", speechTarget);
-            string data = target == BuildTarget.StandaloneOSX ? Path.Combine(path, "Contents/Resources/Data/StreamingAssets/Festival")
+            bool macApp = target == BuildTarget.StandaloneOSX && path.EndsWith(".app", System.StringComparison.OrdinalIgnoreCase);
+            string contents = Path.Combine(path, macApp ? "Contents" : PlayerSettings.productName);
+            if (macApp) MacPlugins(Path.Combine(contents, "Plugins"));
+            else if (target != BuildTarget.StandaloneOSX) Run("/usr/bin/env", "python3", "script/build-speech", speechTarget);
+            string data = target == BuildTarget.StandaloneOSX ? Path.Combine(contents, "Resources/Data/StreamingAssets/Festival")
                 : target == BuildTarget.iOS ? Path.Combine(path, "Data/Raw/Festival") : Path.Combine(Path.GetDirectoryName(path), Path.GetFileNameWithoutExtension(path) + "_Data/StreamingAssets/Festival");
             Directory.CreateDirectory(data);
             foreach (string file in Directory.GetFiles("Build/Speech/Voice")) File.Copy(file, Path.Combine(data, Path.GetFileName(file)), true);
             if (target == BuildTarget.StandaloneOSX)
             {
-                Run("script/build-number", Path.Combine(path, "Contents/Info.plist"));
-                string plugins = Path.Combine(path, "Contents/Plugins"); Directory.CreateDirectory(plugins);
-                File.Copy("Build/Speech/macOS/libInfinigameSpeech.dylib", Path.Combine(plugins, "libInfinigameSpeech.dylib"), true);
-                string library = Path.Combine(plugins, "libInfinigameVoice.dylib");
-                Run("/usr/bin/xcrun", "clang++", "-dynamiclib", "-fobjc-arc", "-arch", "arm64", "-arch", "x86_64", "-mmacosx-version-min=10.15", "-framework", "Foundation", "-framework", "AVFoundation", "-framework", "Speech", "Assets/Plugins/iOS/InfinigameVoice.mm", "-o", library);
+                string info = Path.GetFullPath(Path.Combine(contents, "Info.plist"));
+                Run("script/build-number", info);
                 foreach (string key in new[] { "NSMicrophoneUsageDescription", "NSSpeechRecognitionUsageDescription" })
-                    Run("/usr/bin/defaults", "write", Path.GetFullPath(Path.Combine(path, "Contents/Info.plist")), key, "-string", "Speak to your robot companion using local dictation.");
-                Run("/bin/chmod", "644", Path.Combine(path, "Contents/Info.plist"));
-                Run("/usr/bin/codesign", "--force", "--deep", "--sign", "-", path);
+                    Run("/usr/bin/defaults", "write", info, key, "-string", "Speak to your robot companion using local dictation.");
+                Run("/bin/chmod", "644", info);
+                if (macApp) Run("/usr/bin/codesign", "--force", "--deep", "--sign", "-", path);
             }
             if (target == BuildTarget.StandaloneWindows64)
             {

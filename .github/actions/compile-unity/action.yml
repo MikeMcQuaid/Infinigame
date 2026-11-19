@@ -1,0 +1,90 @@
+name: Compile
+description: Build desktop players or Apple Xcode projects and optionally compile the unsigned iOS app
+inputs:
+  target:
+    description: Unity target
+    required: true
+  method:
+    description: Unity build method
+    required: true
+  version:
+    description: Release version
+    required: true
+  unity-email:
+    description: Unity Personal account
+    required: true
+  unity-password:
+    description: Unity Personal password
+    required: true
+  compile-ios:
+    description: Compile the unsigned iOS app after Unity generates the Xcode project
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Restore the Unity project Library
+      id: library
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: Library
+        key: unity-${{ runner.os }}-${{ runner.arch }}-${{ inputs.target }}-${{ hashFiles('ProjectSettings/ProjectVersion.txt', 'Packages/**') }}-${{ hashFiles('Assets/**', 'ProjectSettings/**', 'STORY.md', 'MISSIONS.md', 'FACTIONS.md', 'COLONIES.md') }}
+        restore-keys: unity-${{ runner.os }}-${{ runner.arch }}-${{ inputs.target }}-${{ hashFiles('ProjectSettings/ProjectVersion.txt', 'Packages/**') }}-
+    - name: Build with Unity
+      uses: game-ci/unity-builder@eb1b9fba120c6e62c9fb7a7a81d6c107ce004c45 # v6.0.0
+      env:
+        UNITY_EMAIL: ${{ inputs.unity-email }}
+        UNITY_PASSWORD: ${{ inputs.unity-password }}
+      with:
+        cliVersion: v0.1.76
+        targetPlatform: ${{ inputs.target }}
+        buildMethod: ${{ inputs.method }}
+        buildsPath: Build
+        buildName: Infinigame
+        versioning: ${{ inputs.version != '' && 'Custom' || 'None' }}
+        version: ${{ inputs.version }}
+    - name: Save the Unity project Library before switching targets
+      if: steps.library.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: Library
+        key: ${{ steps.library.outputs.cache-primary-key }}
+    - name: Move the macOS player into place for packaging
+      if: inputs.method == 'Infinigame.Editor.Platforms.CIMac'
+      shell: bash
+      run: mv Build/StandaloneOSX/Infinigame.app Build/Infinigame.app
+    - name: Identify the iOS compiler and SDK
+      if: inputs.compile-ios == 'true'
+      id: xcode
+      shell: bash
+      env:
+        UNITY_DEPENDENCIES: ${{ hashFiles('ProjectSettings/ProjectVersion.txt', 'Packages/packages-lock.json') }}
+      run: |
+        build=$(xcodebuild -version | awk '/Build version/ {print $3}')
+        sdk=$(xcrun --sdk iphoneos --show-sdk-build-version)
+        echo "prefix=ios-il2cpp-$RUNNER_ARCH-$build-$sdk-$UNITY_DEPENDENCIES" >> "$GITHUB_OUTPUT"
+        echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
+    - name: Cache native iOS compiler outputs
+      if: inputs.compile-ios == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: Build/iOSDerived/Build/Intermediates.noindex/Unity-iPhone.build/Release-iphoneos/artifacts
+        key: ${{ steps.xcode.outputs.prefix }}-${{ steps.xcode.outputs.image }}-${{ hashFiles('Build/iOS/Il2CppOutputProject/Source/**') }}
+        restore-keys: |
+          ${{ steps.xcode.outputs.prefix }}-${{ steps.xcode.outputs.image }}-
+          ${{ steps.xcode.outputs.prefix }}
+    - name: Compile the unsigned iOS app with Xcode
+      if: inputs.target == 'iOS' && inputs.compile-ios == 'true'
+      shell: bash
+      run: script/lib/build-ios-xcode --unsigned
+    - name: Show the most frequent IL2CPP rebuild reasons
+      if: inputs.compile-ios == 'true'
+      continue-on-error: true
+      shell: bash
+      run: |
+        log=Build/iOSDerived/Build/Intermediates.noindex/Unity-iPhone.build/Release-iphoneos/artifacts/arm64/buildstate/tundra.log.json
+        if [[ -f "$log" ]]; then
+          jq -r 'if .msg == "inputSignatureChanged" then .changes[]? | [.key, .path] | @tsv
+            elif .msg == "newNode" or .msg == "nodeOutputsMissing" then .msg else empty end' "$log" |
+            sort | uniq -c | sort -rn | sed -n '1,10p'
+        fi
