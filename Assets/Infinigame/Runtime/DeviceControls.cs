@@ -251,7 +251,7 @@ namespace Infinigame
             }
             return false;
         }
-        float Unit => Mathf.Clamp(Screen.safeArea.height / 720f, 0.8f, 2.5f);
+        internal static float Unit => Mathf.Clamp(Screen.safeArea.height / 720f, 0.8f, 2.5f);
         Rect StickArea(int index)
         {
             float size = 140 * Unit;

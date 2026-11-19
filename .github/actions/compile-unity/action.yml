@@ -50,7 +50,7 @@ runs:
         path: Library
         key: ${{ steps.library.outputs.cache-primary-key }}
     - name: Move the macOS player into place for packaging
-      if: inputs.method == 'Infinigame.Editor.Platforms.CIMac'
+      if: inputs.method == 'Infinigame.Editor.Platforms.CIMac' || inputs.method == 'Infinigame.Editor.Platforms.CIMacAndTestFlight'
       shell: bash
       run: mv Build/StandaloneOSX/Infinigame.app Build/Infinigame.app
     - name: Identify the iOS compiler and SDK

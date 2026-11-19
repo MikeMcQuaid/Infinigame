@@ -31,9 +31,9 @@ namespace Infinigame.Core
     // A shot in flight, the player's or a foe's.
     public struct Bolt
     {
-        public float3 position, velocity;
+        public float3 position, velocity, cruiseVelocity;
         // homing is how fast it can turn towards a foe, in radians a second; blast is how wide a hole it leaves
-        public float life, damage, homing, blast;
+        public float life, damage, homing, blast, ejectTime;
         // level: a landing charge, which leaves the ground flat where it bursts instead of holed
         public bool hostile, level, airOnly, robot;
     }
@@ -92,7 +92,7 @@ namespace Infinigame.Core
             new Weapon { name = "Gauntlet beam", speed = 1000, damage = 42, period = 0, life = 0.25f, voice = 2, beam = true, energy = 24, needs = Gear.Beams },
             new Weapon { name = "Back missiles", speed = 240, damage = 70, period = 3.4f, airOnly = true, homing = 3f, blast = 8f, life = 9, pellets = 1, voice = 1, energy = 15, needs = Gear.BackMissiles },
             new Weapon { name = "Rail gauntlet", speed = 10000, damage = 180, period = 2f, charge = 0.55f, life = 0.2f, voice = 5, rail = true, energy = 32, needs = Gear.Rail },
-            new Weapon { name = "Hemisphere lasers", damage = 7, period = 0.12f, sweep = true, energy = 3.5f, voice = 0, needs = Gear.Nova },
+            new Weapon { name = "Hemisphere lasers", damage = 240, period = 0.24f, sweep = true, energy = 3.5f, voice = 0, needs = Gear.Nova },
         };
 
         public static void Hurt(ref Foe foe, float damage)
@@ -117,6 +117,28 @@ namespace Infinigame.Core
             return up * height + (east * math.cos(angle) + math.cross(up, east) * math.sin(angle)) * math.sqrt(1 - height * height);
         }
 
+        public static void Sweep(List<Foe> foes, BodyDescriptor body, float3 origin, float damage, Shield shield, System.Func<float3, float3, bool> visible, List<Strike> strikes)
+        {
+            for (int i = 0; i < foes.Count; i++)
+            {
+                var foe = foes[i];
+                float3 delta = foe.position - origin;
+                float range = math.length(delta);
+                if (foe.friendly || foe.health <= 0 || foe.protectedCore || range > SweepReach + foe.size
+                    || shield.Blocks(origin, delta, out _) || !visible(origin, foe.position)) continue;
+                bool blocked = false;
+                for (float d = 0.5f; d < range - foe.size; d += 0.5f)
+                {
+                    float3 at = origin + delta * (d / range);
+                    if (math.length(at) < Surface(body, at)) { blocked = true; break; }
+                }
+                if (blocked) continue;
+                Hurt(ref foe, damage);
+                foes[i] = foe;
+                strikes.Add(new Strike { at = foe.position, foe = i });
+            }
+        }
+
         public static Weapon CapturedWeapon(int kit, uint choice)
         {
             int count = 0;
@@ -132,6 +154,8 @@ namespace Infinigame.Core
         public static float Health(FoeKind kind, int depth, MotileCaste caste = MotileCaste.Stalker) =>
             (kind == FoeKind.Sentry ? caste == MotileCaste.Breacher ? 90f : caste == MotileCaste.Spitter ? 45f : 35f
             : kind == FoeKind.Raider ? 60f : kind == FoeKind.Drone ? 35f : kind == FoeKind.Mind ? 120f : 1500f);
+        public const float SweepReach = 14;
+        public const float SentryHeight = 0.9f;
         public static float SentryReach(MotileCaste caste) => caste == MotileCaste.Stalker ? 3.5f : caste == MotileCaste.Spitter ? 70f : 12f;
 
         public static float Damage(FoeKind kind, int depth) => (kind == FoeKind.Raider ? 6f : kind == FoeKind.Drone ? 9f : 8f);
@@ -165,14 +189,19 @@ namespace Infinigame.Core
 
         // The player pulls the trigger: one bolt, or a spread of them. wild widens the spread, for a
         // firearm fired fast, on the run or in the air.
-        public static void Fire(in Weapon weapon, float3 from, float3 direction, float3 inherit, ref Random rnd, List<Bolt> into, float wild = 0f)
+        public static void Fire(in Weapon weapon, float3 from, float3 direction, float3 inherit, ref Random rnd, List<Bolt> into, float wild = 0f, float3 launchUp = default)
         {
             for (int i = 0; i < weapon.pellets; i++)
+            {
+                float3 velocity = math.normalizesafe(direction + rnd.NextFloat3Direction() * ((weapon.spread + wild) * rnd.NextFloat())) * weapon.speed;
+                bool eject = math.lengthsq(launchUp) > 0;
                 into.Add(new Bolt
                 {
-                    position = from, velocity = inherit + math.normalize(direction + rnd.NextFloat3Direction() * ((weapon.spread + wild) * rnd.NextFloat())) * weapon.speed,
+                    position = from, velocity = inherit + (eject ? launchUp * 24 : velocity),
+                    cruiseVelocity = eject ? velocity : float3.zero, ejectTime = 0.14f,
                     damage = weapon.damage, life = weapon.life, homing = weapon.homing, blast = weapon.blast, airOnly = weapon.airOnly,
                 });
+            }
         }
 
         // Moves one foe a step towards its quarry and says whether it fired.
@@ -190,7 +219,7 @@ namespace Infinigame.Core
                 foe.velocity = math.normalizesafe(foe.kind == FoeKind.Sentry ? Walker.Project(foe.position - target, up) : foe.position - target, foe.forward) * 12f;
                 foe.position += foe.velocity * dt;
                 float3 over = math.normalizesafe(foe.position, up);
-                if (foe.kind == FoeKind.Sentry && body.kind == BodyKind.Rock) foe.position = over * (body.GroundRadius(over) + 0.9f);
+                if (foe.kind == FoeKind.Sentry && body.kind == BodyKind.Rock) foe.position = over * (body.GroundRadius(over) + SentryHeight);
                 else foe.position = over * math.max(math.length(foe.position), Ship.Surface(body, over) + foe.size);
                 return false;
             }
@@ -230,7 +259,7 @@ namespace Infinigame.Core
                 if (body.kind == BodyKind.Rock)
                 {
                     float floor = foe.kind == FoeKind.Sentry ? body.GroundRadius(up) : Ship.Surface(body, up);
-                    foe.position = up * (foe.kind == FoeKind.Sentry ? floor + 0.9f : math.max(floor + 0.8f, math.lerp(math.length(foe.position), floor + Hover, 1 - math.exp(-4 * dt))));
+                    foe.position = up * (foe.kind == FoeKind.Sentry ? floor + SentryHeight : math.max(floor + 0.8f, math.lerp(math.length(foe.position), floor + Hover, 1 - math.exp(-4 * dt))));
                 }
                 foe.forward = Turn(foe.forward, to / distance, 2.5f * dt);
                 if (distance > (foe.kind == FoeKind.Sentry ? SentryReach(foe.caste) : DroneReach) || foe.cooldown > 0f) return false;
@@ -283,7 +312,17 @@ namespace Infinigame.Core
             for (int i = bolts.Count - 1; i >= 0; i--)
             {
                 var bolt = bolts[i];
-                if (bolt.homing > 0f)
+                if (math.lengthsq(bolt.cruiseVelocity) > 0)
+                {
+                    // Eject above the pack before the motor turns the missile onto the sight line.
+                    if ((bolt.ejectTime -= dt) <= 0)
+                    {
+                        float3 heading = Turn(math.normalizesafe(bolt.velocity), math.normalizesafe(bolt.cruiseVelocity), 8 * dt);
+                        bolt.velocity = heading * math.min(math.length(bolt.cruiseVelocity), math.length(bolt.velocity) + 650 * dt);
+                        if (math.distancesq(bolt.velocity, bolt.cruiseVelocity) < 0.01f) bolt.cruiseVelocity = float3.zero;
+                    }
+                }
+                else if (bolt.homing > 0f)
                 {
                     // a missile swings towards the nearest foe ahead of it
                     float speed = math.length(bolt.velocity), nearest = float.MaxValue;

@@ -149,6 +149,7 @@ namespace Infinigame
             var hull = new MeshKit();
             MeshKit Kit() => new MeshKit(hull);
             MeshKit plate = Kit(), accent = Kit(), dark = Kit(), steel = Kit(), scorched = Kit(), hazard = Kit(), glass = Kit(), jet = Kit(), red = Kit(), green = Kit(), white = Kit();
+            MeshKit skid = Kit(), joint = Kit();
             MeshKit noseHull = Kit(), nosePlate = Kit(), noseDark = Kit();
             MeshKit trim = Kit(), fittings = Kit(), leather = Kit(), screens = Kit(), amber = Kit(), marks = Kit();
 
@@ -357,17 +358,17 @@ namespace Infinigame
 
                 // The skid: a tube turned up at the front on two sprung legs, each with a brace.
                 float ground = -Core.Ship.Clearance;
-                steel.Tube(Path(6, new Vector3(0.9f, ground + 0.05f, -1.35f), new Vector3(0.9f, ground + 0.05f, 0.2f), new Vector3(0.9f, ground + 0.05f, 1.5f), new Vector3(0.9f, ground + 0.12f, 1.78f), new Vector3(0.9f, ground + 0.24f, 1.92f)), 0.045f, 10);
+                skid.Tube(Path(6, new Vector3(0.9f, ground + 0.05f, -1.35f), new Vector3(0.9f, ground + 0.05f, 0.2f), new Vector3(0.9f, ground + 0.05f, 1.5f), new Vector3(0.9f, ground + 0.12f, 1.78f), new Vector3(0.9f, ground + 0.24f, 1.92f)), 0.045f, 10);
                 foreach (float z in new[] { 1.15f, -0.9f })
                 {
                     Vector3 top = new Vector3(BodyHalf(z, -0.3f) - 0.04f, -0.3f, z + 0.05f), foot = new Vector3(0.9f, ground + 0.06f, z), knee = Vector3.Lerp(top, foot, 0.55f);
-                    dark.Rod(top, knee, 0.05f, 12);
-                    steel.Rod(knee, foot, 0.03f, 12);
-                    dark.Ball(top, 0.075f, 10);
-                    dark.Box(foot, new Vector3(0.13f, 0.1f, 0.16f), 0.02f);
-                    dark.Box(new Vector3(0.9f, ground + 0.01f, z), new Vector3(0.13f, 0.02f, 0.42f), 0.006f);
-                    steel.Rod(new Vector3(BodyHalf(z - 0.45f, -0.36f) - 0.03f, -0.36f, z - 0.45f), Vector3.Lerp(top, foot, 0.8f), 0.016f, 6);
-                    dark.Tube(Path(5, top + new Vector3(0.05f, 0.02f, 0.03f), knee + new Vector3(0.07f, 0f, 0.04f), foot + new Vector3(0.03f, 0.08f, 0.05f)), 0.008f, 5);
+                    joint.Rod(top, knee, 0.05f, 12);
+                    skid.Rod(knee, foot, 0.03f, 12);
+                    joint.Ball(top, 0.075f, 10);
+                    joint.Box(foot, new Vector3(0.13f, 0.1f, 0.16f), 0.02f);
+                    joint.Box(new Vector3(0.9f, ground + 0.01f, z), new Vector3(0.13f, 0.02f, 0.42f), 0.006f);
+                    skid.Rod(new Vector3(BodyHalf(z - 0.45f, -0.36f) - 0.03f, -0.36f, z - 0.45f), Vector3.Lerp(top, foot, 0.8f), 0.016f, 6);
+                    joint.Tube(Path(5, top + new Vector3(0.05f, 0.02f, 0.03f), knee + new Vector3(0.07f, 0f, 0.04f), foot + new Vector3(0.03f, 0.08f, 0.05f)), 0.008f, 5);
                 }
 
                 // A pipe run under the belly, a grab handle and a step by the cabin and a landing light.
@@ -714,6 +715,10 @@ namespace Infinigame
             Add(exterior, "Hatches", plate.Mesh("Hatches"), grey);
             Add(exterior, "Paint", accent.Mesh("Paint"), flightStripe);
             Add(exterior, "Mechanism", dark.Mesh("Mechanism"), gunmetal);
+            var gear = Child(exterior, "Landing gear");
+            Add(gear, "Skids", skid.Mesh("Skids"), bare);
+            Add(gear, "Suspension", joint.Mesh("Suspension"), gunmetal);
+            gear.gameObject.SetActive(false);
             Add(exterior, "Metal", steel.Mesh("Metal"), bare);
             Add(exterior, "Nozzles", scorched.Mesh("Nozzles"), burnt);
             Add(exterior, "Stripes", hazard.Mesh("Stripes"), yellow);

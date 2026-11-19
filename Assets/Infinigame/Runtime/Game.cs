@@ -59,7 +59,7 @@ namespace Infinigame
         const int Dials = 7;
         public bool MapSummary { get; private set; }
         public float MapZoom { get; private set; } = 1;
-        public static readonly string[] Menu = { "Resume", "Controls", "Equipment", "Fleet orders", Settings, Cheats, "Recentre VR", "New game", "Quit to title", "Quit to desktop" };
+        public static readonly string[] Menu = { "Resume", "Controls", "Suit attributes", "Fleet orders", Settings, Cheats, "Recentre VR", "New game", "Quit to title", "Quit to desktop" };
         public static readonly string[] Confirm = { "Keep playing", "Quit" }, Over = { "Try again" };
 
         public SolarSystem System { get; private set; }
@@ -86,6 +86,7 @@ namespace Infinigame
         // How many systems deep the game has gone, which mission is in hand there (Campaign.Won once
         // the citadel has fallen) and how tough that makes the raiders.
         public Progression Progression => save.progression;
+        Upgrade? upgrade;
         public bool Levelling => Paused && Page == "Level up";
         public bool FactoryUnlocked => Stage > Campaign.FirstBurrow || Stage == Campaign.FirstBurrow && Outpost.SiteCleared;
         public int Depth => save.depth;
@@ -137,9 +138,10 @@ namespace Infinigame
         public string Epitaph { get; private set; }
         public string Tally { get; private set; }
         // The menu on screen, if any.
-        public string[] Items => Levelling ? Enumerable.Range(0, 3).Select(i => Progression.Preview(Progression.Choice(i), Player.MaxHealth, Player.Weapon.damage, Combat.Arms[0].period)).ToArray()
+        public string[] Items => (Levelling || Page == "Suit attributes") ? Enumerable.Range(0, Progression.ranks.Length)
+            .Select(i => (upgrade == (Upgrade)i ? "•  " : "") + Progression.Preview((Upgrade)i, Player.MaxHealth, Player.MaxHull, Player.Weapon.damage))
+            .Append(Levelling ? upgrade.HasValue ? "Confirm upgrade" : "Select an attribute" : "Back").ToArray()
             : Page == "Fleet orders" ? new[] { $"ESCORTS   ·   {Escorts.count}", $"ORDERS   ·   {Escorts.order.ToString().ToUpperInvariant()}", "Back" }
-            : Page == "Equipment" ? Enumerable.Range(0, 5).Select(i => $"{Core.Progression.Name((Upgrade)i)} · {save.progression.Cost((Upgrade)i)} SALVAGE").Append("Back").ToArray()
             : Dead ? Over : Confirming ? new[] { "Cancel", "Confirm" }
             : Page == Cheats ? new[] { "Choose mission", "Moon engines built · replay finale", "Take every weapon and all gear", "Mend suit and hull", "Next system", $"INVULNERABLE   ·   {(GodMode ? "ON" : "OFF")}", "Back" }
             : Page == "Missions" ? Campaign.Missions.Select((mission, i) => $"{i + 1}. {mission.name}") .Append("Moon engines built · replay finale").Append("Back").ToArray()
@@ -164,7 +166,7 @@ namespace Infinigame
         public string Standing => Voice < 0 ? null : $"{signedIn[Voice]}{(Voice == Oracle.Voice ? "   ·   IN USE" : "")}   ·   {Oracle.Used(Voice)}";
         public string Hint => Page == "Voice" ? "OFFLINE ENGLISH VOICE · SAME SPEECH ON EVERY DEVICE · PREVIEW TO LISTEN"
             : Page == "Fleet orders" ? Frontier.FleetHint
-            : Page == "Equipment" ? "DAMAGE RANK 3 ADDS CHAINING BEAMS · FIST KILLS RESTORE ENERGY · RAIL KILLS REPAIR ARMOUR"
+            : Page == "Suit attributes" ? "DAMAGE RANK 3 ADDS CHAINING BEAMS · FIST KILLS RESTORE ENERGY · RAIL KILLS REPAIR ARMOUR"
             : Page == ColonyPage ? $"{Hermit.Name}: {Frontier.FactoryHint(Selected)}"
             : Page == Cheats ? Selected == 2 ? "RECOVER ALL SUIT MODULES, SHIP SYSTEMS AND TORPEDOES"
                 : "CHOOSE A MISSION OR PREPARE THE FACTORY AND CONQUESTS REQUIRED FOR MOON ENGINES"
@@ -346,7 +348,8 @@ namespace Infinigame
             System.RestoreClock(save.clock);
             // once the ship can leave the air a mission begins over the world it is on; the citadel's, well away from its guns
             System.Build(system, save.stage >= Campaign.Tower && save.stage < Campaign.Citadel ? Campaign.World(system, save.stage) : SolarSystemDescriptor.Home);
-            save.kit |= Campaign.Kit(save.stage);
+            bool earnedReward = save.ruins.Any(ruin => ruin.stage == save.stage && ruin.destroyed);
+            save.kit |= Campaign.Kit(earnedReward ? save.stage + 1 : save.stage);
             if (Presence.fronts == null) Presence.fronts = new List<Front>();
             Player.kit = save.kit;
             Player.cloaked = false;
@@ -602,7 +605,6 @@ namespace Infinigame
             if (credited && Stage >= Campaign.FirstBurrow)
             {
                 GainExperience(kind == FoeKind.Mind ? 35 : kind == FoeKind.Raider ? 20 : 10);
-                Progression.salvage += kind == FoeKind.Mind ? 12 : 3;
             }
         }
 
@@ -640,7 +642,7 @@ namespace Infinigame
             if (!Outpost.SiteCleared) FitRewards();
             if (Outpost.World >= 0) Presence.Liberate(Outpost.World);
             save.stage++;
-            if (done.count > 0) { if (save.stage - 1 != Campaign.FirstBurrow) GainExperience(20); Progression.salvage += 10; }
+            if (done.count > 0 && save.stage - 1 != Campaign.FirstBurrow) GainExperience(20);
             save.checkpoint = Progression.Copy();
             Frontier.Settle();
             Player.health = Player.MaxHealth;
@@ -656,13 +658,13 @@ namespace Infinigame
             Write();
         }
 
-        // Until it is won back the ship stands where the raiders keep it, to be seen and not flown.
+        // The unmanned ship holds above the original impact site until the suit can reach orbit.
         void Stow()
         {
             Player.captive = save.stage < Campaign.Won && Mission.wins.Contains(Gear.Ship);
-            if (Player.captive)
+            if (Player.ShipOverhead)
             {
-                float3 up = math.normalizesafe(Player.Position);
+                float3 up = Campaign.Site(System.Descriptor, 0);
                 Player.Park(up * (System.ReferenceBody.radius * Shapes.AirTop(System.ReferenceBody) + 35));
                 Player.ship.position = up * (System.ReferenceBody.radius * Shapes.AirTop(System.ReferenceBody) + 35);
                 Player.ship.velocity = float3.zero;
@@ -693,6 +695,7 @@ namespace Infinigame
         void Pause()
         {
             Paused = true;
+            upgrade = null;
             Confirming = false;
             Page = null;
             Selected = 0;
@@ -796,17 +799,16 @@ namespace Infinigame
             }
             if (Levelling)
             {
-                Progression.Improve(Progression.Choice(Selected), false);
+                if (Selected < Progression.ranks.Length) { upgrade = (Upgrade)Selected; return; }
+                if (!upgrade.HasValue || !Progression.Improve(upgrade.Value)) return;
+                upgrade = null;
+                Selected = 0;
                 if (Outpost.SiteCleared) save.checkpoint = Progression.Copy();
                 Write();
                 if (!Progression.Pending) Resume();
                 return;
             }
-            if (Page == "Equipment" && Selected < 5)
-            {
-                Notify(Progression.Improve((Upgrade)Selected, true) ? "EQUIPMENT MODIFIED" : "MORE SALVAGE REQUIRED");
-                save.checkpoint = Progression.Copy(); Write(); return;
-            }
+            if (Page == "Suit attributes" && Selected < Progression.ranks.Length) return;
             if (Items[Selected] == "Fleet orders") { Page = "Fleet orders"; Selected = 0; return; }
             if (Page == "Fleet orders" && Selected < 2)
             {
@@ -814,7 +816,7 @@ namespace Infinigame
                 else Escorts.order = (EscortOrder)(((int)Escorts.order + 1) % 3);
                 Write(); return;
             }
-            if (Items[Selected] == "Equipment") { Page = "Equipment"; Selected = 0; return; }
+            if (Items[Selected] == "Suit attributes") { Page = "Suit attributes"; Selected = 0; return; }
             if (Page == ColonyPage && Selected < 3)
             {
                 Frontier.BuildFactory(Selected);
@@ -1049,7 +1051,7 @@ namespace Infinigame
         public void Remember(Entry entry)
         {
             save.journal.Add(entry);
-            GainExperience(15); Progression.salvage += 3;
+            GainExperience(15);
             Sounds.Chime();
             Write();
         }

@@ -228,7 +228,9 @@ namespace Infinigame.Tests
             Assert.AreEqual("Board ship", game.Prompt);
             yield return Press(new Controls { interact = true });
             Assert.IsTrue(Player.flying, "F next to the ship boards it");
-            var cockpit = GameObject.Find("Ship").transform.Find("Cockpit").gameObject;
+            var ship = GameObject.Find("Ship").transform;
+            var gear = ship.Find("Exterior/Landing gear");
+            var cockpit = ship.Find("Cockpit").gameObject;
             Assert.IsTrue(cockpit.activeSelf, "the pilot sees the cockpit");
 
             input.lift = 1f;
@@ -236,6 +238,7 @@ namespace Infinigame.Tests
             input = default;
             Assert.IsFalse(Player.ship.landed);
             Assert.Greater(Altitude, 10f);
+            Assert.IsFalse(gear.gameObject.activeSelf, "The skids retract after take-off");
             yield return Press(new Controls { toggleView = true });
             Assert.IsFalse(cockpit.activeSelf, "the chase view shows the ship from outside");
 
@@ -249,6 +252,8 @@ namespace Infinigame.Tests
             Assert.IsFalse(Player.flying, "F on the ground leaves the ship");
             yield return Seconds(1f);
             Assert.IsTrue(Player.walker.grounded);
+            Assert.IsTrue(gear.gameObject.activeInHierarchy, "The ship rests on its skids");
+            Assert.AreEqual(1, gear.localScale.y, 0.01f);
             Assert.Less(math.distance(Player.walker.position, Player.ship.position), 8f);
         }
 
@@ -355,11 +360,13 @@ namespace Infinigame.Tests
             }
             Assert.AreEqual(Campaign.Stranger, game.Stage, "daylight");
             Assert.AreEqual(holes + Game.Digs, ground.craters.Length, "the earth really was dug away");
-            StringAssert.Contains("FOLLOW THE ROBOT", game.Objective);
-            // and the way out is walkable
+            StringAssert.Contains("RESTORE YOUR SUIT", game.Objective);
+            // The robot restores locomotion after the briefing.
+            float3 emerged = Player.walker.position;
             input.move = Vector2.up;
             yield return Seconds(2f);
-            Assert.Greater(math.distance(woke, Player.walker.position), 4f);
+            Assert.IsTrue(game.Tutorial.Locked);
+            Assert.Less(math.length(Walker.Project(Player.walker.position - emerged, math.normalize(emerged))), 0.5f);
         }
 
         [UnityTest]
@@ -462,7 +469,7 @@ namespace Infinigame.Tests
             var outpost = game.Outpost;
             var hud = GameObject.Find("HUD").GetComponent<RectTransform>();
             UnityEngine.UI.Text Shown(string words) => hud.GetComponentsInChildren<UnityEngine.UI.Text>().FirstOrDefault(text => text.enabled && text.text == words);
-            float3 up = math.normalize(Player.walker.position), towards = math.normalize(Walker.Project(outpost.Position - Player.walker.position, up));
+            float3 up = math.normalize(Player.walker.position), towards = math.normalize(Walker.Project(outpost.Place(outpost.Rooms.entrance) - Player.walker.position, up));
             // the outpost is over the horizon of so small a world from where the player wakes
             Assert.Greater(math.distance(Player.walker.position, outpost.Position), 100f);
             Assert.Less(math.dot(math.normalize(outpost.Position), up) * Body.GroundRadius(math.normalize(outpost.Position)), math.length(Player.walker.position) - 5f);
@@ -471,7 +478,7 @@ namespace Infinigame.Tests
             Player.walker.forward = towards;
             yield return null;
             yield return null;
-            var mark = Shown("THE FIRST BURROW");
+            var mark = Shown("BURROW ENTRANCE");
             Assert.IsNotNull(mark, "marked, though the ground is in the way");
             Vector2 middle = hud.rect.size / 2f, at = ((RectTransform)mark.transform.parent).anchoredPosition;
             Assert.Less(Mathf.Abs(at.x - middle.x), 60f, "dead ahead");
@@ -480,37 +487,36 @@ namespace Infinigame.Tests
             Player.walker.forward = math.cross(up, towards);
             yield return null;
             yield return null;
-            at = ((RectTransform)Shown("THE FIRST BURROW").transform.parent).anchoredPosition;
+            at = ((RectTransform)Shown("BURROW ENTRANCE").transform.parent).anchoredPosition;
             Assert.Less(at.x, 80f, "it is to the left, and so is its mark");
             Player.walker.forward = -towards;
             yield return null;
             yield return null;
-            at = ((RectTransform)Shown("THE FIRST BURROW").transform.parent).anchoredPosition;
+            at = ((RectTransform)Shown("BURROW ENTRANCE").transform.parent).anchoredPosition;
             Assert.IsTrue(Mathf.Abs(at.x - middle.x) > middle.x - 80f || Mathf.Abs(at.y - middle.y) > middle.y - 80f, "behind: still at an edge");
             // and the radar carries a mark of its own for it
-            Assert.AreEqual(outpost.Position, game.Goal);
+            Assert.AreEqual(outpost.Place(outpost.Rooms.entrance), game.Goal);
 
-            // the mission is set out in full as it begins
-            Assert.IsNotNull(Shown("The first burrow"));
-            Assert.IsTrue(hud.GetComponentsInChildren<UnityEngine.UI.Text>().Any(text => text.text.Contains("Suit thrusters") && text.text.Contains("The first factory")), "what it wins, and what comes next");
             // and the map, until there is a ship to cross the system in, is of the world underfoot with both ends of the way on it
-            input.systemView = true;
+            yield return Press(new Controls { systemView = true });
             yield return Seconds(0.5f);
             Assert.IsTrue(Player.PlanetView);
-            Assert.That(Camera.main.transform.position.magnitude - Body.radius, Is.InRange(500f, 1500f), "near enough to make out a short walk");
+            Assert.That(Vector3.Distance(Camera.main.transform.position, Solar.Bodies[Home].transform.position) - Body.radius, Is.InRange(260f, Body.radius * 4.01f), "the map frames the walk on the home world");
             Assert.IsFalse(Solar.Bodies[Home].transform.Find("Clouds").gameObject.activeSelf, "and with the cloud out of the way");
             Assert.IsNotNull(Shown("YOU"));
-            Assert.IsNotNull(Shown("THE FIRST BURROW"));
-            Assert.IsNotNull(Shown("The first burrow"));
-            input.systemView = false; yield return null;
+            Assert.IsTrue(hud.GetComponentsInChildren<UnityEngine.UI.Text>().Any(text => text.enabled &&
+                (text.text == "BURROW ENTRANCE" || text.text.StartsWith("REGION 1 ·"))), "the map labels the first burrow's region");
+            yield return Press(new Controls { toggleView = true });
+            Assert.IsNotNull(Shown(game.Mission.name));
+            Assert.IsTrue(hud.GetComponentsInChildren<UnityEngine.UI.Text>().Any(text => text.text.IndexOf("beam", System.StringComparison.OrdinalIgnoreCase) >= 0 && text.text.Contains(Campaign.Missions[Campaign.SecondBurrow].name)), "the mission summary shows its reward and what comes next");
             yield return Press(new Controls { systemView = true });
             yield return null;
 
-            // before that, the way to the stranger's fire is marked the same
+            // Before the first burrow the recovery robot comes to the player.
             game.Jump(Campaign.Stranger);
             yield return Seconds(0.3f);
             Assert.AreEqual(game.Hermit.Position, game.Goal);
-            Assert.IsNotNull(Shown(game.Hermit.Name.ToUpperInvariant()));
+            Assert.Less(math.distance(game.Hermit.Position, Player.Position), 12);
         }
 
 
@@ -1366,15 +1372,17 @@ namespace Infinigame.Tests
         public IEnumerator GauntletsReplaceCarriedGunsAndLowerInTheShip()
         {
             yield return Seconds(0.5f);
-            var hands = Camera.main.transform.Find("Gauntlets");
-            Assert.IsNotNull(hands);
-            Assert.IsTrue(hands.gameObject.activeSelf);
-            Assert.IsNotNull(hands.Find("Right gauntlet/Armour"));
+            var fist = Player.fists[1];
+            Assert.IsTrue(fist.gameObject.activeInHierarchy);
+            Assert.IsFalse(fist.Find("Armour").GetComponent<Renderer>().forceRenderingOff);
+            yield return Press(new Controls { toggleView = true });
+            Assert.IsTrue(fist.gameObject.activeInHierarchy);
+            Assert.Less(Vector3.Distance(fist.TransformPoint(new Vector3(0, 0, 0.22f)), game.GetComponent<Arms>().Muzzle(Player.Weapon) - Solar.Anchor), 0.02f);
             yield return Press(new Controls { fire = true });
-            Assert.Greater(hands.localPosition.z, 0);
+            Assert.Greater(game.Battle.Fired, 0);
             Player.flying = true;
             yield return null;
-            Assert.IsFalse(hands.gameObject.activeSelf);
+            Assert.IsFalse(fist.gameObject.activeInHierarchy);
         }
 
         [UnityTest]
@@ -1473,6 +1481,13 @@ namespace Infinigame.Tests
             Assert.AreEqual(0, game.Battle.Bolts.Count, "a continuous beam is not a stream of bolts");
             var ray = Object.FindObjectsByType<LineRenderer>().Single(line => line.name == "Weapon beam");
             Assert.Greater(Vector3.Distance(ray.GetPosition(0), ray.GetPosition(1)), 0);
+            var palm = Player.fists[1];
+            var port = new Vector3(0, 0.04f, 0.16f);
+            Assert.Less(Vector3.Distance(ray.GetPosition(0), palm.TransformPoint(port)), 0.05f);
+            yield return Press(new Controls { toggleView = true });
+            input.fire = true; yield return Seconds(0.3f); input.fire = false;
+            Assert.IsTrue(Player.ThirdPerson && game.Battle.Beaming);
+            Assert.Less(Vector3.Distance(ray.GetPosition(0), palm.TransformPoint(port)), 0.05f);
             Player.fitted = 1 << (int)Gear.Armour;
             Player.energy = 50;
             float health = Player.health;
@@ -1826,7 +1841,7 @@ namespace Infinigame.Tests
             yield return null;
             var camera = Camera.main.transform;
             foreach (Vector3 direction in new[] { camera.forward, -camera.forward, camera.up })
-                game.Battle.Add(FoeKind.Mind, Player.Position + (float3)direction * 100);
+                game.Battle.Add(FoeKind.Mind, Solar.Anchor + (float3)camera.position + (float3)direction * 100);
             yield return null;
             yield return null;
             var radar = Object.FindAnyObjectByType<Radar>();
@@ -1834,7 +1849,12 @@ namespace Infinigame.Tests
             Assert.AreEqual(3, contacts.Length);
             Assert.IsTrue(contacts.Any(contact => contact.localPosition.z > 0));
             Assert.IsTrue(contacts.Any(contact => contact.localPosition.z < 0));
-            Assert.AreEqual(3, contacts.Select(contact => contact.localPosition).Distinct().Count());
+            Assert.That(Vector3.Dot(contacts[0].localPosition.normalized, Vector3.forward), Is.GreaterThan(0.99f));
+            Assert.That(Vector3.Dot(contacts[2].localPosition.normalized, Vector3.up), Is.GreaterThan(0.99f));
+            var centre = Camera.main.WorldToViewportPoint(radar.transform.position);
+            var ahead = Camera.main.WorldToViewportPoint(contacts[0].position);
+            Assert.Less(Vector2.Distance(centre, ahead), 0.005f);
+            Assert.Greater(ahead.z, centre.z);
             Assert.IsNotNull(radar.transform.Find("Globe").GetComponent<MeshRenderer>());
         }
 

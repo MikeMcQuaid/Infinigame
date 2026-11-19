@@ -43,6 +43,9 @@ namespace Infinigame.Tests
             game.Jump(0);
             yield return null;
             Assert.IsTrue(Player.Has(Gear.Suit)); Assert.IsFalse(Player.Powered);
+            Assert.IsTrue(GameObject.Find("Ship").transform.Find("Exterior").gameObject.activeInHierarchy);
+            Assert.Less(math.distance(math.normalize(Player.ship.position), math.normalize(Player.Position)), 0.001f);
+            Assert.IsFalse(Player.captive || Player.NearShip || Player.CanRecall);
             Assert.AreEqual(3, Player.energy, 0.01f);
             Assert.AreEqual("Emergency fists", Player.Weapon.name);
             yield return Press(new Controls { fire = true });
@@ -108,7 +111,7 @@ namespace Infinigame.Tests
             yield return EscapeAndBuild(Campaign.FirstBurrow);
             Assert.AreEqual(3, game.Stage);
             Assert.IsTrue(Player.Has(Gear.Beams)); Assert.IsFalse(Player.Has(Gear.Thrusters));
-            while (game.Levelling) yield return Press(new Controls { confirm = true });
+            while (game.Levelling) yield return ConfirmLevel();
             Assert.Greater(Player.energy, 90);
             game.Jump(Campaign.Citadel); Player.flying = false;
             yield return Press(new Controls { select = 5 });
@@ -210,12 +213,36 @@ namespace Infinigame.Tests
             game.Jump(Campaign.Won);
             uint seed = game.Seed; int depth = game.Depth;
             game.Frontier.Launch();
-            game.Fall.began = Solar.Clock - game.Fall.duration;
+            yield return Seconds(0.5f);
+            yield return ReworkShot("moon-launch");
+            Vector3 OnScreen(int body) => Camera.main.WorldToViewportPoint(Solar.ToReference(body) - Solar.Anchor);
+            var moon = OnScreen(game.Fall.moon);
+            var planet = OnScreen(game.Fall.world);
+            foreach (var point in new[] { moon, planet })
+            {
+                Assert.Greater(point.z, 0);
+                Assert.That(point.x, Is.InRange(0.05f, 0.95f));
+                Assert.That(point.y, Is.InRange(0.05f, 0.95f));
+            }
+            while (Solar.Clock < game.Fall.began + game.Fall.duration - 1) yield return null;
+            yield return ReworkShot("moon-approach");
+            Assert.Greater(Vector2.Distance(moon, OnScreen(game.Fall.moon)), 0.035f, "The moon must move within the chase shot");
+            while (!game.Frontier.Collapsing) yield return null;
+            Assert.IsTrue(Solar.Bodies[game.Fall.world].gameObject.activeSelf, "The flash starts on the still-visible planet");
+            yield return ReworkShot("moon-contact");
+            Assert.AreEqual(1, Solar.Bodies[Home].transform.localScale.x, 0.0001f, "The impact shot still shows the system at its normal scale");
             yield return Seconds(1);
             Assert.IsTrue(game.Frontier.Collapsing);
             Assert.IsTrue(GameObject.Find("HUD").GetComponent<Canvas>().enabled, "The ending keeps its phase captions visible");
             Assert.IsFalse(Solar.Bodies[game.Fall.moon].gameObject.activeSelf);
             Assert.IsFalse(Solar.Bodies[game.Fall.world].gameObject.activeSelf);
+            for (float t = 0; t < 1.2f; t += Mathf.Min(Time.deltaTime, 0.1f)) yield return null;
+            yield return ReworkShot("moon-impact");
+            Assert.AreEqual(Solar.Descriptor.bodies[game.Fall.world].radius,
+                math.distance((float3)GameObject.Find("Moon impact").transform.position, Solar.ToReference(game.Fall.world) - Solar.Anchor), 1);
+            Assert.IsNotNull(GameObject.Find("Rising fire cloud"));
+            Assert.GreaterOrEqual(GameObject.Find("Impact ejecta").transform.childCount, 64);
+            Assert.AreEqual(Solar.Bodies[Home].transform.localScale.x, Solar.Bodies[Moon].transform.localScale.x, 0.0001f);
             yield return Seconds(12);
             yield return ReworkShot("117-singularity");
             for (float waited = 0; game.Frontier.Whiteout < 0.95f && waited < 45; waited += Time.unscaledDeltaTime) yield return null;

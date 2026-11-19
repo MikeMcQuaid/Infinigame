@@ -34,7 +34,7 @@ Detail tiers are Unity quality levels (Mobile, VR, PC), with per-platform defaul
 
 ## Expedition progression
 
-`Progression` owns XP thresholds, salvage costs and the five upgrade ranks. `Game` awards combat, objective and discovery XP, pauses for a compulsory three-choice level screen and checkpoints progression at mission completion. `Campaign` separates the three Earth burrows, surface flight and orbital recovery. Version-three saves migrate earlier mission numbers without changing equipment bit positions.
+`Progression` owns XP thresholds and the five upgrade ranks. `Game` awards combat, objective and discovery XP, pauses for a compulsory five-attribute level screen with confirmation and checkpoints progression at mission completion. `Campaign` separates the three Earth burrows, surface flight and orbital recovery. Version-three saves migrate earlier mission numbers without changing equipment bit positions.
 
 Earth fronts and colonies have regional identifiers. `Frontier` assigns surface positions to the nearest of three brood sites, simulates each population and requires all regions to be controlled before upgrading a factory to a shipyard. New slots choose a fresh seed; the same stored seed still generates the same system. Changing a mission does not rebuild unchanged factory models. Newly assembled units clone a prepared model and become the patrol itself.
 
@@ -83,7 +83,7 @@ The game can start each tool's own sign-in from the settings page. It never show
 
 ## Saving
 
-A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, the mission stage, the gear bit set, fitted modules, colony resources, presence clock, moonfall, gate state, journal, talk breached outpost walls and armed/destroyed burrow demolition state. Worlds are never saved, since the seed remakes them. Save version 3 migrates earlier campaigns into the regional Earth progression without moving equipment bit positions. Saves also retain XP, salvage, upgrade ranks and the current mission checkpoint. War fronts also retain weapon exposure and whether their controlling mind is dead. Settings that belong to the device (detail, music, speech) are `PlayerPrefs`. Oracle credentials are separate from saves: Keychain on iOS and a local account file on desktop. [PRIVACY.md](PRIVACY.md) describes local storage, optional provider requests, on-device iOS speech recognition and TestFlight diagnostics; [TESTFLIGHT.md](TESTFLIGHT.md) holds public beta submission copy.
+A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, the mission stage, the gear bit set, fitted modules, colony resources, presence clock, moonfall, gate state, journal, talk breached outpost walls and armed/destroyed burrow demolition state. Worlds are never saved, since the seed remakes them. Save version 3 migrates earlier campaigns into the regional Earth progression without moving equipment bit positions. Saves also retain XP, upgrade ranks and the current mission checkpoint. War fronts also retain weapon exposure and whether their controlling mind is dead. Settings that belong to the device (detail, music, speech) are `PlayerPrefs`. Oracle credentials are separate from saves: Keychain on iOS and a local account file on desktop. [PRIVACY.md](PRIVACY.md) describes local storage, optional provider requests, on-device iOS speech recognition and TestFlight diagnostics; [TESTFLIGHT.md](TESTFLIGHT.md) holds public beta submission copy.
 
 ## Tests and tooling
 

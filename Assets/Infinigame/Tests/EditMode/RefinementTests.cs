@@ -13,12 +13,13 @@ namespace Infinigame.Tests
         {
             var body = SolarSystemDescriptor.Generate(1).bodies[SolarSystemDescriptor.Home];
             float3 at = new float3(0, body.radius + 1000, 0);
-            var target = Combat.Spawn(FoeKind.Sentry, at + new float3(20, 0, 100), new float3(0, 0, -1), 1, 1);
+            var target = Combat.Spawn(FoeKind.Sentry, at + new float3(45, 0, 300), new float3(0, 0, -1), 1, 1);
             target.stationary = turret;
             var bolts = new List<Bolt>();
             var random = new Unity.Mathematics.Random(1);
-            Combat.Fire(ship ? Combat.Guns[1] : Combat.Arms[2], at, new float3(0, 0, 1), float3.zero, ref random, bolts);
-            Combat.Step(bolts, new List<Foe> { target }, body, at, float3.zero, 1, 0.05f, null);
+            Combat.Fire(ship ? Combat.Guns[1] : Combat.Arms[2], at, new float3(0, 0, 1), float3.zero, ref random, bolts, launchUp: ship ? float3.zero : new float3(0, 1, 0));
+            var foes = new List<Foe> { target };
+            for (int i = 0; i < 40; i++) Combat.Step(bolts, foes, body, at, float3.zero, 1, 1f / 60, null);
             if (turret) Assert.Greater(bolts[0].velocity.x, 0);
             else Assert.AreEqual(0, bolts[0].velocity.x, 0.001f);
         }
@@ -34,11 +35,12 @@ namespace Infinigame.Tests
             Assert.Greater(rooms.walls.Length, 100);
             Assert.IsFalse(rooms.Visible(rooms.entrance, rooms.core, false));
         }
-        [Test] public void MoonWaitsForEngineAssemblyAndIgnition()
+        [Test] public void MoonWaitsForEngineAssemblyBeforeIgnition()
         {
             var system = SolarSystemDescriptor.Generate(1);
             var fall = new Moonfall { moon = 4, world = 3, began = 10, duration = 60, active = true };
-            Assert.Less(math.distance(system.OrbitalPosition(4, 16), fall.Position(system, 16)), 0.01);
+            double3 StagedOffset(double time) => fall.Position(system, time) - system.OrbitalPosition(3, time);
+            Assert.Less(math.distance(StagedOffset(fall.began), StagedOffset(fall.began + Moonfall.Assembly)), 0.01);
             Assert.AreEqual(system.bodies[3].radius + system.bodies[4].radius, math.distance(system.OrbitalPosition(3, 70), fall.Position(system, 70)), 0.01);
         }
         [TestCase(false)] [TestCase(true)] public void ShieldReflectsShipsFromEitherSide(bool inside)

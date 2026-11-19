@@ -113,7 +113,7 @@ namespace Infinigame
 
         void LateUpdate()
         {
-            if (Beaming && !game.Player.flying && !game.Player.ThirdPerson)
+            if (Beaming && !game.Player.flying)
                 ray.SetPosition(0, game.GetComponent<Arms>().Muzzle(game.Player.Weapon) - game.System.Anchor);
         }
 
@@ -239,7 +239,7 @@ namespace Infinigame
                 var view = Camera.main.transform;
                 float3 forward = view.forward, eye = (float3)view.position + system.Anchor;
                 float3 muzzle = flying ? player.ship.position + math.rotate(player.ship.rotation, new float3(1.7f, -0.3f, 2.5f))
-                    : eye + (float3)(view.right * 0.25f + view.up * (weapon.homing > 0 ? 0.2f : -0.22f));
+                    : weapon.needs == Gear.BackMissiles ? player.BackpackPort : game.GetComponent<Arms>().Muzzle(weapon);
                 if (player.ThirdPerson)
                 {
                     float3 sight = Combat.Ray(Foes, body, eye, forward, 2000, 0, false, default, null);
@@ -253,16 +253,10 @@ namespace Infinigame
                         }
                         sight = eye + forward * near;
                     }
-                    muzzle = player.Position + up * 1.45f + (float3)view.right * 0.3f;
                     forward = math.normalizesafe(sight - muzzle, forward);
                 }
                 if (flying) forward = math.rotate(player.ship.rotation, new float3(0, 0, 1));
-                else if (player.Aim(UnityEngine.XR.XRNode.RightHand, out var hand, out var aim))
-                {
-                    muzzle = (float3)(hand + aim * Vector3.forward * 0.12f) + system.Anchor;
-                    forward = aim * Vector3.forward;
-                }
-                if (!flying && !player.ThirdPerson) muzzle = game.GetComponent<Arms>().Muzzle(weapon);
+                else if (player.Aim(UnityEngine.XR.XRNode.RightHand, out _, out var aim)) forward = aim * Vector3.forward;
                 if (DeviceControls.VR && weapon.melee)
                 { muzzle = game.GetComponent<Arms>().PunchOrigin; forward = game.GetComponent<Arms>().PunchDirection; }
                 if (DeviceControls.Touch && !weapon.sweep)
@@ -289,7 +283,9 @@ namespace Infinigame
                 }
                 if (weapon.sweep)
                 {
-                    sweepUntil = Time.time + 0.13f;
+                    float3 origin = self + up * 0.4f;
+                    Combat.Sweep(Foes, body, origin, weapon.damage, game.Outpost.Shield, game.Outpost.Visible, struck);
+                    sweepUntil = Time.time + 0.23f;
                     for (int i = 0; i < 6; i++)
                     {
                         if (sweep.Count <= i)
@@ -299,16 +295,18 @@ namespace Infinigame
                             beam.startWidth = beam.endWidth = 0.035f; beam.positionCount = 2; sweep.Add(beam);
                         }
                         float3 direction = math.rotate(quaternion.AxisAngle(up, Time.time * 2.4f), Combat.SweepDirection((sweepIndex + i) % 64, 64, up));
-                        float reach = 100;
-                        for (float distance = 2; distance <= 100; distance += 2)
-                            if (!game.Outpost.Visible(self + up * 0.4f, self + up * 0.4f + direction * distance))
+                        if (i % 2 == 1) direction = -direction;
+                        if (i == 0) direction = math.normalizesafe(player.walker.forward - up * 0.3f);
+                        float reach = Combat.SweepReach;
+                        for (float distance = 2; distance <= Combat.SweepReach; distance += 2)
+                            if (!game.Outpost.Visible(origin, origin + direction * distance))
                             {
                                 reach = distance - 2;
-                                if (!game.Outpost.Shield.Blocks(self + up * 0.4f, direction * distance, out _)) game.Outpost.Breach(self + up * 0.4f + direction * distance, weapon.damage);
+                                if (!game.Outpost.Shield.Blocks(origin, direction * distance, out _)) game.Outpost.Breach(origin + direction * distance, weapon.damage);
                                 break;
                             }
-                        float3 end = Combat.Ray(Foes, body, self + up * 0.4f, direction, reach, weapon.damage, false, game.Outpost.Shield, struck);
-                        sweep[i].enabled = true; sweep[i].SetPosition(0, self - system.Anchor); sweep[i].SetPosition(1, end - system.Anchor);
+                        float3 end = Combat.Ray(Foes, body, origin, direction, reach, 0, false, game.Outpost.Shield, struck);
+                        sweep[i].enabled = true; sweep[i].SetPosition(0, origin - system.Anchor); sweep[i].SetPosition(1, end - system.Anchor);
                     }
                 }
                 else if (weapon.beam || weapon.rail || weapon.melee)
@@ -391,7 +389,7 @@ namespace Infinigame
                     Combat.Fire(weapon, muzzle, forward, player.Velocity, ref rnd, Bolts);
                     Combat.Fire(weapon, muzzle - (float3)view.right * 3.4f, forward, player.Velocity, ref rnd, Bolts);
                 }
-                else Combat.Fire(weapon, muzzle, forward, player.Velocity, ref rnd, Bolts);
+                else Combat.Fire(weapon, muzzle, forward, player.Velocity, ref rnd, Bolts, launchUp: weapon.needs == Gear.BackMissiles ? up : float3.zero);
                 if (weapon.sweep) sweepIndex += 6;
                 trigger = weapon.period;
                 if (!weapon.beam) game.Sounds.Shot(weapon.voice);
@@ -449,6 +447,11 @@ namespace Infinigame
                         if (wounded) quarry = self;
                         hunting = foe.provoked || wounded || math.distance(foe.position, quarry) < (body.kind == BodyKind.Station ? 160 : 12);
                         if (hunting) foe.alert = Alert.Alarmed;
+                        else if (step == 0 && body.kind == BodyKind.Rock)
+                        {
+                            float3 normal = math.normalizesafe(foe.position);
+                            foe.position = normal * (body.GroundRadius(normal) + Combat.SentryHeight);
+                        }
                     }
                     float3 before = foe.position;
                     if (hunting || foe.scattered)

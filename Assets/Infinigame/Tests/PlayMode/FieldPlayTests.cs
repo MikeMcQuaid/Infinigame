@@ -11,6 +11,12 @@ namespace Infinigame.Tests
 {
     public partial class PlayTests
     {
+        IEnumerator ConfirmLevel()
+        {
+            yield return Press(new Controls { confirm = true });
+            yield return Press(new Controls { up = true });
+            yield return Press(new Controls { confirm = true });
+        }
         IEnumerator EscapeAndBuild(int stage)
         {
             Assert.AreEqual(stage, game.Stage);
@@ -32,7 +38,7 @@ namespace Infinigame.Tests
             if (stage == Campaign.FirstBurrow)
                 for (int i = 0; i < 10; i++) game.Award(FoeKind.Sentry);
             yield return null; yield return null;
-            while (game.Levelling) yield return Press(new Controls { confirm = true });
+            while (game.Levelling) yield return ConfirmLevel();
             if (stage == Campaign.FirstBurrow) Assert.AreEqual(1, game.Progression.level);
             Assert.IsTrue(game.Frontier.CanBuild(0), game.Frontier.FactoryHint(0));
             game.Frontier.BuildFactory(0);

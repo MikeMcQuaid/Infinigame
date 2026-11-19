@@ -31,6 +31,16 @@ ci_workflow = YAML.load_file('.github/workflows/ci.yml')
 ci_events = ci_workflow['on'] || ci_workflow.fetch(true)
 abort 'Run platform CI for pull requests to main' unless ci_events.dig('pull_request', 'branches') == ['main']
 ci = ci_workflow.fetch('jobs')
+gate = ci.fetch('required')
+abort 'A skipped or failed platform build must block the PR' unless
+  gate['if'] == 'always()' && gate['needs'] == %w[platforms apple-access]
+%w[success skipped failure cancelled].product(%w[success skipped failure cancelled]).each do |platforms, apple|
+  command = gate.fetch('steps').last.fetch('run').gsub('${{ needs.platforms.result }}', platforms).gsub('${{ needs.apple-access.result }}', apple)
+  abort 'Merge gate accepted the wrong build results' unless system('bash', '-c', command) == (platforms == 'success' && apple == 'success')
+end
+access = ci.fetch('apple-access')
+abort 'Read Apple credentials only from a trusted same-repository check using base-branch code' unless
+  access['if'] == ci.dig('platforms', 'if') && access.fetch('steps').first.dig('with', 'ref') == "${{ github.event.pull_request.base.sha || 'main' }}"
 [ci, jobs].each do |caller|
   abort 'Missing platform build credentials' unless caller.dig('platforms', 'secrets') == credentials
 end
@@ -42,6 +52,10 @@ abort 'Scheduled reviews must not build players' unless jobs.dig('review', 'if')
 abort 'PR CI must not duplicate main builds' if ci_events.key?('push')
 steps = jobs.dig('testflight', 'steps')
 platform_steps = build_jobs.fetch('build').fetch('steps')
+abort 'Exercise Apple release tooling and archive the native Mac TestFlight app on pull requests' unless
+  platform_steps.any? { |step| step['run'] == 'script/test-testflight' } &&
+  platform_steps.any? { |step| step.dig('with', 'method').to_s.include?('CIMacAndTestFlight') } &&
+  platform_steps.any? { |step| step['run'].to_s.include?('MacStore.xcodeproj') && step['run'].include?('CODE_SIGNING_ALLOWED=NO archive') }
 prepare_ios = platform_steps.find { |step| step['id'] == 'prepare-ios' }
 ios = platform_steps.find { |step| step.dig('with', 'compile-ios') == 'true' }
 abort 'Compile unsigned iOS on the desktop Mac runner for unversioned builds' unless
@@ -63,8 +77,9 @@ WORKFLOW
 mkdir -p tmp
 scratch="$(mktemp -d "$PWD/tmp/test-testflight.XXXXXX")"
 trap 'rm -rf "$scratch"' EXIT
-mkdir -p "$scratch/bin" "$scratch/script" "$scratch/Build/iOS/Unity-iPhone.xcodeproj"
+mkdir -p "$scratch/bin" "$scratch/script" "$scratch/.github" "$scratch/Build/iOS/Unity-iPhone.xcodeproj"
 cp script/testflight "$scratch/script/testflight"
+cp .github/testflight.rb "$scratch/.github/"
 cp TESTFLIGHT.md "$scratch/TESTFLIGHT.md"
 touch "$scratch/Build/iOS/Unity-iPhone.xcodeproj/project.pbxproj"
 plutil -create xml1 "$scratch/Build/iOS/Info.plist"
@@ -128,6 +143,8 @@ cat > "$scratch/bin/xcodebuild" <<'XCODEBUILD'
 set -euo pipefail
 echo /archive-concurrent.keychain-db >>"${TESTFLIGHT_TEST_DIRECTORY}/keychains"
 if [[ "$1" == -exportArchive ]]; then
+  [[ "$8" == -authenticationKeyPath ]]
+  openssl pkey -in "$9" -noout
   if [[ "$TESTFLIGHT_TEST_FAILURE" == external* ]]; then
     [[ "$(/usr/libexec/PlistBuddy -c 'Print :testFlightInternalTestingOnly' "$5")" == false ]]
     [[ "$(/usr/libexec/PlistBuddy -c 'Print :destination' "$5")" == upload ]]
@@ -157,7 +174,9 @@ else
 fi
 XCODEBUILD
 chmod +x "$scratch/bin/"*
-export APP_STORE_KEY='test API key' APP_STORE_KEY_ID=KEY1234567 APP_STORE_ISSUER_ID=issuer
+export APP_STORE_KEY_ID=KEY1234567 APP_STORE_ISSUER_ID=issuer
+APP_STORE_KEY=$(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:prime256v1 | base64)
+export APP_STORE_KEY
 export APP_STORE_CERTIFICATES=dGVzdA== APP_STORE_CERTIFICATES_PASSWORD=password
 export APP_STORE_IOS_PROFILE RELEASE_VERSION=1.2.3 BUILD_NUMBER=44
 uuid="$(uuidgen)"

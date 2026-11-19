@@ -295,7 +295,20 @@ assert(api.writes.count { |w| w[1] == '/v1/betaAppReviewSubmissions' } == 1,
 # Exercise real pagination, JWT signing and HTTP errors with a fake transport.
 original_http = Net::HTTP.method(:start)
 key = OpenSSL::PKey::EC.generate('prime256v1')
-ENV['APP_STORE_KEY'] = key.to_pem
+Dir.mktmpdir('api-key-', 'tmp') do |dir|
+  path = File.join(dir, 'AuthKey.p8')
+  pem = key.to_pem
+  [pem, Base64.strict_encode64(pem), pem.gsub("\n") { '\n' }].each do |secret|
+    _, error, status = Open3.capture3({ 'APP_STORE_KEY' => secret }, RbConfig.ruby, '.github/testflight.rb', 'write-key', path)
+    assert(status.success?, "Could not prepare a signing key for Xcode: #{error}")
+    assert(OpenSSL::PKey.read(File.read(path)).public_key == key.public_key, 'Preserve the Apple signing key')
+  end
+  ['invalid-key-fixture', OpenSSL::PKey::RSA.generate(1024).to_pem].each do |bad|
+    output, error, status = Open3.capture3({ 'APP_STORE_KEY' => bad }, RbConfig.ruby, '.github/testflight.rb', 'write-key', path)
+    assert(!status.success? && error.include?('NOTARIZATION_KEY') && !(output + error).include?(bad), 'Reject invalid secrets without printing them')
+  end
+end
+ENV['APP_STORE_KEY'] = Base64.strict_encode64(key.to_pem)
 ENV['APP_STORE_KEY_ID'] = 'test-key'
 ENV['APP_STORE_ISSUER_ID'] = 'test-issuer'
 responses = [

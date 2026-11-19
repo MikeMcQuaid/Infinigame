@@ -116,6 +116,12 @@ namespace Infinigame
                 laser.SetPosition(0, repair.GetPosition(0));
                 laser.SetPosition(1, repair.GetPosition(1) + Camera.main.transform.right * ((i - 2.5f) * 0.13f * math.saturate(game.Tutorial.RepairProgress * 5)));
             }
+            if (game.Tutorial.PointingAtShip && !game.Paused)
+            {
+                repair.enabled = true;
+                repair.SetPosition(0, camp.position + camp.up * 1.1f);
+                repair.SetPosition(1, game.Player.ship.position - game.System.Anchor);
+            }
             if (Provoked && !Aboard && !game.Paused && !game.Dead && math.distance(Position, game.Player.Position) < 40 && game.Outpost.Visible(Position + math.normalizesafe(Position), game.Player.Position))
             {
                 repair.enabled = true; repair.SetPosition(0, camp.position + camp.up);
@@ -170,7 +176,11 @@ namespace Infinigame
         // Authored replies keep the early story playable without an account.
         string Canned(string asked) => asked.IndexOf("factory", StringComparison.OrdinalIgnoreCase) >= 0 || asked.IndexOf("build", StringComparison.OrdinalIgnoreCase) >= 0
             ? game.Frontier.FactoryHint(game.Frontier.Local.shipyard ? 2 : game.Frontier.Local.factory && game.Frontier.Local.mindDead ? 1 : 0)
-            : asked.IndexOf("world", StringComparison.OrdinalIgnoreCase) >= 0 || asked.IndexOf("presence", StringComparison.OrdinalIgnoreCase) >= 0
+            : asked.IndexOf("foundry", StringComparison.OrdinalIgnoreCase) >= 0
+            ? "I can still play you the frogs our first surveyor heard. Years later a furnace crew recognised the call and moved the furnace nine metres. We send that recording out with every new factory."
+            : asked.IndexOf("presence", StringComparison.OrdinalIgnoreCase) >= 0
+            ? "A Harrower learns its way home by tasting the ridges in a mind’s palate. We found a memory of rain in one. The star it fell under was already gone when our Sun first shone."
+            : asked.IndexOf("world", StringComparison.OrdinalIgnoreCase) >= 0
             ? "We are the Foundry, independent machines protecting what still lives. The presence grows bodies from a shared mind and consumes everything beyond itself. We must sever those minds and rebuild safe settlements."
             : asked.IndexOf("who", StringComparison.OrdinalIgnoreCase) >= 0 ? $"{Name}. An autonomous recovery machine. I can keep this channel open wherever you go."
             : asked.IndexOf("happen", StringComparison.OrdinalIgnoreCase) >= 0 || asked.IndexOf("remember", StringComparison.OrdinalIgnoreCase) >= 0
@@ -201,7 +211,7 @@ namespace Infinigame
         }
 
         [Serializable] public class WorldState { public string world; public int region, aliens, dogs, hostileShips, ships; public bool factory, shipyard; }
-        [Serializable] public class State { public int stage, depth, power, health, hull, altitude, level, experience, salvage; public string location, objective; public WorldState[] worlds; }
+        [Serializable] public class State { public int stage, depth, power, health, hull, altitude, level, experience; public string location, objective; public WorldState[] worlds; }
 
         // Sends the traveller's words and waits for the reply. The talk so far is kept as
         // alternating lines: the traveller's, then the hermit's.
@@ -216,13 +226,13 @@ namespace Infinigame
             }
             var system = game.System;
             string persona = $"You are {Name}, the traveller's Foundry recovery robot and copilot. " +
-                "Speak in one to three short sentences. Use only the known story; do not invent later revelations. Explain XP level choices, salvage modifications and regional population control when asked. Powered fist kills restore energy; rail kills repair armour. Three damage ranks make beams chain. " +
+                "Speak in one to three short sentences. Use only the known story; do not invent later revelations. Explain XP level choices and regional population control when asked. Powered fist kills restore energy; rail kills repair armour. Three damage ranks make beams chain. " +
                 $"Current mission: {Briefing} The following story addresses the traveller as 'you', not the companion. " + Narrative.Context(game.Stage, game.Fall.destroyed);
             words = words.Substring(0, math.min(words.Length, 400));
             var states = game.Presence.fronts.OrderBy(front => front.world == system.Reference ? 0 : 1).Take(24)
                 .Select(front => new WorldState { world = system.Descriptor.bodies[front.world].name, region = front.region + 1, aliens = (int)front.aliens, dogs = (int)front.dogs,
                     hostileShips = (int)front.alienShips, ships = (int)front.ships, factory = front.factory, shipyard = front.shipyard }).ToArray();
-            string snapshot = JsonUtility.ToJson(new State { stage = game.Stage, depth = game.Depth, location = system.ReferenceBody.name, level = game.Progression.level, experience = game.Progression.experience, salvage = game.Progression.salvage,
+            string snapshot = JsonUtility.ToJson(new State { stage = game.Stage, depth = game.Depth, location = system.ReferenceBody.name, level = game.Progression.level, experience = game.Progression.experience,
                 objective = game.Objective, power = (int)game.Player.energy, health = (int)game.Player.health, hull = (int)(100 * game.Player.hull / game.Player.MaxHull), altitude = (int)game.Player.Altitude, worlds = states });
             System.IO.File.WriteAllText(System.IO.Path.Combine(Application.persistentDataPath, "companion-state.json"), snapshot);
             persona = persona.Substring(0, math.min(persona.Length, 4000));

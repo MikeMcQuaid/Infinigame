@@ -37,8 +37,11 @@ namespace Infinigame
 
         SolarSystem system;
         Camera view;
-        Transform model, traveller, pack;
+        Transform model, traveller, pack, landingGear;
+        float gearExtension;
         Renderer[] bodyRenderers;
+        public float3 BackpackPort => (float3)pack.TransformPoint(new Vector3(0.18f, 0.22f, -0.27f)) + system.Anchor;
+        public readonly Transform[] fists = new Transform[2];
         public void Calibrate() => tracked = false;
         public void Stain(Material material, int index)
         {
@@ -96,6 +99,7 @@ namespace Infinigame
         public bool PlanetView => SystemView && Body.kind == BodyKind.Rock && (!Has(Gear.Ship) || game.MapZoom < 0.5f && game.MapSelection == system.Reference);
         // Where the copilot sits, in a ship that has such a seat.
         public Transform Seat => model.Find("Cockpit/Copilot");
+        public bool ShipOverhead => game.Stage <= Campaign.Recovery && system.Reference == SolarSystemDescriptor.Home && !Has(Gear.Ship);
         public bool NearShip => (Has(Gear.Ship) || captive) && math.distance(walker.position, ship.position) < BoardingRange;
 
         public bool Has(Gear gear) => Campaign.Has(Suit.Modules.Contains(gear) ? fitted : kit, gear);
@@ -172,8 +176,11 @@ namespace Infinigame
             view.nearClipPlane = 0.1f;
             view.farClipPlane = 2500000f;
             model = Models.Ship();
+            landingGear = model.Find("Exterior/Landing gear");
             traveller = Models.Traveller();
             motion = traveller.gameObject.AddComponent<MachineMotion>();
+            fists[0] = traveller.Find("Torso/Left arm/Elbow/Gauntlet");
+            fists[1] = traveller.Find("Torso/Right arm/Elbow/Gauntlet");
             bodyRenderers = traveller.GetComponentsInChildren<Renderer>();
             armour = traveller.GetComponentsInChildren<Transform>().Where(part => part.name == "Armour").Select(part => part.gameObject).ToArray();
             pack = traveller.Find("Torso/Thruster pack");
@@ -434,7 +441,7 @@ namespace Infinigame
                         ship.rotation = math.slerp(ship.rotation, quaternion.LookRotationSafe(walker.forward, up), math.saturate(dt * 2));
                         ship.landed = !InSpace && distance < 5;
                     }
-                    else if (!captive) Ship.Step(ref ship, new ShipInput { land = true }, Body, true, dt);
+                    else if (!ShipOverhead) Ship.Step(ref ship, new ShipInput { land = true }, Body, true, dt);
                 }
                 // the bike's wheels take half of a landing
                 Hurt(Combat.Fall(walker.impact * (riding ? 0.5f : 1f)), $"Fell to the ground on {Body.name}");
@@ -497,12 +504,18 @@ namespace Infinigame
 
             // everything is drawn relative to the scene's origin, which out in space rides with the player
             model.SetPositionAndRotation(ship.position - system.Anchor, ship.rotation);
+            bool wheelsDown = ship.landed || flying && Body.kind == BodyKind.Rock && Altitude < 15
+                && (landing || math.dot(ship.velocity, math.normalizesafe(ship.position)) < -0.5f);
+            gearExtension = Mathf.MoveTowards(gearExtension, wheelsDown ? 1 : 0, frame * 1.6f);
+            landingGear.gameObject.SetActive(gearExtension > 0);
+            landingGear.localPosition = Vector3.up * (0.65f * (1 - gearExtension));
+            landingGear.localScale = new Vector3(1, Mathf.SmoothStep(0.08f, 1, gearExtension), 1);
             traveller.gameObject.SetActive(!flying && !game.Buried && !SystemView && !game.Title && !Dead);
             if (traveller.gameObject.activeSelf)
             {
                 traveller.SetPositionAndRotation(walker.position - system.Anchor, quaternion.LookRotationSafe(walker.forward, math.normalizesafe(walker.position)));
                 foreach (string part in new[] { "Torso/Head", "Torso/Left arm", "Torso/Right arm" })
-                    if (traveller.Find(part) is Transform limb) limb.gameObject.SetActive(ThirdPerson);
+                    if (traveller.Find(part) is Transform limb) limb.gameObject.SetActive(ThirdPerson || part != "Torso/Head" && !DeviceControls.VR);
                 foreach (var plate in armour) plate.SetActive(Has(Gear.Suit));
                 pack.gameObject.SetActive(Has(Gear.Thrusters));
                 if (exhaust == null)
@@ -512,10 +525,11 @@ namespace Infinigame
                 motion.strike = Weapon.melee ? math.saturate(1 - (Time.time - game.Battle.Fired) / 0.35f) : 0;
                 motion.recoil = math.saturate(1 - (Time.time - HurtAt) / 0.4f);
                 motion.weapon = Powered ? Arm : 0;
+                motion.aimPitch = pitch + punch;
                 motion.speed = walker.grounded ? math.length(Velocity) : 0;
             }
             // until it is won back the ship is not there to be seen
-            foreach (var part in outside) part.SetActive(!Seated && (captive || Has(Gear.Ship)));
+            foreach (var part in outside) part.SetActive(!Seated && (ShipOverhead || Has(Gear.Ship)));
             cockpit.gameObject.SetActive(Seated);
             if (Seated)
             {
@@ -600,16 +614,19 @@ namespace Infinigame
                     if (forward.sqrMagnitude < 0.1f) forward = walker.forward;
                     traveller.SetPositionAndRotation(view.transform.position - up * Walker.EyeHeight - forward * 0.08f, Quaternion.LookRotation(forward, up));
                 }
+                var torso = traveller.Find("Torso");
+                var leftArm = fists[0].parent.parent;
+                var rightArm = fists[1].parent.parent;
                 foreach (var part in bodyRenderers)
                 {
-                    bool upper = part.transform.IsChildOf(traveller.Find("Torso"));
+                    bool upper = part.transform.IsChildOf(torso) && !part.transform.IsChildOf(leftArm) && !part.transform.IsChildOf(rightArm);
                     part.forceRenderingOff = !DeviceControls.VR && upper || Vector3.Distance(part.bounds.ClosestPoint(view.transform.position), view.transform.position) < 0.18f;
                 }
             }
             else foreach (var part in bodyRenderers) part.forceRenderingOff = false;
             if (!DeviceControls.VR && view.targetTexture == null) view.ResetAspect();
             // speed stretches the view a little, and the map of a world closes in until that world fills it
-            if (!DeviceControls.VR) view.fieldOfView = Mathf.Lerp(view.fieldOfView, PlanetView ? 26f : 70f + 25f * math.saturate(math.length(Velocity) / Tuning.ShipSpaceSpeed)
+            if (!DeviceControls.VR) view.fieldOfView = Mathf.Lerp(view.fieldOfView, PlanetView ? 26f : !flying && !SystemView && Weapon.rail && game.Battle.Charging ? math.lerp(60, 34, game.Battle.RailCharge) : 70f + 25f * math.saturate(math.length(Velocity) / Tuning.ShipSpaceSpeed)
                 + (flying ? 0f : 12f * math.saturate((math.length(Velocity) - Tuning.WalkSpeed) / (Tuning.BikeSpeed - Tuning.WalkSpeed))), 5f * frame);
         }
 

@@ -19,3 +19,42 @@ jobs:
     secrets:
       UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
       UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+  apple-access:
+    name: Check TestFlight upload identity
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      # The signing key is available only to release code already on main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || 'main' }}
+          persist-credentials: false
+          sparse-checkout: .github/testflight.rb
+          sparse-checkout-cone-mode: false
+      - name: Read the Apple app and both platforms' build histories
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_STORE_KEY: ${{ secrets.NOTARIZATION_KEY }}
+          APP_STORE_KEY_ID: ${{ secrets.NOTARIZATION_KEY_ID }}
+          APP_STORE_ISSUER_ID: ${{ secrets.NOTARIZATION_ISSUER_ID }}
+        shell: ruby {0}
+        run: |
+          require File.expand_path('.github/testflight.rb')
+          # The first PR targets a revision that expects the original PEM.
+          unless TestFlight.respond_to?(:signing_key)
+            pem = ENV.fetch('APP_STORE_KEY').strip.gsub(/\\r\\n|\\n/, "\n")
+            pem = Base64.strict_decode64(pem.delete(" \t\r\n")) unless pem.start_with?('-----BEGIN ')
+            ENV['APP_STORE_KEY'] = OpenSSL::PKey.read(pem, '').to_pem
+          end
+          %w[iOS macOS].each { |platform| TestFlight.new(platform).next_build_number(1) }
+  required:
+    name: Required platform builds
+    if: always()
+    needs: [platforms, apple-access]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every platform build to succeed
+        run: '[[ "${{ needs.platforms.result }}" == success && "${{ needs.apple-access.result }}" == success ]]'

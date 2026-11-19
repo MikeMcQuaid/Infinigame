@@ -12,9 +12,9 @@ namespace Infinigame
     {
         [NonSerialized] public Game game;
         public bool Collapsing => game.Fall.destroyed;
-        public float Whiteout => Collapsing ? math.saturate((collapse - 3 - Moonfall.Consumption) / Moonfall.Supernova) : arrival;
+        public float Whiteout => Collapsing ? math.saturate((collapse - 3 - Moonfall.Consumption) / Moonfall.WhiteHole) : arrival;
         public string Ending => !game.Fall.active ? "" : Collapsing
-            ? collapse < 3 ? "IMPACT · THE BURIED MIND IS COLLAPSING" : collapse < 3 + Moonfall.Consumption ? $"SINGULARITY · SYSTEM CONSUMPTION {math.ceil(3 + Moonfall.Consumption - collapse):0}s" : "SUPERNOVA · HOLD ON"
+            ? collapse < 3 ? "IMPACT · THE BURIED MIND IS COLLAPSING" : collapse < 3 + Moonfall.Consumption ? $"SINGULARITY · SYSTEM CONSUMPTION {math.ceil(3 + Moonfall.Consumption - collapse):0}s" : "WHITE HOLE · HOLD ON"
             : game.System.Clock - game.Fall.began < Moonfall.Assembly ? "MOON ENGINES BUILT · SHIP FOLLOW LINK ACQUIRED"
             : game.System.Clock - game.Fall.began < Moonfall.Assembly + Moonfall.Ignition ? "IGNITION · MOON ENGINES FIRING"
             : $"MOON IN TRANSIT · SHIP FOLLOWING · IMPACT IN {math.ceil(game.Fall.began + game.Fall.duration - game.System.Clock):0}s";
@@ -22,7 +22,7 @@ namespace Infinigame
         readonly List<Transform> plumes = new List<Transform>();
         int shownWorld = -1, shownRegion = -1, layout = -1;
         Task<SolarSystemDescriptor> next;
-        Transform hole, impact, robotTemplate, shipTemplate;
+        Transform hole, impact, fireball, cloud, shockwave, debris, robotTemplate, shipTemplate;
         SolarSystemDescriptor worlds;
         readonly List<Transform> buildings = new List<Transform>();
         sealed class Unit
@@ -65,7 +65,7 @@ namespace Infinigame
             return nearest;
         }
         public float Total(int world, System.Func<Front, float> count) => Enumerable.Range(0, world == SolarSystemDescriptor.Home ? 3 : 1).Sum(region => count(State(world, region)));
-        public bool GroundControlled(int world) => Enumerable.Range(0, world == SolarSystemDescriptor.Home ? 3 : 1).All(region => { var front = State(world, region); return front.factory && front.mindDead && front.aliens <= 0; });
+        public bool GroundControlled(int world) => Enumerable.Range(0, world == SolarSystemDescriptor.Home ? 3 : 1).All(region => War.Controlled(State(world, region)));
         public Front State(int world, int region = -1)
         {
             if (region < 0) region = world == game.System.Reference ? Region(world, game.Player.Position) : 0;
@@ -138,11 +138,11 @@ namespace Infinigame
         public string FactoryHint(int choice)
         {
             var front = Local;
-            return choice == 0 && front.factory ? "FACTORY BUILT · " + (front.mindDead ? "Its robodogs replace losses and will finish clearing this region." : "Kill the living mind to release the robodogs’ full strength.")
+            return choice == 0 && front.factory ? "FACTORY BUILT · " + (front.mindDead ? "Its robodogs replace losses and hunt each new brood." : "Kill the living mind to release the robodogs’ full strength.")
                 : choice == 0 && !game.FactoryUnlocked ? "RECOVER THE FIRST CORE AND ESCAPE THE BLAST"
                 : choice == 0 && (game.Player.flying || game.System.ReferenceBody.Dry(game.Player.Position) || game.Player.Altitude >= 5) ? "LAND ON CLEAR SURFACE GROUND TO BUILD"
                 : choice == 0 && front.mindDead ? $"REGION {front.region + 1} · READY TO BUILD · MIND SILENCED"
-                : choice == 0 ? $"REGION {front.region + 1} · ROBODOG FACTORY · {front.kills}/{War.RequiredKills(front)} ALIENS DEFEATED\nReplicating laser robodogs hunt the remaining {math.ceil(front.aliens):0} bodies. Production stops when this region is clear."
+                : choice == 0 ? $"REGION {front.region + 1} · ROBODOG FACTORY · {front.kills}/{War.RequiredKills(front)} ALIENS DEFEATED\nReplicating laser robodogs hunt the remaining {math.ceil(front.aliens):0} bodies. A standing pack keeps new broods in check."
                 : choice == 1 ? $"SHIPYARD UPGRADE · {(front.shipyard ? "BUILT" : !front.factory ? "BUILD A ROBODOG FACTORY FIRST" : !GroundControlled(front.world) ? "CONTROL EVERY REGION WITH A FACTORY" : "READY")}\nYour robots assemble ships to defend this planet and its immediate neighbours."
                 : $"MOON ENGINES · {(game.Stage < Campaign.Won ? "DESTROY ALL CITADEL MINDS" : !front.shipyard ? "BUILD THIS WORLD’S SHIPYARD" : Total(front.world, state => state.alienShips) > 0 ? $"{math.ceil(Total(front.world, state => state.alienShips)):0} HOSTILE SHIPS REMAIN" : game.Fall.active ? "ENGINES BUILT" : "READY")}\nThe impact collapses the buried mind into a singularity that consumes this system.";
         }
@@ -177,7 +177,7 @@ namespace Infinigame
             front.established = true;
             assembly = deployed = 0;
             Settle();
-            game.Hermit.Remark(choice == 0 ? "Factory online. Robodogs control the alien population in this region. Kill its mind so our machines can replace their losses and win. Each Earth region needs its own factory. Spend recovered salvage in Equipment to modify your suit." : "Shipyard online. Your first escort is launching now and will follow you, including on autopilot. Open Fleet orders in the pause menu to command up to three ships. The rest defend this planet and its neighbours.");
+            game.Hermit.Remark(choice == 0 ? "Factory online. Robodogs control the alien population in this region. Kill its mind so our machines can replace their losses and win. Each Earth region needs its own factory." : "Shipyard online. Your first escort is launching now and will follow you, including on autopilot. Open Fleet orders in the pause menu to command up to three ships. The rest defend this planet and its neighbours.");
 
             DrawUnits(0);
             game.Write();
@@ -185,8 +185,7 @@ namespace Infinigame
         public void Launch()
         {
             game.Fall.began = game.System.Clock;
-            var descriptor = game.System.Descriptor;
-            game.Fall.duration = Moonfall.Assembly + Moonfall.Ignition + math.max(18, math.distance(descriptor.OrbitalPosition(game.Fall.moon, game.System.Clock), descriptor.OrbitalPosition(game.Fall.world, game.System.Clock)) / Core.Autopilot.Speed);
+            game.Fall.duration = Moonfall.Assembly + Moonfall.Ignition + Moonfall.Transit;
             game.Player.flying = true;
             game.Fall.active = true;
             Settle();
@@ -222,7 +221,7 @@ namespace Infinigame
             {
                 collapse += dt;
                 if (next == null) { uint seed = game.Seed + 1; next = Task.Run(() => { var system = SolarSystemDescriptor.Beyond(seed); Campaign.Site(system, 0); return system; }); }
-                if (collapse >= 3 + Moonfall.Consumption + Moonfall.Supernova && next.IsCompletedSuccessfully)
+                if (collapse >= 3 + Moonfall.Consumption + Moonfall.WhiteHole && next.IsCompletedSuccessfully)
                 {
                     game.PreparedSystem = next.Result; next = null;
                     game.NextSystem(); collapse = 0; arrival = 1;
@@ -264,13 +263,13 @@ namespace Infinigame
             }
             if (!game.Battle.quiet && game.Stage >= 2 && (deployed -= dt) <= 0)
             {
-                deployed = math.max(1.5f, 8 - game.Threat * 0.5f) / game.Pressure;
                 var body = game.System.ReferenceBody;
                 var front = Local;
-                if (body.kind == BodyKind.Rock && front.aliens > 0 && game.Battle.Foes.Count(foe => foe.patrol) < math.min(40, 4 + game.Threat * 3))
+                var factory = game.Colonies.FirstOrDefault(colony => colony.world == front.world && colony.region == front.region && math.distance(colony.site, game.Player.Position) < 700);
+                deployed = (factory != null ? 3 : math.max(1.5f, 8 - game.Threat * 0.5f)) / game.Pressure;
+                if (body.kind == BodyKind.Rock && front.aliens > 0 && game.Battle.Foes.Count(foe => foe.patrol) < (factory != null ? 5 : math.min(40, 4 + game.Threat * 3)))
                 {
                     var rnd = new Unity.Mathematics.Random((uint)(game.Presence.played * 100 + game.Seed) | 1);
-                    var factory = game.Colonies.FirstOrDefault(colony => colony.world == front.world && colony.region == front.region && math.distance(colony.site, game.Player.Position) < 700);
                     float3 up = math.normalizesafe(factory?.site ?? game.Player.Position);
                     float3 direction = math.normalize(up + Walker.Project(rnd.NextFloat3Direction(), up) * ((factory == null ? rnd.NextFloat(70, 160) : rnd.NextFloat(25, 55)) / body.radius));
                     game.Battle.Add(FoeKind.Sentry, direction * (body.GroundRadius(direction) + 0.9f), game.Stage <= 2 ? MotileCaste.Stalker : (MotileCaste)rnd.NextInt(0, 3));
@@ -288,16 +287,19 @@ namespace Infinigame
             if (GroundControlled(game.System.Reference))
             {
                 if (game.Battle.Foes.Any(foe => foe.kind == FoeKind.Mind)) game.Award(FoeKind.Mind);
-                game.Battle.Foes.RemoveAll(foe => !foe.friendly && foe.kind != FoeKind.Raider && foe.kind != FoeKind.Base);
+                game.Battle.Foes.RemoveAll(foe => !foe.patrol && !foe.friendly && foe.kind != FoeKind.Raider && foe.kind != FoeKind.Base);
             }
             DrawUnits(dt);
             if (game.Fall.active && !game.Fall.destroyed)
             {
                 float3 moon = game.System.ToReference(game.Fall.moon);
                 float radius = game.System.Descriptor.bodies[game.Fall.moon].radius;
-                float3 direction = math.normalizesafe(game.System.ToReference(game.Fall.world) - moon, new float3(0, 0, 1));
+                float3 planet = game.System.ToReference(game.Fall.world);
+                float3 direction = math.normalizesafe(planet - moon, new float3(0, 0, 1));
                 float3 above = math.normalizesafe(math.cross(direction, new float3(1, 0, 0)), new float3(0, 1, 0));
-                game.Player.ship.position = moon - direction * (radius * 5 + 400) + above * radius;
+                float lag = (float)game.Fall.TravelFraction(game.System.Clock) * (radius * 16 + 600);
+                game.Player.ship.position = moon - direction * (radius * 7 + 150 + lag)
+                    + math.cross(above, direction) * (radius * 5 + 120) + above * (radius * 2 + 40);
                 float ignition = math.saturate((float)(game.System.Clock - game.Fall.began - Moonfall.Assembly) / Moonfall.Ignition);
                 for (int i = 0; i < plumes.Count; i++)
                 {
@@ -310,17 +312,16 @@ namespace Infinigame
                     plume.localScale = new Vector3(2, (10 + math.sin(Time.time * 19 + i) * 0.6f) * ignition, 2);
                 }
                 game.Player.ship.velocity = float3.zero;
-                game.Player.ship.rotation = quaternion.LookRotationSafe(moon - game.Player.ship.position, new float3(0, 1, 0));
+                float3 sightline = math.normalize(moon - game.Player.ship.position) + math.normalize(planet - game.Player.ship.position);
+                game.Player.ship.rotation = quaternion.LookRotationSafe(math.normalize(sightline), above);
                 game.Player.ship.landed = false;
             }
             if (game.Fall.Finished(game.System.Clock))
             {
                 game.Fall.destroyed = true;
                 game.System.Bodies[game.Fall.moon].gameObject.SetActive(false);
-                game.System.Bodies[game.Fall.world].gameObject.SetActive(false);
                 collapse = 0;
                 game.Sounds.Nuke();
-                impact = Shapes.Part(transform, "Moon impact", Shapes.Sphere(1, 48), Shapes.Material("Glow", new Color(1, 0.3f, 0.7f)), Vector3.zero, Vector3.one, false).transform;
                 game.Hermit.Remark("The mind is collapsing. Everything is falling towards it. You are not dead. Stay with me.");
                 game.Write();
             }
@@ -370,8 +371,8 @@ namespace Infinigame
                 var colony = game.Colonies.FirstOrDefault(item => item.world == origin.world && item.region == origin.region);
                 float3 position = colony?.site ?? game.Player.Position, velocity = float3.zero;
                 if (origin.world != game.System.Reference) game.System.Descriptor.Rebase(origin.world, game.System.Reference, game.System.Clock, ref position, ref velocity);
-                units.Add(new Unit { model = model, motion = motion, beam = beam, ship = ship, escort = escort, front = origin, health = ship || origin.mindDead ? 350 : 25, position = position });
-                assembly = 3;
+                units.Add(new Unit { model = model, motion = motion, beam = beam, ship = ship, escort = escort, front = origin, health = ship || origin.mindDead ? 350 : 180, position = position });
+                assembly = ship ? 3 : 1.5f;
             }
             int escortIndex = 0;
             foreach (var unit in units)
@@ -447,7 +448,7 @@ namespace Infinigame
                             unit.motion.recoil = 1;
                             game.Sounds.Encounter(EncounterCue.Emitter, unit.position + up * 1.4f);
                         }
-                        var gun = Combat.Arms[1]; gun.damage = 0.15f * (unit.ship ? 22 : unit.front.mindDead ? 50 : 3);
+                        var gun = Combat.Arms[1]; gun.damage = 0.15f * (unit.ship ? 22 : unit.front.mindDead ? 64 : 28);
                         unit.beamEnd = game.Battle.FriendlyFire(unit.position + up * 1.4f, aim, gun);
                     }
                     unit.beam.SetPosition(0, unit.position + up * 1.4f - game.System.Anchor); unit.beam.SetPosition(1, unit.beamEnd - game.System.Anchor);
@@ -456,7 +457,7 @@ namespace Infinigame
                 {
                     var bolt = game.Battle.Bolts[i];
                     if (!bolt.hostile || !Combat.Crosses(bolt.position, bolt.velocity * dt, unit.position + up, unit.ship ? 8 : 1.4f)) continue;
-                    unit.health -= bolt.damage * (unit.front.mindDead ? 0.15f : 1); game.Battle.Bolts.RemoveAt(i);
+                    unit.health -= bolt.damage * (unit.front.mindDead ? 0.15f : unit.ship ? 1 : 0.65f); game.Battle.Bolts.RemoveAt(i);
                 }
                 if (unit.health <= 0)
                 {
@@ -471,11 +472,10 @@ namespace Infinigame
             if (game.Fall.active && !Collapsing)
             {
                 if (DeviceControls.VR) return;
-                float3 moon = game.System.ToReference(game.Fall.moon);
                 var followView = Camera.main.transform;
                 Vector3 behind = math.rotate(game.Player.ship.rotation, new float3(0, 8, -35));
                 followView.position = (Vector3)(game.Player.ship.position - game.System.Anchor) + behind;
-                followView.rotation = Quaternion.LookRotation(moon - game.System.Anchor - (float3)followView.position, math.rotate(game.Player.ship.rotation, new float3(0, 1, 0)));
+                followView.rotation = game.Player.ship.rotation;
                 return;
             }
             if (!Collapsing) return;
@@ -492,29 +492,75 @@ namespace Infinigame
             hole.gameObject.SetActive(Whiteout < 0.75f);
             float radius = 300 + collapse * 45;
             hole.localScale = Vector3.one * radius * math.saturate(collapse / 3);
-            if (impact != null)
+            if (impact == null)
             {
-                bool supernova = collapse >= 3 + Moonfall.Consumption;
-                impact.position = centre;
-                impact.localScale = Vector3.one * (supernova ? radius * Whiteout * 14 : radius * math.max(0, 2 - collapse));
-                impact.GetComponent<MeshRenderer>().sharedMaterial.color = supernova ? Color.white : new Color(1, 0.3f, 0.7f);
+                impact = new GameObject("Moon impact").transform;
+                impact.SetParent(transform, false);
+                fireball = Shapes.Part(impact, "Flash", Shapes.Sphere(1, 48), Shapes.Material("Glow", Color.white), Vector3.zero, Vector3.one, false).transform;
+                cloud = new GameObject("Rising fire cloud").transform;
+                cloud.SetParent(impact, false);
+                var plumeMesh = Shapes.Rock(12);
+                var embers = Shapes.Hull(new Color(0.95f, 0.46f, 0.10f), 24, new Color(0.42f, 0.09f, 0.012f));
+                Shapes.Part(cloud, "Column", plumeMesh, embers, Vector3.up * 0.7f, new Vector3(0.85f, 2.3f, 0.85f), false);
+                for (int i = 0; i < 12; i++)
+                {
+                    float angle = i * math.PI / 6;
+                    Shapes.Part(cloud, "Billow", plumeMesh, embers, new Vector3(math.cos(angle) * 0.65f, 1.35f + 0.08f * math.cos(3 * angle), math.sin(angle) * 0.65f),
+                        new Vector3(1.6f, 1.05f, 1.6f), false);
+                }
+                shockwave = Shapes.Part(impact, "Shock front", Shapes.Ring(0.97f, 1, 96), Shapes.Material("Glow", new Color(1, 0.66f, 0.21f)), Vector3.zero, Vector3.one, false).transform;
+                debris = new GameObject("Impact ejecta").transform;
+                debris.SetParent(impact, false);
+                var rock = Shapes.Rock(3);
+                var crust = Shapes.Hull(new Color(0.23f, 0.1f, 0.06f), 1, new Color(0.8f, 0.19f, 0.025f));
+                var scatter = new Unity.Mathematics.Random(731);
+                for (int i = 0; i < 96; i++)
+                {
+                    var chunk = Shapes.Part(debris, "Fragment", rock, crust, scatter.NextFloat3Direction() * scatter.NextFloat(0.5f, 1),
+                        scatter.NextFloat3(0.018f, 0.075f), false);
+                    chunk.transform.localRotation = scatter.NextQuaternionRotation();
+                }
             }
+            bool whiteHole = collapse >= 3 + Moonfall.Consumption;
+            float3 outward = math.normalizesafe(system.ToReference(game.Fall.moon) - system.ToReference(game.Fall.world), new float3(0, 1, 0));
+            impact.position = whiteHole ? centre : centre + outward * system.Descriptor.bodies[game.Fall.world].radius;
+            impact.up = outward;
+            float burst = math.saturate(collapse / 3);
+            fireball.localScale = Vector3.one * radius * (whiteHole ? Whiteout * 14 : (1 - burst) * math.exp(-4 * burst) * (0.7f + 6 * math.sqrt(burst)));
+            fireball.GetComponent<MeshRenderer>().sharedMaterial.color = whiteHole ? Color.white : Color.Lerp(Color.white, new Color(1, 0.22f, 0.035f), burst);
+            float plume = math.smoothstep(0, 0.55f, burst) * (1 - math.smoothstep(2.5f, 4, collapse));
+            cloud.localScale = Vector3.one * (radius * 1.45f * plume);
+            cloud.localPosition = Vector3.up * (radius * burst);
+            cloud.gameObject.SetActive(plume > 0);
+            shockwave.gameObject.SetActive(burst < 1);
+            shockwave.localScale = Vector3.one * radius * (0.7f + 5 * burst);
+            debris.gameObject.SetActive(collapse < 7);
+            debris.localScale = Vector3.one * radius * (0.7f + 8 * math.sqrt(math.saturate(collapse / 7)));
+            float overview = math.smoothstep(1, 3, collapse);
             for (int i = 0; i < system.Bodies.Length; i++)
             {
                 var body = system.Bodies[i];
-                if (i == game.Fall.moon || i == game.Fall.world) { body.gameObject.SetActive(false); continue; }
+                if (i == game.Fall.moon || i == game.Fall.world)
+                {
+                    body.gameObject.SetActive(i == game.Fall.world && collapse < 0.75f);
+                    continue;
+                }
+                if (overview == 0) continue;
                 float delay = i == 0 ? 10 : 1 + i * 0.1f;
                 float t = math.saturate((collapse - 3 - delay) / (Moonfall.Consumption - delay));
                 float3 offset = system.ToReference(i) - system.Anchor - centre;
                 // Compress astronomical distances for the visor's final system-wide view.
-                offset = math.normalizesafe(offset, new float3(0, 0, 1)) * radius * (4.5f + i % 7 * 0.45f);
-                body.transform.position = centre + math.rotate(quaternion.RotateY(t * t * 5), offset) * (1 - t * t);
-                float display = radius * (i == 0 ? 0.8f : body.Descriptor.kind == BodyKind.Gas ? 0.4f : 0.18f);
-                body.transform.localScale = Vector3.one * math.max(0.00001f, display / body.Descriptor.radius * (1 - t * t));
+                float3 orbit = math.normalizesafe(offset, new float3(0, 0, 1)) * radius * (4.5f + i % 7 * 0.45f);
+                body.transform.position = centre + math.lerp(offset, math.rotate(quaternion.RotateY(t * t * 5), orbit) * (1 - t * t), overview);
+                var parent = body.Descriptor.orbit.parent > 0 ? system.Descriptor.bodies[body.Descriptor.orbit.parent] : body.Descriptor;
+                float scale = i == 0 ? 0.8f / body.Descriptor.radius : (parent.kind == BodyKind.Gas ? 0.4f : 0.18f) / parent.radius;
+                body.transform.localScale = Vector3.one * math.lerp(1, radius * scale * (1 - t * t), overview);
             }
             var view = Camera.main.transform;
-            view.position = centre + new float3(radius * 4, radius * 3, -radius * 10);
-            view.LookAt(centre);
+            float pullback = math.smoothstep(0, 2, collapse);
+            float3 chase = game.Player.ship.position - system.Anchor + math.rotate(game.Player.ship.rotation, new float3(0, 8, -35));
+            view.position = (Vector3)centre + Vector3.Slerp(chase - centre, new Vector3(4, 3, -10) * radius, pullback);
+            view.rotation = Quaternion.Slerp(game.Player.ship.rotation, Quaternion.LookRotation(centre - (float3)view.position), pullback);
             if (DeviceControls.VR && UnityEngine.XR.InputDevices.GetDeviceAtXRNode(UnityEngine.XR.XRNode.Head).TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out Quaternion head)) view.rotation *= head;
         }
     }

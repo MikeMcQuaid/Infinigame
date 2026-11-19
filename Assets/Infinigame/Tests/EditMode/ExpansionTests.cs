@@ -53,7 +53,7 @@ namespace Infinigame.Tests
         [Test]
         public void ColonySpendsResourcesProducesAndCanBeRaided()
         {
-            var colony = new Colony { world = 3, ore = 100, ice = 100, salvage = 100 };
+            var colony = new Colony { world = 3, ore = 100, ice = 100 };
             Assert.IsTrue(colony.Build(Building.Depot));
             Assert.IsTrue(colony.Build(Building.Mine));
             Assert.IsTrue(colony.Build(Building.Drill));
@@ -171,11 +171,11 @@ namespace Infinigame.Tests
         }
 
         [Test]
-        public void MoonImpactHasContinuousEndpointsAndLeavesRubble()
+        public void MoonUsesItsOrdinaryOrbitBeforeTheOpeningCutAndTouchesThePlanetAtImpact()
         {
             var system = SolarSystemDescriptor.Generate(1);
             var fall = new Moonfall { moon = 4, world = 3, began = 10, duration = 60, active = true };
-            Assert.Less(math.distance(system.PositionAt(4, 10), fall.Position(system, 10)), 0.001);
+            Assert.Less(math.distance(system.PositionAt(4, 9.99), fall.Position(system, 9.99)), 0.001);
             Assert.AreEqual(system.bodies[3].radius + system.bodies[4].radius, math.distance(system.PositionAt(3, 70), fall.Position(system, 70)), 0.001);
             Assert.IsFalse(fall.Finished(69));
             Assert.IsTrue(fall.Finished(70));

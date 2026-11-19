@@ -33,7 +33,7 @@ namespace Infinigame.Tests
             early.factory = true; War.Kill(early, false, 100);
             Assert.Greater(early.aliens, 0, "The replicators must finish the war");
         }
-        [Test] public void FactoriesReplicateAndStopWhenTheirWarIsWon()
+        [Test] public void AControlledRegionKeepsAHuntingPackAndAReproducingBrood()
         {
             var front = War.Create(3, 1, 0);
             front.kills = War.RequiredKills(front);
@@ -41,11 +41,11 @@ namespace Infinigame.Tests
             front.mindDead = true;
             float initial = front.dogs;
             for (int i = 0; i < 600; i++) War.Step(front, 1);
-            Assert.AreEqual(0, front.aliens);
+            Assert.That(front.aliens, Is.GreaterThan(0).And.LessThan(front.dogs / 4));
             Assert.Greater(front.dogs, initial);
             float ended = front.dogs;
             War.Step(front, 600);
-            Assert.AreEqual(ended, front.dogs);
+            Assert.AreEqual(ended, front.dogs, 0.1f, "The patrol reaches a sustainable population");
             Assert.IsFalse(War.CanSpread(0, 2));
             Assert.IsTrue(War.CanSpread(0, 1));
         }

@@ -5,10 +5,11 @@ using UnityEngine;
 namespace Infinigame
 {
     // A few articulated joints keep the generated bodies readable in motion.
+    [DefaultExecutionOrder(-10)]
     public class MachineMotion : MonoBehaviour
     {
         public bool quadruped, seated, working;
-        public float speed, strike, recoil;
+        public float speed, strike, recoil, aimPitch;
         public int weapon;
         public Transform look, planet;
         public bool LandedFoot { get; private set; }
@@ -90,18 +91,20 @@ namespace Infinigame
                 }
             if (!quadruped && arms != null)
             {
-                if (weapon > 0)
+                if (!seated && look == null)
                 {
                     for (int i = 0; i < arms.Length; i++)
                     {
+                        // A beam or rail gauntlet fires from the right wrist.
+                        if (i == 0 && (weapon == 1 || weapon == 3)) continue;
                         float side = i == 0 ? -1 : 1;
-                        arms[i].localRotation = Quaternion.Euler(weapon == 1 ? -75 : weapon == 3 ? -82 : weapon == 4 ? -35 : 25, weapon == 4 ? side * 55 : 0, side * (weapon == 3 ? 30 : weapon == 4 ? 65 : 10));
-                        elbows[i].localRotation = Quaternion.Euler(weapon == 1 ? -15 : weapon == 3 ? -5 : -45, 0, weapon == 3 ? side * 70 : 0);
+                        arms[i].localRotation = Quaternion.Euler((weapon == 1 ? -75 : weapon == 3 ? -82 : weapon == 4 ? -35 : weapon == 0 ? -56 : 25) - aimPitch, weapon == 4 ? side * 55 : weapon == 3 ? -12 : 0, side * (weapon == 4 ? 65 : weapon == 3 ? -5 : 10));
+                        elbows[i].localRotation = Quaternion.Euler(weapon == 1 ? -15 : weapon == 3 ? -5 : weapon == 0 ? -53 : -45, 0, 0);
                     }
                 }
                 torso.localRotation = Quaternion.Euler(recoil * 16, strike * 18, recoil * 9);
-                arms[1].localRotation *= Quaternion.Euler(-strike * 85, 0, -strike * 12);
-                elbows[1].localRotation *= Quaternion.Euler(strike * 35, 0, 0);
+                arms[1].localRotation *= Quaternion.Euler(-strike * 40, 0, -strike * 12);
+                elbows[1].localRotation *= Quaternion.Euler(strike * 48, 0, 0);
             }
             if (look != null)
             {

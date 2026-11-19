@@ -64,7 +64,7 @@ namespace Infinigame.Tests
         {
             var front = War.Create(3, 1, 0); front.factory = true;
             Assert.IsFalse(War.Build(front, true));
-            front.aliens = 0;
+            front.mindDead = true; front.dogs = 24; front.aliens = 4;
             Assert.IsTrue(War.Build(front, true));
             Assert.AreEqual(1, front.ships, "The first escort is ready without waiting for replication");
             Assert.IsFalse(War.Build(front, true));

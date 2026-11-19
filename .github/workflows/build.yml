@@ -42,6 +42,9 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Test signing and distribution with temporary credentials
+        if: matrix.name == 'macOS' && !inputs.desktop-only
+        run: script/test-testflight
       - name: Prepare Unity and native speech
         id: prepare
         uses: ./.github/actions/prepare-unity
@@ -53,10 +56,19 @@ jobs:
         uses: ./.github/actions/compile-unity
         with:
           target: ${{ matrix.target }}
-          method: ${{ matrix.method }}
+          method: ${{ matrix.name == 'macOS' && !inputs.desktop-only && 'Infinigame.Editor.Platforms.CIMacAndTestFlight' || matrix.method }}
           version: ''
           unity-email: ${{ secrets.UNITY_EMAIL }}
           unity-password: ${{ secrets.UNITY_PASSWORD }}
+      - name: Archive the native Mac TestFlight app without signing
+        if: matrix.name == 'macOS' && !inputs.desktop-only
+        run: |
+          xcodebuild -quiet -project Build/MacStore/MacStore.xcodeproj -scheme Infinigame \
+            -configuration Release -destination 'generic/platform=macOS' \
+            -archivePath "$PWD/Build/TestFlight/macOS.xcarchive" CODE_SIGNING_ALLOWED=NO archive
+          app=Build/TestFlight/macOS.xcarchive/Products/Applications/Infinigame.app/Contents
+          test -x "$app/MacOS/Infinigame"
+          [[ "$(plutil -extract CFBundleIdentifier raw "$app/Info.plist")" == com.mikemcquaid.Infinigame ]]
       - name: Package builds
         env:
           PLATFORM: ${{ matrix.name }}
