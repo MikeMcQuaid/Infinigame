@@ -37,8 +37,11 @@ namespace Infinigame.Editor
             // GameCI checks its reporter's exact success message after Unity exits.
             Console.WriteLine("Build succeeded!");
         }
-        public static void CIMac() => BuildCI(() => Build("Build/StandaloneOSX/Infinigame.app", BuildTarget.StandaloneOSX));
-        public static void CIMacTestFlight() => BuildCI(() =>
+        static void MacPlayer() => Build("Build/StandaloneOSX/Infinigame.app", BuildTarget.StandaloneOSX);
+        public static void CIMac() => BuildCI(MacPlayer);
+        public static void CIMacAndTestFlight() => BuildCI(() => { MacPlayer(); MacTestFlight(); });
+        public static void CIMacTestFlight() => BuildCI(MacTestFlight);
+        static void MacTestFlight()
         {
             var standalone = UnityEditor.Build.NamedBuildTarget.Standalone;
             string identifier = PlayerSettings.GetApplicationIdentifier(standalone);
@@ -59,7 +62,7 @@ namespace Infinigame.Editor
                 PlayerSettings.SetApplicationIdentifier(standalone, identifier);
                 AssetDatabase.DeleteAsset(plugins);
             }
-        });
+        }
         public static void CIWindows() => BuildCI(() => { Windows(); SteamDeck(); });
         public static void CIIOS() => BuildCI(IOS);
         public static void Windows()

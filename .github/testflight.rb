@@ -49,9 +49,23 @@ class TestFlight
       .select { |upload| upload.dig('attributes', 'platform') == @platform }
   end
 
+  def self.signing_key
+    pem = ENV.fetch('APP_STORE_KEY').strip.gsub(/\\r\\n|\\n/, "\n")
+    unless pem.start_with?('-----BEGIN ')
+      pem = Base64.strict_decode64(pem.delete(" \t\r\n"))
+      pem = "-----BEGIN PRIVATE KEY-----\n#{Base64.encode64(pem)}-----END PRIVATE KEY-----" unless pem.start_with?('-----BEGIN ')
+    end
+    key = OpenSSL::PKey.read(pem, '')
+    raise ArgumentError unless key.is_a?(OpenSSL::PKey::EC) && key.private? && key.group.curve_name == 'prime256v1'
+    yield pem.strip + "\n" if block_given?
+    key
+  rescue ArgumentError, OpenSSL::OpenSSLError
+    raise 'Set NOTARIZATION_KEY to the contents of the App Store Connect .p8 private key or its base64 encoding.'
+  end
+
   def initialize(platform = ENV.fetch('TESTFLIGHT_PLATFORM', 'iOS'))
     @platform = PLATFORMS.fetch(platform)
-    @key = OpenSSL::PKey.read(ENV.fetch('APP_STORE_KEY'))
+    @key = TestFlight.signing_key
     apps = list('/v1/apps', 'filter[bundleId]' => 'com.mikemcquaid.Infinigame')
     raise 'Expected one Infinigame App Store Connect record' unless apps.length == 1
     @app = apps.first
@@ -289,6 +303,10 @@ end
 
 if $PROGRAM_NAME == __FILE__
   begin
+    if ARGV.length == 2 && ARGV.first == 'write-key'
+      TestFlight.signing_key { |pem| File.open(ARGV.last, 'wb', 0600) { |file| file.write(pem) } }
+      exit
+    end
     case ARGV
     when ['next-build-number'] then puts TestFlight.new.next_build_number(Integer(`script/build-number`, 10))
     when ['record-public'] then TestFlight.record_public

@@ -13,7 +13,7 @@ namespace Infinigame.Tests
             var front = War.Create(3, depth, rank);
             front.factory = true; front.dogs = 0; front.mindDead = true;
             War.Step(front, 1800);
-            Assert.AreEqual(0, front.aliens);
+            Assert.That(front.aliens, Is.GreaterThan(0).And.LessThan(front.dogs / 4));
             Assert.Greater(front.dogs, 0);
         }
         [TestCase(2, 0)] [TestCase(6, 2)] [TestCase(7, 4)] [TestCase(11, 12)] [TestCase(12, 0)]

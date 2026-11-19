@@ -42,10 +42,11 @@ namespace Infinigame.Core
             front.exposure[weapon] = math.min(100, front.exposure[weapon] + amount);
         }
         public static int RequiredKills(Front front) => 4 + front.rank + (front.depth - 1) * 2;
+        public static bool Controlled(Front front) => front.factory && front.mindDead && front.aliens <= math.max(5, front.dogs * 0.25f);
         public static bool CanSpread(int origin, int destination) => math.abs(origin - destination) <= 1;
         public static bool Build(Front front, bool ships)
         {
-            if (ships ? front.shipyard || !front.factory || front.aliens > 0 : front.factory || !front.mindDead && front.kills < RequiredKills(front)) return false;
+            if (ships ? front.shipyard || !Controlled(front) : front.factory || !front.mindDead && front.kills < RequiredKills(front)) return false;
             if (ships) { front.shipyard = true; front.ships = math.max(1, front.ships); }
             else { front.factory = true; front.dogs = math.max(8 + front.rank * 4, front.dogs); }
             return true;
@@ -63,14 +64,20 @@ namespace Infinigame.Core
                 float dt = math.min(1, seconds); seconds -= dt;
                 for (int weapon = 0; front.exposure != null && weapon < front.exposure.Length; weapon++) front.exposure[weapon] = math.max(0, front.exposure[weapon] - dt * 0.5f);
                 float growth = (0.004f + front.rank * 0.0005f + (front.depth - 1) * 0.001f) * pressure;
-                if (front.aliens > 0)
+                if (front.aliens > 0 || front.factory)
                 {
                     float hostile = front.aliens, friendly = front.dogs;
-                    front.aliens = math.max(0, hostile + dt * (front.mindDead ? -friendly * 0.65f : hostile * growth * (1 - hostile / 4000) - friendly * 0.015f));
-                    // An intact factory can restart its assembly line after losing every patrol.
-                    front.dogs = math.max(0, friendly + dt * ((front.factory ? math.max(2, friendly) * (front.mindDead ? 0.09f : 0.008f) : 0) - (front.mindDead ? 0 : hostile * 0.002f * pressure)));
-                    if (!front.factory || !front.mindDead) front.aliens = math.max(1, front.aliens);
-                    else if (front.aliens < 0.5f) front.aliens = 0;
+                    // Underground clutches keep hatching after the local mind is gone.
+                    float clutch = 3 + front.rank;
+                    float hatching = math.max(clutch, hostile) * growth * (1 - hostile / 4000);
+                    float hunted = math.min(math.max(0, hostile - clutch), friendly * (front.mindDead ? 0.5f : 0.18f));
+                    front.aliens = math.max(1, hostile + dt * (hatching - hunted));
+                    if (front.factory)
+                    {
+                        float pack = 64 + front.rank * 8;
+                        float assembly = math.max(4, friendly) * (front.mindDead ? 0.13f : 0.09f) * math.saturate(1 - friendly / pack);
+                        front.dogs = math.max(0, friendly + dt * (assembly - math.min(assembly * 0.65f, hostile * 0.0008f * pressure)));
+                    }
                 }
                 if (front.alienShips > 0)
                 {

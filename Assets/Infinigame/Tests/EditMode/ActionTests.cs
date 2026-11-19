@@ -140,6 +140,22 @@ namespace Infinigame.Tests
         }
 
         [Test]
+        public void BackMissilesClearThePackBeforeTurningTowardsTheAim()
+        {
+            var bolts = new List<Bolt>();
+            var rng = new Random(2);
+            float3 up = World.Land(World.Planet), aim = World.Tangent(up);
+            float3 pack = up * (World.Planet.GroundRadius(up) + 2);
+            Combat.Fire(Combat.Arms[2], pack, aim, float3.zero, ref rng, bolts, launchUp: up);
+            Assert.Greater(math.dot(math.normalize(bolts[0].velocity), up), 0.99f);
+            for (int i = 0; i < 45; i++)
+                Combat.Step(bolts, new List<Foe>(), World.Planet, pack, float3.zero, 1, 1f / 60, null);
+            Assert.AreEqual(1, bolts.Count);
+            Assert.Greater(math.dot(bolts[0].position - pack, up), 2);
+            Assert.Greater(math.dot(math.normalize(bolts[0].velocity), aim), 0.99f);
+        }
+
+        [Test]
         public void AMissileFromTheLauncherFindsARaiderOverhead()
         {
             float3 up = World.Land(World.Planet), along = World.Tangent(up);

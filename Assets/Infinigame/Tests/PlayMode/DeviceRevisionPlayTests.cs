@@ -33,6 +33,16 @@ namespace Infinigame.Tests
                 Assert.IsTrue(control.Poll().fire, "A short tap keeps a railgun charging after the finger lifts");
                 yield return Seconds(0.7f);
                 Assert.IsFalse(control.Poll().fire, "The railgun releases automatically after charging");
+                var meters = GameObject.Find("Helmet instruments/Visor circuit").GetComponent<RectTransform>();
+                var controls = GameObject.Find("Touch 3").GetComponent<RectTransform>();
+                var gaugeCorners = new Vector3[4];
+                var controlCorners = new Vector3[4];
+                meters.GetWorldCorners(gaugeCorners);
+                controls.GetWorldCorners(controlCorners);
+                Assert.Greater(gaugeCorners[0].y, controlCorners[2].y, "The lower-left gauges must clear the touch toolbar");
+                var muzzle = Camera.main.WorldToViewportPoint(game.GetComponent<Arms>().Muzzle(Player.Weapon) - Solar.Anchor);
+                Assert.That(muzzle.x, Is.InRange(0f, 1f), "The rail gauntlet must be visible when aiming");
+                Assert.That(muzzle.y, Is.InRange(0f, 1f));
                 yield return ReworkShot("revision2-touch");
                 var thrustLabel = GameObject.Find("Touch 1/Label").GetComponent<UnityEngine.UI.Text>();
                 Assert.AreEqual(1, thrustLabel.cachedTextGenerator.lineCount, "A touch button must not wrap one word across two lines");
@@ -136,6 +146,20 @@ namespace Infinigame.Tests
             yield return null;
             Assert.GreaterOrEqual(game.Outpost.OuterLeft, 2);
             Assert.GreaterOrEqual(game.Battle.Foes.FindAll(foe => foe.guardian).Count, 2);
+            var shield = game.Outpost.Shield;
+            Assert.Greater(Unity.Mathematics.math.distance(game.Outpost.LandingSite, shield.centre), shield.radius + Infinigame.Core.Combat.ShipRadius);
+            foreach (var guard in game.Battle.Foes.FindAll(foe => foe.guardian))
+            {
+                var guardUp = math.normalize(guard.position);
+                Assert.AreEqual(Body.GroundRadius(guardUp) + Infinigame.Core.Combat.SentryHeight, math.length(guard.position), 0.05f);
+            }
+            int sentry = game.Battle.Foes.FindIndex(foe => foe.guardian);
+            var idle = game.Battle.Foes[sentry];
+            idle.position += math.normalize(idle.position) * 3;
+            game.Battle.Foes[sentry] = idle;
+            yield return null; yield return null;
+            idle = game.Battle.Foes[sentry];
+            Assert.AreEqual(Body.GroundRadius(math.normalize(idle.position)) + Infinigame.Core.Combat.SentryHeight, math.length(idle.position), 0.05f);
             Assert.IsTrue(GameObject.Find("Locked equipment field").activeInHierarchy);
             foreach (var foe in game.Battle.Foes) if (foe.stationary) Assert.AreEqual(Infinigame.Core.FoeKind.Sentry, foe.kind);
             game.Outpost.Killed(Infinigame.Core.FoeKind.Mind);

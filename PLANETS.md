@@ -6,7 +6,7 @@ The mission table in `MISSIONS.md` is executable content. The encounter ideas be
 
 | World | Identity and existing tools | Proposed encounter objective | Why behaviour changes |
 |---|---|---|---|
-| Earth | Emergency melee, then beam, surface thrusters and orbital booster | Three short regional burrows: entrance breach, branching nest, vertical brood | Learn one capability at a time; use digging to flank, then robots to hold cleared ground. |
+| Earth | Emergency fists, hand beam, back missiles, rail gauntlet and hemisphere lasers before ship recovery | Three short regional burrows: entrance breach, branching nest, vertical brood | Learn one capability at a time; use digging to flank, then robots to hold cleared ground. |
 | Luna | Low gravity, exposed ground turrets and flying guards; suit and ship missiles | Break air cover before opening the mind's shield | Use terrain and controlled boosts; reserve guided fire for machines and ships. |
 | Mars | Breachers and spitters; suit rail and ship beams | Cut a tunnelling brood's reinforcement routes | Watch below as well as ahead; pierce narrow firing lanes or dig another approach. |
 | Venus | Heat, reduced visibility and shields; cloak, heat plating and ship rail | Disable separated shield organs in a dense nest | Reposition under cloak and fight at close range, avoiding straight exchanges through shields. |
@@ -17,8 +17,8 @@ The mission table in `MISSIONS.md` is executable content. The encounter ideas be
 
 Optional later side expeditions could use Europa for under-ice traversal, Io for short volcanic raids and the asteroid belt for fleet interception. Add them only when they introduce a new decision; a different sky and a larger health bar are not enough. Generated systems should recombine established encounter rules and routes, add bodies and production pressure and preserve readable enemy health and damage.
 
-Keep XP choices to damage, fire/charge rate, toughness, energy recharge and repair/reload. The mandatory level-up screen pauses play. Salvage purchases use the same understandable modifications. The first beam should remain useful through investment: higher damage, faster energy recovery and a later chaining milestone. Explain these mechanics through the companion as they become available.
+Keep XP choices to damage, fire/charge rate, toughness, energy recharge and repair/reload. The mandatory level-up screen pauses play. Every level offers all five attributes. The first beam should remain useful through investment: higher damage, faster energy recovery and a later chaining milestone. Explain these mechanics through the companion as they become available.
 
-![The compulsory three-choice upgrade screen](docs/level-up.png)
+![The level-up screen with five attributes](docs/level-up.png)
 
 Death restarts the current burrow. Completed regional objectives and permanent equipment remain. Do not award player XP for unlimited autonomous robot kills. Important movement equipment remains a guaranteed objective reward.

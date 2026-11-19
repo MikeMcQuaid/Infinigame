@@ -9,7 +9,7 @@ namespace Infinigame.Core
     public static class Narrative
     {
         static string story, factions;
-        public static float3[] Costs { get; private set; }
+        public static float2[] Costs { get; private set; }
         public static string[] Explanations { get; private set; }
 
         static IEnumerable<string[]> Rows(string text, int columns) => text.Split('\n').Where(line => line.TrimStart().StartsWith("|"))
@@ -28,16 +28,16 @@ namespace Infinigame.Core
                 parsed[i] = new Mission { name = row[1], world = row[2], guards = guard, count = count,
                     wins = row[5].Split(',').Where(value => value.Trim().Length > 0).Select(value => (Gear)Enum.Parse(typeof(Gear), value.Trim())).ToArray(), task = row[6], brief = row[7] };
             }
-            var costs = new float3[9];
+            var costs = new float2[9];
             var explanations = new string[9];
-            foreach (var row in Rows(colonies, 5))
+            foreach (var row in Rows(colonies, 4))
             {
                 if (!Enum.TryParse(row[0], out Building building)) continue;
                 int index = (int)building;
                 if (index < 0 || index >= costs.Length || explanations[index] != null) throw new FormatException("Check the building identifiers in COLONIES.md.");
-                costs[index] = new float3(int.Parse(row[1]), int.Parse(row[2]), int.Parse(row[3]));
+                costs[index] = new float2(int.Parse(row[1]), int.Parse(row[2]));
                 if (math.any(costs[index] < 0)) throw new FormatException("Colony costs cannot be negative.");
-                explanations[index] = row[4];
+                explanations[index] = row[3];
             }
             if (explanations.Skip(7).Any(line => string.IsNullOrWhiteSpace(line)) || !plot.Contains("## Public") || !sides.Contains("## Foundry"))
                 throw new FormatException("Check the colony explanations and the Public section in STORY.md.");

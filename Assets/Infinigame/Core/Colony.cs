@@ -10,16 +10,15 @@ namespace Infinigame.Core
     public class Colony
     {
         public int world, region, buildings, robots = 1;
-        public float ore, ice, salvage, raid, fabrication;
+        public float ore, ice, raid, fabrication;
         public float3 site;
         public bool Has(Building building) => (buildings & 1 << (int)building) != 0;
-        public static float3 Cost(Building building) => Narrative.Costs[(int)building];
-        public bool Spend(float3 cost)
+        public static float2 Cost(Building building) => Narrative.Costs[(int)building];
+        public bool Spend(float2 cost)
         {
-            if (math.any(cost < 0) || ore < cost.x || ice < cost.y || salvage < cost.z) return false;
+            if (math.any(cost < 0) || ore < cost.x || ice < cost.y) return false;
             ore -= cost.x;
             ice -= cost.y;
-            salvage -= cost.z;
             return true;
         }
         public bool Build(Building building)
@@ -45,8 +44,7 @@ namespace Infinigame.Core
             while (raid >= 180f)
             {
                 raid -= 180f;
-                if (Has(Building.Turret) && Spend(new float3(2, 0, 0))) salvage += 4f;
-                else if (robots > 0) robots--;
+                if (!(Has(Building.Turret) && Spend(new float2(2, 0))) && robots > 0) robots--;
             }
         }
     }
@@ -75,17 +73,24 @@ namespace Infinigame.Core
     [Serializable]
     public class Moonfall
     {
-        public const float Assembly = 5, Ignition = 4, Consumption = 20, Supernova = 4;
+        public const float Assembly = 1, Ignition = 1, Transit = 10, Consumption = 20, WhiteHole = 4;
         public int moon = -1, world = -1;
-        public double began, duration = 90;
+        public double began, duration = Assembly + Ignition + Transit;
         public bool active, destroyed;
-        // The target keeps moving while the moon leaves its orbit; the initial position is exact.
+        public double TravelFraction(double time)
+        {
+            double transit = math.max(1, duration - Assembly - Ignition);
+            double seconds = math.clamp(time - began - Assembly - Ignition, 0, transit);
+            // Accelerate from rest for one second, then hold that speed until contact.
+            return (seconds < 1 ? 0.5 * seconds * seconds : seconds - 0.5) / (transit - 0.5);
+        }
         public double3 Position(SolarSystemDescriptor system, double time)
         {
-            double t = math.saturate((time - began - Assembly - Ignition) / math.max(1, duration - Assembly - Ignition));
-            double3 start = system.OrbitalPosition(moon, time), target = system.OrbitalPosition(world, time);
-            double3 impact = target + math.normalizesafe(start - target) * (system.bodies[world].radius + system.bodies[moon].radius);
-            return math.lerp(start, impact, t * t * (3 - 2 * t));
+            if (time < began) return system.OrbitalPosition(moon, time);
+            double3 outward = system.OrbitalPosition(moon, began) - system.OrbitalPosition(world, began);
+            double contact = system.bodies[world].radius + system.bodies[moon].radius;
+            double clearance = math.max(20000, math.length(outward) - contact);
+            return system.OrbitalPosition(world, time) + math.normalize(outward) * (contact + clearance * (1 - TravelFraction(time)));
         }
         public bool Finished(double time) => active && time >= began + duration;
     }

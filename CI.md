@@ -51,7 +51,7 @@ The repository already has the Unity credentials, App Store Connect API key, cer
 
 | Secret | Value |
 |---|---|
-| `NOTARIZATION_KEY` | Contents of the App Store Connect `.p8` API key |
+| `NOTARIZATION_KEY` | Contents of the App Store Connect `.p8` private key, as PEM or base64 |
 | `NOTARIZATION_KEY_ID` | API key ID |
 | `NOTARIZATION_ISSUER_ID` | API issuer ID |
 | `APP_STORE_CERTIFICATES` | Base64-encoded `.p12` containing Apple Distribution and, for macOS, Mac Installer Distribution with their private keys |
@@ -61,10 +61,20 @@ The repository already has the Unity credentials, App Store Connect API key, cer
 
 Both platforms use the same team API key. To replace it, go to **App Store Connect > Users and Access > Integrations > Team Keys**, generate a key with upload access and download its `.p8`. Update the three corresponding `NOTARIZATION_*` secrets together. [Apple’s team API key guide](https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api/)
 
+If the release reports an invalid key, load the original file directly with `gh secret set NOTARIZATION_KEY < /path/to/AuthKey_KEYID.p8`. The key ID and issuer ID must belong to that key.
+
 ## Tester groups
 
 - **Internal testers.** Enable automatic distribution on your internal group in App Store Connect. For a manually managed group, the workflow assigns the build to the sole internal group or the one named by the `TESTFLIGHT_INTERNAL_GROUP` Actions variable. Testers accept the invitation with their App Store Connect account. [Internal testing](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers/)
 - **Public testers.** Use the external group that owns the invitation. The default name is **Public Beta**. If its name differs, set the `TESTFLIGHT_PUBLIC_GROUP` Actions variable. Complete the beta test information and review contact using the copy in `TESTFLIGHT.md`. Use a team API key with the App Manager or Admin role to manage testers and submit for review. Testers open the invitation on their device and install Infinigame with TestFlight. [Actions variables](https://github.com/MikeMcQuaid/Infinigame/settings/variables/actions) · [External testing](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers/) · [Join the beta](https://testflight.apple.com/join/1GUH8Zjn)
+
+Once the native macOS build is available to a group, open its **Settings** tab and disable **Test iPhone and iPad apps on Apple silicon Macs**. This keeps Mac testers on the native keyboard-and-mouse build. [Apple’s TestFlight group settings](https://developer.apple.com/help/app-store-connect/test-a-beta-version/test-iphone-and-ipad-apps-on-macs-with-apple-silicon/)
+
+## Protecting main
+
+The PR check **Required platform builds** requires the Windows and Steam Deck players, desktop Mac player, native Mac TestFlight archive and iOS device app to build. The release scripts run with temporary credentials. A separate job reads both platforms’ upload histories with the configured Apple key, using release code from the base branch. Signing, upload and beta review happen after merge.
+
+After the check has passed once, open **Settings > Rules > Rulesets > New ruleset > New branch ruleset**. Set enforcement to **Active**, target the default branch and leave the bypass list empty. Enable **Require a pull request before merging** (zero approvals works for a solo maintainer), **Require status checks to pass** and **Require branches to be up to date before merging**. Add **Required platform builds** with **GitHub Actions** as the source and save. [Repository rulesets](https://github.com/MikeMcQuaid/Infinigame/settings/rules) · [GitHub ruleset settings](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)
 
 ## Builds and retries
 

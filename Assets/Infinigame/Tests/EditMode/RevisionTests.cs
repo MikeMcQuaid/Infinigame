@@ -36,18 +36,18 @@ namespace Infinigame.Tests
         }
 
         [Test]
-        public void FactoriesReplicateOnlyWhileEnemiesRemain()
+        public void FactoriesOutbreedTheBroodAndOldClearedRegionsRepopulate()
         {
             var front = War.Create(3, 1, 0);
             front.kills = War.RequiredKills(front);
             Assert.IsTrue(War.Build(front, false));
             front.aliens = 20; // The player has tipped the balance.
             War.Step(front, 30);
-            Assert.Greater(front.dogs, 4);
+            Assert.Greater(front.dogs, 24, "A new pack should at least triple within half a minute");
             front.aliens = 0;
-            float before = front.dogs;
             War.Step(front, 240);
-            Assert.AreEqual(before, front.dogs);
+            Assert.Greater(front.aliens, 0, "Broods return on older cleared factory saves");
+            Assert.Greater(front.dogs, front.aliens * 4);
         }
 
         [Test]

@@ -63,6 +63,7 @@ namespace Infinigame.Tests
             input.fire = true; yield return Seconds(0.6f);
             Assert.AreEqual(fired, game.Battle.Fired);
             Assert.Greater(game.Battle.RailCharge, 0.3f);
+            Assert.Less(Camera.main.fieldOfView, 58);
             input.fire = false; yield return null; yield return null;
             Assert.Greater(game.Battle.Fired, fired);
             game.Battle.Add(FoeKind.Sentry, Player.Position + Player.walker.forward * 5);

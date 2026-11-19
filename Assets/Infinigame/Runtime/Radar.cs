@@ -32,7 +32,9 @@ namespace Infinigame
             globe.gameObject.SetActive(visible);
             int used = 0;
             var camera = Camera.main;
-            transform.SetPositionAndRotation(camera.ViewportToWorldPoint(new Vector3(0.87f, DeviceControls.Touch ? 0.66f : 0.19f, 3)), camera.transform.rotation);
+            transform.SetPositionAndRotation(camera.ViewportToWorldPoint(new Vector3(0.87f, DeviceControls.Touch ? 0.75f : 0.83f, 3)), camera.transform.rotation);
+            if (!game.Player.flying)
+                transform.rotation = Quaternion.LookRotation(transform.position - camera.transform.position, camera.transform.up);
             transform.localScale = Vector3.one * 0.34f;
             if (DeviceControls.VR && game.Player.Seated)
             {
@@ -42,10 +44,11 @@ namespace Infinigame
             }
             void Contact(float3 position, bool objective, bool airborne = false, bool brain = false)
             {
-                float3 local = camera.transform.InverseTransformDirection(position - game.Player.Position);
+                float3 origin = game.Player.flying ? game.Player.Position : game.Player.ThirdPerson ? game.Player.Position + math.normalizesafe(game.Player.Position) * Walker.EyeHeight : (float3)camera.transform.position + game.System.Anchor;
+                float3 local = camera.transform.InverseTransformDirection(position - origin);
                 local = math.normalizesafe(local, new float3(0, 0, 1));
-                // Ahead is the upper hemisphere, behind the lower. Depth remains visible through the globe.
-                local = math.rotate(quaternion.RotateX(math.radians(-55)), local);
+                // The cockpit tilts its display. Helmet contacts keep their head-relative bearings.
+                if (game.Player.flying) local = math.rotate(quaternion.RotateX(math.radians(-55)), local);
                 if (used == contacts.Count) contacts.Add(Shapes.Part(transform, "Contact", marker, near, Vector3.zero, Vector3.one, false).transform);
                 var contact = contacts[used++];
                 contact.gameObject.SetActive(true);

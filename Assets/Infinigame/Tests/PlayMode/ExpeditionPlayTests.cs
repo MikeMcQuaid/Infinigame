@@ -2,6 +2,7 @@ using System.Linq;
 using System.Collections;
 using Infinigame.Core;
 using NUnit.Framework;
+using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.TestTools;
 
@@ -26,11 +27,16 @@ namespace Infinigame.Tests
             yield return null; yield return null;
             Assert.IsTrue(game.Levelling);
             Assert.AreEqual(0, Time.timeScale);
-            Assert.AreEqual(3, game.Items.Length);
+            Assert.AreEqual(6, game.Items.Length);
             yield return new WaitForSecondsRealtime(0.3f);
             yield return ReworkShot("expedition-level");
             yield return Press(new Controls { menu = true });
             Assert.IsTrue(game.Levelling);
+            yield return Press(new Controls { confirm = true });
+            yield return Press(new Controls { confirm = true });
+            Assert.IsTrue(game.Levelling, "Activating the same attribute twice must not spend XP");
+            Assert.AreEqual(0, game.Progression.level);
+            yield return Press(new Controls { up = true });
             yield return Press(new Controls { confirm = true });
             Assert.IsFalse(game.Paused);
             Assert.AreEqual(1, game.Progression.level);
@@ -79,6 +85,12 @@ namespace Infinigame.Tests
                 front.factory = front.mindDead = true; front.aliens = 0;
             }
             Assert.IsTrue(game.Frontier.GroundControlled(Home));
+            float3 normal = math.normalize(Player.Position + Player.walker.forward * 75);
+            game.Battle.Add(FoeKind.Sentry, normal * (Body.GroundRadius(normal) + Combat.SentryHeight));
+            var patrol = game.Battle.Foes.Last();
+            patrol.patrol = true; game.Battle.Foes[^1] = patrol;
+            yield return null; yield return null;
+            Assert.IsTrue(game.Battle.Foes.Any(foe => foe.seed == patrol.seed && foe.patrol), "Patrols can still fight the pack in controlled regions");
             game.Frontier.State(Home, 1).factory = false;
             Assert.IsFalse(game.Frontier.GroundControlled(Home));
             yield return Press(new Controls { systemView = true });
@@ -120,7 +132,7 @@ namespace Infinigame.Tests
                 yield return Press(new Controls { interact = true });
                 yield return EscapeAndBuild(stage);
                 Assert.AreEqual(stage + 1, game.Stage);
-                while (game.Levelling) yield return Press(new Controls { confirm = true });
+                while (game.Levelling) yield return ConfirmLevel();
                 Assert.IsTrue(Player.Has(Gear.Beams));
                 Assert.AreEqual(stage >= Campaign.SecondBurrow, Player.Has(Gear.Thrusters));
                 Assert.AreEqual(stage >= Campaign.ThirdBurrow, Player.Has(Gear.Orbiter));

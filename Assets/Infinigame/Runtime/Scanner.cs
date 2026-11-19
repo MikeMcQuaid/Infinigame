@@ -50,8 +50,8 @@ namespace Infinigame
                     : foe.kind == FoeKind.Mind ? "Presence mind: rooted controller; its death scatters this brood" : "Presence " + Combat.Name(foe),
                     foot = foe.position - math.normalizesafe(foe.position) * foe.size * 0.5f, height = foe.size * 2, girth = foe.size });
             game.Frontier.Collect(things);
-            if (game.Player.Has(Gear.Ship) || game.Player.captive)
-                things.Add(new Scannable { name = "Foundry pilotable spacecraft", foot = game.Player.ship.position, height = 8, girth = 10 });
+            if (game.Player.Has(Gear.Ship) || game.Player.ShipOverhead)
+                things.Add(new Scannable { name = game.Player.ShipOverhead ? "Foundry spacecraft holding above the crash site" : "Foundry pilotable spacecraft", foot = game.Player.ship.position, height = 8, girth = 10 });
             int pick = Core.Scan.Pick(eye, ray, things), world = -1;
             if (pick >= 0)
             {
