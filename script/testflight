@@ -1,5 +1,5 @@
 #!/bin/bash
-# Archive an existing Unity iOS export and upload it, using a temporary signing keychain.
+# Archive a Unity Xcode project and upload it using a temporary signing keychain.
 set +x
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -7,8 +7,28 @@ cd "$(dirname "$0")/.."
   echo 'Usage: script/testflight --dry-run|--internal|--external' >&2; exit 1
 }
 : "${APP_STORE_KEY:?}" "${APP_STORE_KEY_ID:?}" "${APP_STORE_ISSUER_ID:?}"
-: "${APP_STORE_CERTIFICATES:?}" "${APP_STORE_CERTIFICATES_PASSWORD:?}" "${APP_STORE_IOS_PROFILE:?}"
-[[ -f Build/iOS/Unity-iPhone.xcodeproj/project.pbxproj ]] || { echo 'Run script/build-ios --unsigned first.' >&2; exit 1; }
+: "${APP_STORE_CERTIFICATES:?}" "${APP_STORE_CERTIFICATES_PASSWORD:?}"
+platform=${TESTFLIGHT_PLATFORM:-iOS}
+case "$platform" in
+  iOS)
+    project=Build/iOS/Unity-iPhone.xcodeproj
+    scheme=Unity-iPhone
+    plist=Build/iOS/Info.plist
+    profile=${APP_STORE_PROFILE:-${APP_STORE_IOS_PROFILE:?Missing iOS App Store profile}}
+    identifier_key=application-identifier
+    extension=mobileprovision
+    ;;
+  macOS)
+    project=Build/MacStore/MacStore.xcodeproj
+    scheme=Infinigame
+    plist=Build/MacStore/Infinigame/Info.plist
+    profile=${APP_STORE_PROFILE:-${APP_STORE_MACOS_PROFILE:?Missing Mac App Store profile}}
+    identifier_key=com.apple.application-identifier
+    extension=provisionprofile
+    ;;
+  *) echo "Unknown TestFlight platform: $platform" >&2; exit 1 ;;
+esac
+[[ -f "$project/project.pbxproj" ]] || { echo "Missing Unity export: $project" >&2; exit 1; }
 destination=upload
 [[ "$1" != --dry-run ]] || destination='export'
 umask 077
@@ -33,13 +53,13 @@ if [[ "$1" != --dry-run ]]; then
     echo 'Allocate RELEASE_VERSION and BUILD_NUMBER through the TestFlight workflow.' >&2; exit 1
   }
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" \
-    -c "Set :CFBundleShortVersionString $RELEASE_VERSION" Build/iOS/Info.plist
+    -c "Set :CFBundleShortVersionString $RELEASE_VERSION" "$plist"
 fi
-base64 --decode <<<"$APP_STORE_IOS_PROFILE" > "$scratch/profile"
+base64 --decode <<<"$profile" > "$scratch/profile"
 security cms -D -i "$scratch/profile" > "$scratch/profile.plist"
 uuid="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$scratch/profile.plist")"
 team="$(/usr/libexec/PlistBuddy -c 'Print TeamIdentifier:0' "$scratch/profile.plist")"
-application="$(/usr/libexec/PlistBuddy -c 'Print Entitlements:application-identifier' "$scratch/profile.plist")"
+application="$(/usr/libexec/PlistBuddy -c "Print Entitlements:$identifier_key" "$scratch/profile.plist")"
 bundle_id=com.mikemcquaid.Infinigame
 [[ "$application" == ?*.* && "${application#*.}" == "$bundle_id" ]] || { echo "The provisioning profile must be for $bundle_id." >&2; exit 1; }
 keychain_password="$(uuidgen)"
@@ -48,7 +68,7 @@ security create-keychain -p "$keychain_password" "$keychain"
 security set-keychain-settings -lut 3600 "$keychain"
 security unlock-keychain -p "$keychain_password" "$keychain"
 base64 --decode <<<"$APP_STORE_CERTIFICATES" > "$scratch/certificates.p12"
-security import "$scratch/certificates.p12" -k "$keychain" -P "$APP_STORE_CERTIFICATES_PASSWORD" -T /usr/bin/codesign
+security import "$scratch/certificates.p12" -k "$keychain" -P "$APP_STORE_CERTIFICATES_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
 security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" &>/dev/null
 # Xcode export needs the signing identity in the live search list.
 security list-keychains -d user > "$scratch/keychains"
@@ -60,8 +80,8 @@ security list-keychains -d user -s "$keychain" "${keychains[@]}"
 printf '%s\n' "$APP_STORE_KEY" > "$scratch/key.p8"
 profile_directory="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
 mkdir -p "$profile_directory"
-if [[ ! -e "$profile_directory/$uuid.mobileprovision" ]]; then
-  installed_profile="$profile_directory/$uuid.mobileprovision"
+if [[ ! -e "$profile_directory/$uuid.$extension" ]]; then
+  installed_profile="$profile_directory/$uuid.$extension"
   cp "$scratch/profile" "$installed_profile"
 fi
 plutil -create xml1 "$scratch/export.plist"
@@ -72,17 +92,25 @@ plutil -create xml1 "$scratch/export.plist"
   -c "Add :testFlightInternalTestingOnly bool $internal" \
   -c 'Add :provisioningProfiles dict' \
   -c "Add :provisioningProfiles:$bundle_id string $uuid" "$scratch/export.plist"
-xcodebuild -project Build/iOS/Unity-iPhone.xcodeproj -scheme Unity-iPhone \
-  -configuration Release -destination 'generic/platform=iOS' \
-  -derivedDataPath Build/iOSDerived -archivePath Build/TestFlight/Infinigame.xcarchive \
+signing=("INFINIGAME_PROFILE=$uuid")
+if [[ "$platform" == macOS ]]; then
+  signing=("PROVISIONING_PROFILE_SPECIFIER=$uuid" "CODE_SIGN_ENTITLEMENTS=$PWD/.github/macOS.entitlements")
+  /usr/libexec/PlistBuddy -c 'Add :installerSigningCertificate string Mac Installer Distribution' "$scratch/export.plist"
+  plutil -replace ITSAppUsesNonExemptEncryption -bool NO "$plist"
+  plutil -replace NSHumanReadableCopyright -string 'Copyright Infinigame' "$plist"
+fi
+archive="Build/TestFlight/$platform.xcarchive"
+xcodebuild -project "$project" -scheme "$scheme" \
+  -configuration Release -destination "generic/platform=$platform" \
+  -derivedDataPath "Build/${platform}Derived" -archivePath "$archive" \
   "DEVELOPMENT_TEAM=$team" CODE_SIGN_STYLE=Manual 'CODE_SIGN_IDENTITY=Apple Distribution' \
-  "INFINIGAME_PROFILE=$uuid" archive 2>&1 | tee Logs/testflight-archive.log
-xcodebuild -exportArchive -archivePath Build/TestFlight/Infinigame.xcarchive \
-  -exportOptionsPlist "$scratch/export.plist" -exportPath Build/TestFlight/export \
+  "${signing[@]}" archive 2>&1 | tee Logs/testflight-archive.log
+xcodebuild -exportArchive -archivePath "$archive" \
+  -exportOptionsPlist "$scratch/export.plist" -exportPath "Build/TestFlight/export/$platform" \
   -authenticationKeyPath "$scratch/key.p8" -authenticationKeyID "$APP_STORE_KEY_ID" \
   -authenticationKeyIssuerID "$APP_STORE_ISSUER_ID" -allowProvisioningUpdates 2>&1 | tee Logs/testflight-export.log
 if [[ "$destination" == export ]]; then
-  echo "Exported IPA: $PWD/Build/TestFlight/export. Nothing was uploaded."
+  echo "Exported $platform beta to $PWD/Build/TestFlight/export/$platform."
 else
   echo 'Uploaded. The workflow will check processing and distribute the build.'
 fi

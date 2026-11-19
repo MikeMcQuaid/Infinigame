@@ -1,21 +1,10 @@
 name: TestFlight
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version, for example 0.2.0'
-        required: true
-        type: string
-      destination:
-        description: Distribution destination
-        type: choice
-        default: private
-        options:
-          - private
-          - public
-          - github
-          - github-with-private
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 * * * *'
 
 permissions:
   contents: read
@@ -27,69 +16,26 @@ concurrency:
   queue: max
 
 jobs:
-  validate:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Validate release request
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: |
-          [[ "$GITHUB_REF" == refs/heads/main && "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-            echo '::error::Run from main with a version such as 0.2.0.'
-            exit 1
-          }
-      - name: Check GitHub release quota
-        if: inputs.destination == 'github' || inputs.destination == 'github-with-private'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: ruby .github/testflight.rb check-release-limit
   platforms:
-    if: inputs.destination == 'github' || inputs.destination == 'github-with-private'
-    needs: validate
+    if: github.event_name == 'push'
     uses: ./.github/workflows/build.yml
     with:
-      version: ${{ inputs.version }}
+      desktop-only: true
     secrets:
       UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
       UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-  publish:
-    needs: [platforms, testflight]
-    if: >-
-      !cancelled() && needs.platforms.result == 'success' &&
-      ((inputs.destination == 'github-with-private' && needs.testflight.result == 'success') ||
-       (inputs.destination == 'github' && needs.testflight.result == 'skipped'))
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Check GitHub release quota
-        if: inputs.destination == 'github' || inputs.destination == 'github-with-private'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: ruby .github/testflight.rb check-release-limit
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: Infinigame-*
-          merge-multiple: true
-          path: Build/releases
-      - name: Publish platform archives
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: gh release create "v$RELEASE_VERSION" Build/releases/*.zip --target "$GITHUB_SHA" --title "Infinigame $RELEASE_VERSION" --generate-notes
   testflight:
-    needs: [validate, platforms]
-    if: >-
-      !cancelled() && needs.validate.result == 'success' &&
-      ((inputs.destination == 'github-with-private' && needs.platforms.result == 'success') ||
-       ((inputs.destination == 'private' || inputs.destination == 'public') && needs.platforms.result == 'skipped'))
+    needs: platforms
+    if: ${{ !cancelled() && github.event_name == 'push' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        platform: [iOS, macOS]
+    name: TestFlight (${{ matrix.platform }})
+    env:
+      TESTFLIGHT_PLATFORM: ${{ matrix.platform }}
+      TESTFLIGHT_ARTIFACT: ${{ matrix.platform == 'macOS' && 'testflight-macos' || 'testflight' }}
     runs-on: macos-26
     timeout-minutes: 120
     steps:
@@ -98,29 +44,25 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Restore public TestFlight upload intent
-        if: inputs.destination == 'public'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: testflight-upload*
+          pattern: ${{ env.TESTFLIGHT_ARTIFACT }}-upload-*
           path: tmp
           merge-multiple: true
       - name: Prepare TestFlight upload identity
         id: prepare
         env:
-          DESTINATION: ${{ inputs.destination }}
-          RELEASE_VERSION: ${{ inputs.version }}
-          TESTFLIGHT_PUBLIC_GROUP: ${{ vars.TESTFLIGHT_PUBLIC_GROUP }}
           GH_TOKEN: ${{ github.token }}
           APP_STORE_KEY: ${{ secrets.NOTARIZATION_KEY }}
           APP_STORE_KEY_ID: ${{ secrets.NOTARIZATION_KEY_ID }}
           APP_STORE_ISSUER_ID: ${{ secrets.NOTARIZATION_ISSUER_ID }}
         run: |
-          if [[ "$DESTINATION" != public ]]; then
-            BUILD_NUMBER="$(ruby .github/testflight.rb next-build-number)"
-          elif [[ -f tmp/testflight-upload.json ]]; then
+          RELEASE_VERSION=$(awk '/^  bundleVersion:/ {print $2}' ProjectSettings/ProjectSettings.asset)
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid Unity bundleVersion' >&2; exit 1; }
+          export RELEASE_VERSION
+          if [[ -f tmp/testflight-upload.json ]]; then
             BUILD_NUMBER="$(ruby .github/testflight.rb resume-public)"
           else
-            ruby .github/testflight.rb prepare-public
             BUILD_NUMBER="$(ruby .github/testflight.rb next-build-number)"
             export BUILD_NUMBER
             ruby .github/testflight.rb record-public
@@ -129,80 +71,80 @@ jobs:
           echo "build_number=$BUILD_NUMBER" >>"$GITHUB_OUTPUT"
           echo "release_version=$RELEASE_VERSION" >>"$GITHUB_OUTPUT"
       - name: Save public TestFlight upload intent
-        if: inputs.destination == 'public' && steps.prepare.outputs.fresh == 'true'
+        if: steps.prepare.outputs.fresh == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: testflight-upload-${{ steps.prepare.outputs.build_number }}-v${{ steps.prepare.outputs.release_version }}
+          name: ${{ env.TESTFLIGHT_ARTIFACT }}-upload-${{ steps.prepare.outputs.build_number }}-v${{ steps.prepare.outputs.release_version }}
           path: tmp/testflight-upload.json
           if-no-files-found: error
           retention-days: 90
       - name: Reconcile public TestFlight upload
-        if: inputs.destination == 'public'
         id: plan
         env:
           RELEASE_VERSION: ${{ steps.prepare.outputs.release_version }}
           BUILD_NUMBER: ${{ steps.prepare.outputs.build_number }}
-          GH_TOKEN: ${{ github.token }}
           APP_STORE_KEY: ${{ secrets.NOTARIZATION_KEY }}
           APP_STORE_KEY_ID: ${{ secrets.NOTARIZATION_KEY_ID }}
           APP_STORE_ISSUER_ID: ${{ secrets.NOTARIZATION_ISSUER_ID }}
         run: ruby .github/testflight.rb plan-public
-      - name: Export Unity player
-        if: inputs.destination != 'github-with-private' && (inputs.destination != 'public' || steps.plan.outputs.needed == 'true')
-        uses: ./.github/actions/export-unity
+      - name: Prepare Unity and native speech
+        if: steps.plan.outputs.needed == 'true'
+        uses: ./.github/actions/prepare-unity
         with:
-          platform: iOS
-          target: iOS
-          method: Infinigame.Editor.Platforms.CIIOS
-          version: ${{ inputs.version }}
+          platform: ${{ matrix.platform }}
+          target: ${{ matrix.platform == 'macOS' && 'StandaloneOSX' || 'iOS' }}
+      - name: Build the ${{ matrix.platform }} Xcode project with Unity
+        if: steps.plan.outputs.needed == 'true'
+        uses: ./.github/actions/compile-unity
+        with:
+          target: ${{ matrix.platform == 'macOS' && 'StandaloneOSX' || 'iOS' }}
+          method: ${{ matrix.platform == 'macOS' && 'Infinigame.Editor.Platforms.CIMacTestFlight' || 'Infinigame.Editor.Platforms.CIIOS' }}
+          version: ${{ steps.prepare.outputs.release_version }}
           unity-email: ${{ secrets.UNITY_EMAIL }}
           unity-password: ${{ secrets.UNITY_PASSWORD }}
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        if: inputs.destination == 'github-with-private'
-        with:
-          name: Infinigame-iOS
-          path: Build/releases
-      - name: Restore the exported Xcode project
-        if: inputs.destination == 'github-with-private'
-        run: |
-          unzip -q Build/releases/Infinigame-iOS.zip -d Build/releases
-          mv Build/releases/Infinigame/iOS Build/iOS
-      - name: Reserve public TestFlight upload slot
-        if: inputs.destination == 'public' && steps.plan.outputs.needed == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: testflight-attempt-${{ steps.prepare.outputs.build_number }}-v${{ steps.prepare.outputs.release_version }}-${{ github.run_attempt }}
-          path: tmp/testflight-upload.json
-          if-no-files-found: error
-          retention-days: 90
       - name: Archive and upload to TestFlight
         id: upload
+        if: steps.plan.outputs.needed == 'true'
         timeout-minutes: 60
         env:
-          DESTINATION: ${{ inputs.destination }}
           RELEASE_VERSION: ${{ steps.prepare.outputs.release_version }}
           BUILD_NUMBER: ${{ steps.prepare.outputs.build_number }}
-          UPLOAD_NEEDED: ${{ steps.plan.outputs.needed }}
           APP_STORE_KEY: ${{ secrets.NOTARIZATION_KEY }}
           APP_STORE_KEY_ID: ${{ secrets.NOTARIZATION_KEY_ID }}
           APP_STORE_ISSUER_ID: ${{ secrets.NOTARIZATION_ISSUER_ID }}
           APP_STORE_CERTIFICATES: ${{ secrets.APP_STORE_CERTIFICATES }}
           APP_STORE_CERTIFICATES_PASSWORD: ${{ secrets.APP_STORE_CERTIFICATES_PASSWORD }}
-          APP_STORE_IOS_PROFILE: ${{ secrets.INFINIGAME_APP_STORE_IOS_PROFILE }}
-        run: |
-          case "$DESTINATION" in
-            public) if [[ "$UPLOAD_NEEDED" == true ]]; then script/testflight --external; fi ;;
-            private|github-with-private) script/testflight --internal ;;
-            *) exit 1 ;;
-          esac
+          APP_STORE_PROFILE: ${{ secrets[matrix.platform == 'macOS' && 'INFINIGAME_APP_STORE_MACOS_PROFILE' || 'INFINIGAME_APP_STORE_IOS_PROFILE'] }}
+        run: script/testflight --external
       - name: Distribute TestFlight build
         env:
+          TESTFLIGHT_PUBLIC_GROUP: ${{ vars.TESTFLIGHT_PUBLIC_GROUP }}
+          TESTFLIGHT_INTERNAL_GROUP: ${{ vars.TESTFLIGHT_INTERNAL_GROUP }}
           RELEASE_VERSION: ${{ steps.prepare.outputs.release_version }}
           BUILD_NUMBER: ${{ steps.prepare.outputs.build_number }}
-          AUDIENCE: ${{ inputs.destination == 'public' && 'public' || 'private' }}
+          APP_STORE_KEY: ${{ secrets.NOTARIZATION_KEY }}
+          APP_STORE_KEY_ID: ${{ secrets.NOTARIZATION_KEY_ID }}
+          APP_STORE_ISSUER_ID: ${{ secrets.NOTARIZATION_ISSUER_ID }}
+        run: ruby .github/testflight.rb public
+  review:
+    if: github.event_name == 'schedule'
+    name: Retry pending TestFlight distribution (${{ matrix.platform }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [iOS, macOS]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Reconcile uploaded builds with tester groups
+        env:
+          TESTFLIGHT_PLATFORM: ${{ matrix.platform }}
           TESTFLIGHT_PUBLIC_GROUP: ${{ vars.TESTFLIGHT_PUBLIC_GROUP }}
+          TESTFLIGHT_INTERNAL_GROUP: ${{ vars.TESTFLIGHT_INTERNAL_GROUP }}
           GH_TOKEN: ${{ github.token }}
           APP_STORE_KEY: ${{ secrets.NOTARIZATION_KEY }}
           APP_STORE_KEY_ID: ${{ secrets.NOTARIZATION_KEY_ID }}
           APP_STORE_ISSUER_ID: ${{ secrets.NOTARIZATION_ISSUER_ID }}
-        run: ruby .github/testflight.rb "$AUDIENCE"
+        run: ruby .github/testflight.rb retry-distribution

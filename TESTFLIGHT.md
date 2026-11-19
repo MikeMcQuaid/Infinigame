@@ -8,20 +8,20 @@ Wake inside damaged powered armour on an occupied Earth. Fight your way out, mee
 
 Scan your surroundings and keep a journal of your discoveries. Play without an account using built-in scanner facts and companion replies, or optionally connect your own supported Anthropic or OpenAI account for generated descriptions and dialogue. AI services require an internet connection and may charge for usage. Voice input is optional.
 
-This iPhone and iPad beta is still developing. Please help test touch controls, the opening objectives, exploration, combat, saving and performance. Expect bugs and changes to saved-game compatibility. The game contains science-fiction violence and alien blood and dismemberment.
+The beta runs on iPhone, iPad and Apple silicon Macs. Please help test controls, the opening objectives, exploration, combat, saving and performance. Expect bugs and changes to saved-game compatibility. The game contains science-fiction violence and alien blood and dismemberment.
 
 ## What to Test
 
-Please test the opening suit-recovery sequence, movement and aiming with touch controls, the first alien burrow, scanner and companion dialogue, saving and resuming, and sustained performance on your device. Try the game without an AI account first. If you test optional AI or voice input, report connection and permission problems without sharing credentials. Include your device model, OS version and reproduction steps.
+Please test the opening suit-recovery sequence, movement and aiming with touch on iPhone and iPad or keyboard and mouse on Mac, the first alien burrow, scanner and companion dialogue, saving and resuming, and sustained performance on your device. Try the game without an AI account first. If you test optional AI or voice input, report connection and permission problems without sharing credentials. Include your device model, OS version and reproduction steps.
 
 ## Beta App Review Notes
 
-Infinigame is a single-player science-fiction exploration and combat game for iPhone and iPad. Core gameplay requires no login, subscription, AI provider account or external hardware. Touch controls are provided.
+Infinigame is a single-player science-fiction exploration and combat game for iPhone, iPad and Apple silicon Macs. Core gameplay requires no login, subscription, AI provider account or external hardware. Use touch on iPhone and iPad or keyboard and mouse on Mac.
 
 1. Launch the game and start a new game from the title menu. The opening begins with a black screen while the damaged suit restores its systems; this is an intentional narrative sequence, not a login or network wait. Follow the on-screen controls to break out of the debris.
 2. Meet the nearby robot companion and follow the first objective towards an alien mind burrow. Test movement, aiming, attacks and the scanner. Later objectives unlock equipment, factories and space flight.
 3. Talk to the companion using typed input. Without AI credentials, the game uses authored replies and observed scanner facts. Test saving and resuming through the game menu.
-4. Voice input is optional and requests microphone and speech recognition permissions. On iOS it requires on-device speech recognition. Denying permissions leaves typed dialogue available. Spoken replies are synthesised on-device.
+4. Voice input is optional and requests microphone and speech recognition permissions. It requires on-device speech recognition. Denying permissions leaves typed dialogue available. Spoken replies are synthesised on-device.
 5. Optional AI settings are under **Settings > Claude** or **ChatGPT**. A user can import their own API key; ChatGPT also offers browser sign-in. A configured provider receives game context, the player's message and recent conversation to generate replies. No developer key is supplied. The game remains playable without enabling this feature. **Forget key and sign-in** removes credentials stored by the game.
 
 The game contains combat, weapons, purple alien blood, tissue and breakable remains. AI-generated dialogue is optional. There is no player-to-player chat or public content feed. If review of provider-backed features needs additional access, contact mike@mikemcquaid.com.
@@ -55,9 +55,9 @@ App Store screenshots and categories are not prerequisites for the first externa
 
 ## Public build and invitation
 
-Create the configured external group (**Public Beta** by default, or the name in `TESTFLIGHT_PUBLIC_GROUP`) in App Store Connect and complete the test and review information above. Run **Actions > TestFlight > Run workflow** on `main`, enter a fresh beta version and select `public` as the destination. The hosted workflow uploads a fresh build, reads the **What to Test** section above and submits the build for external testing. Each public upload uses the same group. See [CI.md](CI.md) for the signing credentials and workflow setup.
+Each push to `main` uploads the iPhone and iPad build and the native Apple silicon Mac build for internal and external testers. GitHub Actions uses **What to Test** above and submits eligible builds to the **Public Beta** group after processing. Keep the group's beta information and review contact current in App Store Connect. [Workflow and signing setup](CI.md) · [Apple's external testing guide](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers/)
 
-After approval, enable the group's public link, choose **Open to Anyone** and a **10,000** tester limit. External testers need no App Store Connect membership. [Apple’s external testing guide](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers/)
+The public invitation stays the same across builds. Testers open it on their device to install the latest build available to them. [Join the Infinigame beta](https://testflight.apple.com/join/1GUH8Zjn)
 
 [test-info]: https://developer.apple.com/help/app-store-connect/test-a-beta-version/provide-test-information/
 [review]: https://developer.apple.com/app-store/review/guidelines/#data-use-and-sharing

@@ -1,0 +1,63 @@
+name: Prepare Unity
+description: Restore the editor and build caches and prepare native speech
+inputs:
+  platform:
+    description: Native speech platform
+    required: true
+  target:
+    description: Unity target
+    required: true
+  include-ios:
+    description: Include both native libraries in the speech cache for a shared Mac runner
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Read the pinned Unity editor revision
+      if: runner.os == 'macOS'
+      id: editor
+      shell: bash
+      run: |
+        awk '/^m_EditorVersionWithRevision:/ { gsub(/[()]/, "", $3); print "version=" $2; print "revision=" $3 }' \
+          ProjectSettings/ProjectVersion.txt >> "$GITHUB_OUTPUT"
+    - name: Cache Unity Hub and the editor with both Apple build modules
+      if: runner.os == 'macOS'
+      id: installation
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          /Applications/Unity Hub.app
+          /Applications/Unity/Hub/Editor/${{ steps.editor.outputs.version }}
+        key: unity-editor-${{ runner.os }}-${{ runner.arch }}-${{ steps.editor.outputs.revision }}-mac-il2cpp-ios
+    - name: Install the Unity editor and Apple build modules
+      if: runner.os == 'macOS' && steps.installation.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        EDITOR_VERSION: ${{ steps.editor.outputs.version }}
+        EDITOR_REVISION: ${{ steps.editor.outputs.revision }}
+      run: |
+        hub='/Applications/Unity Hub.app/Contents/MacOS/Unity Hub'
+        [[ -x "$hub" ]] || brew install --cask unity-hub
+        "$hub" -- --headless install --version "$EDITOR_VERSION" --changeset "$EDITOR_REVISION" \
+          --architecture "$(uname -m)" --module mac-il2cpp ios --childModules
+    - name: Cache the Unity incremental compiler (Bee)
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.os == 'macOS' && '~/Library/Unity/cache/bee' || '~/.cache/unity3d/bee' }}
+        key: bee-${{ runner.os }}-${{ runner.arch }}-${{ inputs.target }}-${{ hashFiles('ProjectSettings/ProjectVersion.txt') }}-${{ github.sha }}
+        restore-keys: bee-${{ runner.os }}-${{ runner.arch }}-${{ inputs.target }}-${{ hashFiles('ProjectSettings/ProjectVersion.txt') }}-
+    - name: Restore the offline speech library
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: Build/Speech
+        key: speech-${{ runner.os }}-${{ runner.arch }}-${{ inputs.include-ios == 'true' && 'macOS-iOS' || inputs.target }}-${{ hashFiles('ThirdParty/Festival/**', 'script/build-speech') }}
+    - name: Build the shared Festival voice
+      env:
+        PLATFORM: ${{ inputs.platform }}
+      shell: bash
+      run: script/build-speech "$PLATFORM"
+    - name: Check native speech without playing audio
+      if: inputs.target == 'StandaloneOSX'
+      shell: bash
+      run: script/test-speech

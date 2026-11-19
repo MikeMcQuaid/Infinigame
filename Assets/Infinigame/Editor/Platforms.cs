@@ -38,6 +38,28 @@ namespace Infinigame.Editor
             Console.WriteLine("Build succeeded!");
         }
         public static void CIMac() => BuildCI(() => Build("Build/StandaloneOSX/Infinigame.app", BuildTarget.StandaloneOSX));
+        public static void CIMacTestFlight() => BuildCI(() =>
+        {
+            var standalone = UnityEditor.Build.NamedBuildTarget.Standalone;
+            string identifier = PlayerSettings.GetApplicationIdentifier(standalone);
+            string export = EditorUserBuildSettings.GetPlatformSettings("OSXUniversal", "CreateXcodeProject");
+            string plugins = AssetDatabase.GUIDToAssetPath(AssetDatabase.CreateFolder("Assets/Plugins", "MacTestFlight"));
+            try
+            {
+                // Import the dylibs before export so Xcode embeds and signs both plugins.
+                VoiceBuild.MacPlugins(plugins);
+                AssetDatabase.Refresh();
+                PlayerSettings.SetApplicationIdentifier(standalone, PlayerSettings.GetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.iOS));
+                EditorUserBuildSettings.SetPlatformSettings("OSXUniversal", "CreateXcodeProject", "true");
+                Build("Build/MacStore", BuildTarget.StandaloneOSX);
+            }
+            finally
+            {
+                EditorUserBuildSettings.SetPlatformSettings("OSXUniversal", "CreateXcodeProject", export);
+                PlayerSettings.SetApplicationIdentifier(standalone, identifier);
+                AssetDatabase.DeleteAsset(plugins);
+            }
+        });
         public static void CIWindows() => BuildCI(() => { Windows(); SteamDeck(); });
         public static void CIIOS() => BuildCI(IOS);
         public static void Windows()
