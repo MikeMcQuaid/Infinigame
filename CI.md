@@ -45,6 +45,8 @@ The repository already has the Unity credentials, App Store Connect API key, cer
      gh secret set APP_STORE_CERTIFICATES --repo MikeMcQuaid/Infinigame
    ```
 
+   The Mac export selects a valid installer identity from the imported keychain by its SHA-1 fingerprint. If the signing check reports no valid identity, run `security find-identity -v -p basic /path/to/imported.keychain-db` against your test keychain. Look for `3rd Party Mac Developer Installer` with the team ID from the profile. For an identity missing from the valid list, check its private key, expiry and certificate trust. After correcting the bundle, rerun **Check TestFlight signing**. [Apple’s installer signing guide](https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution)
+
 3. **Enable the Mac platform.** In the existing Infinigame app record, choose **Distribution > Add Platform > macOS** if needed. Use the same bundle ID, `com.mikemcquaid.Infinigame`. If the Public Beta invitation uses device criteria, include Mac. [Open Apps](https://appstoreconnect.apple.com/apps) · [Add a platform](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-platforms/)
 
 ### TestFlight signing secrets
@@ -72,9 +74,17 @@ Once the native macOS build is available to a group, open its **Settings** tab a
 
 ## Protecting main
 
-The PR check **Required platform builds** requires the Windows and Steam Deck players, desktop Mac player, native Mac TestFlight archive and iOS device app to build. The release scripts run with temporary credentials. A separate job reads both platforms’ upload histories with the configured Apple key, using release code from the base branch. Signing, upload and beta review happen after merge.
+Require these three **GitHub Actions** checks in the default branch ruleset.
 
-After the check has passed once, open **Settings > Rules > Rulesets > New ruleset > New branch ruleset**. Set enforcement to **Active**, target the default branch and leave the bypass list empty. Enable **Require a pull request before merging** (zero approvals works for a solo maintainer), **Require status checks to pass** and **Require branches to be up to date before merging**. Add **Required platform builds** with **GitHub Actions** as the source and save. [Repository rulesets](https://github.com/MikeMcQuaid/Infinigame/settings/rules) · [GitHub ruleset settings](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)
+| Required status check | What it verifies |
+|---|---|
+| `platforms / Windows` | Unity builds and packages both the Windows and Steam Deck players. |
+| `platforms / macOS and iOS` | Tests the PR's TestFlight tooling with temporary credentials, builds the desktop player, archives the native Mac TestFlight app and compiles the iPhone and iPad device app. |
+| `Check TestFlight signing` | One separate Mac checks the Apple API key against each platform's build history, then signs and exports a test app with that platform's profile. The macOS step also exercises the installer identity and runs even if iOS signing fails. |
+
+Once the new signing check has passed on a PR, open **Settings > Rules > Rulesets > Default Branch**. Under **Require status checks to pass**, select the three checks above with **GitHub Actions** as the source. Remove the old **Required platform builds** and **Check TestFlight upload identity** entries in the same edit and save. [Default Branch ruleset](https://github.com/MikeMcQuaid/Infinigame/settings/rules/27675799)
+
+For a new ruleset, set enforcement to **Active**, target the default branch and leave the bypass list empty. Enable **Require a pull request before merging** (zero approvals works for a solo maintainer) and **Require branches to be up to date before merging**. The credential checks run on PR branches in this repository. The signing job uses release tooling from the base branch and keeps its exports on the runner. Uploading the game and submitting it for beta review happen on `main`. [GitHub ruleset settings](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)
 
 ## Builds and retries
 

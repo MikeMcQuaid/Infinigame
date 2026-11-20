@@ -15,7 +15,7 @@ case "$platform" in
     scheme=Unity-iPhone
     plist=Build/iOS/Info.plist
     profile=${APP_STORE_PROFILE:-${APP_STORE_IOS_PROFILE:?Missing iOS App Store profile}}
-    identifier_key=application-identifier
+    identifier_key='application-identifier'
     extension=mobileprovision
     ;;
   macOS)
@@ -34,8 +34,8 @@ destination=upload
 umask 077
 mkdir -p tmp Logs Build/TestFlight
 scratch="$(mktemp -d "$PWD/tmp/testflight.XXXXXX")"
-internal=true
-[[ "$1" != --external ]] || internal=false
+internal=false
+[[ "$1" != --internal ]] || internal=true
 keychain="$scratch/signing.keychain-db"
 keychains=()
 installed_profile=''
@@ -95,7 +95,14 @@ plutil -create xml1 "$scratch/export.plist"
 signing=("INFINIGAME_PROFILE=$uuid")
 if [[ "$platform" == macOS ]]; then
   signing=("PROVISIONING_PROFILE_SPECIFIER=$uuid" "CODE_SIGN_ENTITLEMENTS=$PWD/.github/macOS.entitlements")
-  /usr/libexec/PlistBuddy -c 'Add :installerSigningCertificate string Mac Installer Distribution' "$scratch/export.plist"
+  installer=$(security find-identity -v -p basic "$keychain" | awk -v team="($team)\"" '
+    /"3rd Party Mac Developer Installer: / && $NF == team && !found { print $2; found=1 }')
+  if [[ -z "$installer" ]]; then
+    echo "APP_STORE_CERTIFICATES has no valid Mac Installer Distribution identity for team $team." >&2
+    security find-identity -p basic "$keychain" >&2
+    exit 1
+  fi
+  /usr/libexec/PlistBuddy -c "Add :installerSigningCertificate string $installer" "$scratch/export.plist"
   plutil -replace ITSAppUsesNonExemptEncryption -bool NO "$plist"
   plutil -replace NSHumanReadableCopyright -string 'Copyright Infinigame' "$plist"
 fi
