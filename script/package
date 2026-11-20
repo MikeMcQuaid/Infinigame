@@ -11,7 +11,15 @@ package="Build/Packages/$platform/Infinigame"
 rm -rf "$package"
 mkdir -p "$package"
 case "$platform" in
-  macOS) /usr/bin/ditto Build/Infinigame.app "$package/Infinigame.app" ;;
+  macOS)
+    /usr/bin/ditto "${2:-Build/Infinigame.app}" "$package/Infinigame.app"
+    if [[ -n "${2:-}" ]]; then
+      # Direct downloads run outside the Mac App Store. Sign only the copy.
+      rm -f "$package/Infinigame.app/Contents/embedded.provisionprofile"
+      codesign --force --deep --sign - "$package/Infinigame.app"
+      codesign --verify --deep --strict "$package/Infinigame.app"
+    fi
+    ;;
   Windows|SteamDeck)
     cp -R "Build/$platform/." "$package/"
     cp Assets/Infinigame/Icon.png "$package/Infinigame.png"

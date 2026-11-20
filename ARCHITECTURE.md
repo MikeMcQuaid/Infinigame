@@ -95,7 +95,7 @@ A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, 
 
 Pushes to `main` build the project version for iPhone and iPad and for native Apple silicon Mac. Each platform uploads one build eligible for internal and external testing. The workflow serialises pushes and saves each platform's release version, build number, commit and run before signing. Build numbers start at the commit count and increase beyond Apple's upload history and earlier reservations. A rerun recovers the saved identity and checks whether Apple received it before building again.
 
-The distribution job waits up to 20 minutes for processing, assigns the internal group if needed and submits ready builds for external review using **What to Test** from `TESTFLIGHT.md`. An hourly job revisits this repository's unexpired uploads when processing or review limits delayed distribution. Apple controls when public testers receive a build. [CI.md](CI.md)
+The Apple job signs and validates both platform archives on one Mac. A Linux job waits up to 20 minutes per build for processing, assigns the internal group if needed and submits ready builds for external review using **What to Test** from `TESTFLIGHT.md`. A distribution failure fails the push workflow and can be retried on that run. Apple controls when public testers receive a build. [CI.md](CI.md)
 
 ## Where to put things
 

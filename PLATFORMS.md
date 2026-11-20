@@ -81,4 +81,4 @@ For a stall that the summary cannot explain, use Xcode **Product > Profile** on 
 
 ## Automated distribution
 
-[CI.md](CI.md) documents the shared GitHub Actions builds, release workflow, required Unity/Apple secrets and TestFlight setup. Actions artifacts include the same platform zip files, each rooted at `Infinigame/`. The root `Infinigame.xcodeproj` symlink opens the generated mobile project after a local iOS export.
+[CI.md](CI.md) documents the shared GitHub Actions builds, release workflow, required Unity/Apple secrets and TestFlight setup. Pushes to `main` publish the Windows, Steam Deck and Mac ZIPs, each rooted at `Infinigame/`. The Mac download uses a copy of the TestFlight archive and stays available if Apple rejects the upload. The root `Infinigame.xcodeproj` symlink opens the generated mobile project after a local iOS export.

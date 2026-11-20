@@ -1,151 +1,258 @@
-name: TestFlight
+name: CI
 
 on:
   push:
     branches: [main]
-  schedule:
-    - cron: '23 * * * *'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: infinigame-release
-  cancel-in-progress: false
-  queue: max
+  group: ${{ github.event_name == 'push' && 'infinigame-release' || format('ci-{0}', github.ref) }}
+  queue: ${{ github.event_name == 'push' && 'max' || 'single' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+
+env:
+  PUBLISH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+  TESTFLIGHT_PUBLIC_GROUP: ${{ vars.TESTFLIGHT_PUBLIC_GROUP }}
+  TESTFLIGHT_INTERNAL_GROUP: ${{ vars.TESTFLIGHT_INTERNAL_GROUP }}
 
 jobs:
-  platforms:
-    name: Desktop release builds
-    if: github.event_name == 'push'
-    uses: ./.github/workflows/build.yml
-    with:
-      desktop-only: true
-    secrets:
-      UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-  testflight:
-    needs: platforms
-    if: ${{ !cancelled() && github.event_name == 'push' }}
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        platform: [iOS, macOS]
-    name: TestFlight (${{ matrix.platform }})
-    env:
-      TESTFLIGHT_PLATFORM: ${{ matrix.platform }}
-      TESTFLIGHT_ARTIFACT: ${{ matrix.platform == 'macOS' && 'testflight-macos' || 'testflight' }}
-    runs-on: macos-26
+  windows:
+    name: Windows
+    if: &trusted-build github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Restore public TestFlight upload intent
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: ${{ env.TESTFLIGHT_ARTIFACT }}-upload-*
-          path: tmp
-          merge-multiple: true
-      - name: Prepare TestFlight upload identity
-        id: prepare
-        env:
-          GH_TOKEN: ${{ github.token }}
-          APP_STORE_KEY: ${{ secrets.NOTARIZATION_KEY }}
-          APP_STORE_KEY_ID: ${{ secrets.NOTARIZATION_KEY_ID }}
-          APP_STORE_ISSUER_ID: ${{ secrets.NOTARIZATION_ISSUER_ID }}
-        run: |
-          RELEASE_VERSION=$(awk '/^  bundleVersion:/ {print $2}' ProjectSettings/ProjectSettings.asset)
-          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid Unity bundleVersion' >&2; exit 1; }
-          export RELEASE_VERSION
-          if [[ -f tmp/testflight-upload.json ]]; then
-            BUILD_NUMBER="$(ruby .github/testflight.rb resume-public)"
-          else
-            BUILD_NUMBER="$(ruby .github/testflight.rb next-build-number)"
-            export BUILD_NUMBER
-            ruby .github/testflight.rb record-public
-            echo 'fresh=true' >>"$GITHUB_OUTPUT"
-          fi
-          echo "build_number=$BUILD_NUMBER" >>"$GITHUB_OUTPUT"
-          echo "release_version=$RELEASE_VERSION" >>"$GITHUB_OUTPUT"
-      - name: Save public TestFlight upload intent
-        if: steps.prepare.outputs.fresh == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ${{ env.TESTFLIGHT_ARTIFACT }}-upload-${{ steps.prepare.outputs.build_number }}-v${{ steps.prepare.outputs.release_version }}
-          path: tmp/testflight-upload.json
-          if-no-files-found: error
-          retention-days: 90
-      - name: Reconcile public TestFlight upload
-        id: plan
-        env:
-          RELEASE_VERSION: ${{ steps.prepare.outputs.release_version }}
-          BUILD_NUMBER: ${{ steps.prepare.outputs.build_number }}
-          APP_STORE_KEY: ${{ secrets.NOTARIZATION_KEY }}
-          APP_STORE_KEY_ID: ${{ secrets.NOTARIZATION_KEY_ID }}
-          APP_STORE_ISSUER_ID: ${{ secrets.NOTARIZATION_ISSUER_ID }}
-        run: ruby .github/testflight.rb plan-public
       - name: Prepare Unity and native speech
-        if: steps.plan.outputs.needed == 'true'
         uses: ./.github/actions/prepare-unity
         with:
-          platform: ${{ matrix.platform }}
-          target: ${{ matrix.platform == 'macOS' && 'StandaloneOSX' || 'iOS' }}
-      - name: Build the ${{ matrix.platform }} Xcode project with Unity
-        if: steps.plan.outputs.needed == 'true'
+          target: StandaloneWindows64
+      - name: Compile Windows and Steam Deck
         uses: ./.github/actions/compile-unity
         with:
-          target: ${{ matrix.platform == 'macOS' && 'StandaloneOSX' || 'iOS' }}
-          method: ${{ matrix.platform == 'macOS' && 'Infinigame.Editor.Platforms.CIMacTestFlight' || 'Infinigame.Editor.Platforms.CIIOS' }}
-          version: ${{ steps.prepare.outputs.release_version }}
+          target: StandaloneWindows64
+          method: Infinigame.Editor.Platforms.CIWindows
+          version: ''
           unity-email: ${{ secrets.UNITY_EMAIL }}
           unity-password: ${{ secrets.UNITY_PASSWORD }}
-      - name: Archive and upload to TestFlight
-        id: upload
-        if: steps.plan.outputs.needed == 'true'
-        timeout-minutes: 60
+      - name: Package Windows and Steam Deck
+        run: |
+          script/package Windows
+          script/package SteamDeck
+      - name: Upload the Windows build
+        if: env.PUBLISH == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Infinigame-Windows
+          path: Build/Infinigame-Windows.zip
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: true
+      - name: Upload the Steam Deck build
+        if: env.PUBLISH == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Infinigame-SteamDeck
+          path: Build/Infinigame-SteamDeck.zip
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: true
+
+  apple:
+    name: macOS and iOS
+    if: *trusted-build
+    runs-on: xcode-27
+    timeout-minutes: 180
+    outputs:
+      release-version: ${{ steps.plan-mac.outputs.release-version || steps.plan-ios.outputs.release-version }}
+      mac-number: ${{ steps.groups.outcome == 'success' && (steps.upload-mac.outcome == 'success' || steps.plan-mac.outputs.needed == 'false') && steps.plan-mac.outputs.build-number || '' }}
+      ios-number: ${{ steps.groups.outcome == 'success' && (steps.upload-ios.outcome == 'success' || steps.plan-ios.outputs.needed == 'false') && steps.plan-ios.outputs.build-number || '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check the Xcode toolchain and TestFlight tooling
+        id: tools
+        run: |
+          xcodebuild -version
+          sdk=$(xcrun --sdk iphoneos --show-sdk-version)
+          echo "iOS device SDK $sdk"
+          [[ "${sdk%%.*}" -ge 27 ]] || { echo 'TestFlight requires the iOS 27 SDK or newer.' >&2; exit 1; }
+          script/test-testflight
+      - name: Check tester groups and release notes
+        id: groups
         env:
-          RELEASE_VERSION: ${{ steps.prepare.outputs.release_version }}
-          BUILD_NUMBER: ${{ steps.prepare.outputs.build_number }}
+          APP_STORE_KEY: ${{ secrets.NOTARIZATION_KEY }}
+          APP_STORE_KEY_ID: ${{ secrets.NOTARIZATION_KEY_ID }}
+          APP_STORE_ISSUER_ID: ${{ secrets.NOTARIZATION_ISSUER_ID }}
+        run: ruby .github/testflight.rb check-distribution
+      - name: Plan macOS
+        id: plan-mac
+        if: &after-tools ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        uses: ./.github/actions/plan-testflight
+        env:
+          TESTFLIGHT_PLATFORM: macOS
+        with: &api
+          key: ${{ secrets.NOTARIZATION_KEY }}
+          key-id: ${{ secrets.NOTARIZATION_KEY_ID }}
+          issuer: ${{ secrets.NOTARIZATION_ISSUER_ID }}
+      - name: Plan iOS
+        id: plan-ios
+        if: *after-tools
+        uses: ./.github/actions/plan-testflight
+        env:
+          TESTFLIGHT_PLATFORM: iOS
+        with: *api
+      - name: Prepare Unity and offline speech for both Apple platforms
+        id: unity
+        if: >-
+          ${{ !cancelled() && ((steps.plan-mac.outcome == 'success' && steps.plan-mac.outputs.needed == 'true') ||
+          (steps.plan-ios.outcome == 'success' && steps.plan-ios.outputs.needed == 'true')) }}
+        uses: ./.github/actions/prepare-unity
+        with:
+          target: Apple
+      - name: Compile macOS with Unity
+        id: compile-mac
+        if: ${{ !cancelled() && steps.unity.outcome == 'success' && steps.plan-mac.outcome == 'success' && steps.plan-mac.outputs.needed == 'true' }}
+        uses: ./.github/actions/compile-unity
+        with:
+          target: StandaloneOSX
+          method: Infinigame.Editor.Platforms.CIMacTestFlight
+          version: ${{ steps.plan-mac.outputs.release-version }}
+          unity-email: ${{ secrets.UNITY_EMAIL }}
+          unity-password: ${{ secrets.UNITY_PASSWORD }}
+      - name: Sign and validate macOS with App Store Connect
+        id: verify-mac
+        if: ${{ !cancelled() && steps.compile-mac.outcome == 'success' }}
+        timeout-minutes: 60
+        env: &sign-mac
+          TESTFLIGHT_PLATFORM: macOS
+          RELEASE_VERSION: ${{ steps.plan-mac.outputs.release-version }}
+          BUILD_NUMBER: ${{ steps.plan-mac.outputs.build-number }}
           APP_STORE_KEY: ${{ secrets.NOTARIZATION_KEY }}
           APP_STORE_KEY_ID: ${{ secrets.NOTARIZATION_KEY_ID }}
           APP_STORE_ISSUER_ID: ${{ secrets.NOTARIZATION_ISSUER_ID }}
           APP_STORE_CERTIFICATES: ${{ secrets.APP_STORE_CERTIFICATES }}
           APP_STORE_CERTIFICATES_PASSWORD: ${{ secrets.APP_STORE_CERTIFICATES_PASSWORD }}
-          APP_STORE_PROFILE: ${{ secrets[matrix.platform == 'macOS' && 'INFINIGAME_APP_STORE_MACOS_PROFILE' || 'INFINIGAME_APP_STORE_IOS_PROFILE'] }}
-        run: script/testflight --external
-      - name: Distribute TestFlight build
+          APP_STORE_PROFILE: ${{ secrets.INFINIGAME_APP_STORE_MACOS_PROFILE }}
+        run: script/testflight --verify
+      - name: Package the archived Mac app for direct download
+        id: package
+        if: ${{ !cancelled() && steps.verify-mac.outcome != 'skipped' && hashFiles('Build/TestFlight/macOS.xcarchive/Info.plist') != '' }}
+        run: script/package macOS Build/TestFlight/macOS.xcarchive/Products/Applications/Infinigame.app
+      - name: Upload the Mac download
+        if: ${{ !cancelled() && env.PUBLISH == 'true' && steps.package.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Infinigame-macOS
+          path: Build/Infinigame-macOS.zip
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          overwrite: true
+      - name: Switch the shared Unity workspace to iOS
+        id: switch
+        if: ${{ !cancelled() && steps.unity.outcome == 'success' && steps.plan-ios.outcome == 'success' && steps.plan-ios.outputs.needed == 'true' }}
+        run: |
+          # Keep the editor, Bee, speech and signed Mac archive. Restore clean sources and a target-specific Library.
+          git restore --source=HEAD --staged --worktree -- Assets Packages ProjectSettings
+          git clean -fdx -- Assets Packages ProjectSettings Library UserSettings
+          rm -rf Build/macOSDerived Build/Packages/macOS Build/TestFlight/export/macOS
+      - name: Compile iOS with Unity
+        id: compile-ios
+        if: ${{ !cancelled() && steps.switch.outcome == 'success' }}
+        uses: ./.github/actions/compile-unity
+        with:
+          target: iOS
+          method: Infinigame.Editor.Platforms.CIIOS
+          version: ${{ steps.plan-ios.outputs.release-version }}
+          unity-email: ${{ secrets.UNITY_EMAIL }}
+          unity-password: ${{ secrets.UNITY_PASSWORD }}
+      - name: Identify the iOS compiler and SDK
+        if: ${{ !cancelled() && steps.compile-ios.outcome == 'success' }}
+        id: xcode
+        shell: bash
         env:
-          TESTFLIGHT_PUBLIC_GROUP: ${{ vars.TESTFLIGHT_PUBLIC_GROUP }}
-          TESTFLIGHT_INTERNAL_GROUP: ${{ vars.TESTFLIGHT_INTERNAL_GROUP }}
-          RELEASE_VERSION: ${{ steps.prepare.outputs.release_version }}
-          BUILD_NUMBER: ${{ steps.prepare.outputs.build_number }}
+          UNITY_DEPENDENCIES: ${{ hashFiles('ProjectSettings/ProjectVersion.txt', 'Packages/packages-lock.json') }}
+        run: |
+          build=$(xcodebuild -version | awk '/Build version/ {print $3}')
+          sdk=$(xcrun --sdk iphoneos --show-sdk-build-version)
+          echo "prefix=ios-il2cpp-$RUNNER_ARCH-$build-$sdk-$UNITY_DEPENDENCIES" >> "$GITHUB_OUTPUT"
+          echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
+      - name: Cache native iOS compiler outputs
+        id: cache-ios
+        if: ${{ !cancelled() && steps.xcode.outcome == 'success' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Build/iOSDerived/Build/Intermediates.noindex/ArchiveIntermediates/Unity-iPhone/IntermediateBuildFilesPath/Unity-iPhone.build/Release-iphoneos/artifacts
+          key: ${{ steps.xcode.outputs.prefix }}-${{ steps.xcode.outputs.image }}-${{ hashFiles('Build/iOS/Il2CppOutputProject/Source/**') }}
+          restore-keys: |
+            ${{ steps.xcode.outputs.prefix }}-${{ steps.xcode.outputs.image }}-
+            ${{ steps.xcode.outputs.prefix }}
+      - name: Sign and validate iOS with App Store Connect
+        id: verify-ios
+        if: ${{ !cancelled() && steps.cache-ios.outcome == 'success' }}
+        timeout-minutes: 60
+        env: &sign-ios
+          TESTFLIGHT_PLATFORM: iOS
+          RELEASE_VERSION: ${{ steps.plan-ios.outputs.release-version }}
+          BUILD_NUMBER: ${{ steps.plan-ios.outputs.build-number }}
           APP_STORE_KEY: ${{ secrets.NOTARIZATION_KEY }}
           APP_STORE_KEY_ID: ${{ secrets.NOTARIZATION_KEY_ID }}
           APP_STORE_ISSUER_ID: ${{ secrets.NOTARIZATION_ISSUER_ID }}
-        run: ruby .github/testflight.rb public
-  review:
-    if: github.event_name == 'schedule'
-    name: Retry pending TestFlight distribution (${{ matrix.platform }})
+          APP_STORE_CERTIFICATES: ${{ secrets.APP_STORE_CERTIFICATES }}
+          APP_STORE_CERTIFICATES_PASSWORD: ${{ secrets.APP_STORE_CERTIFICATES_PASSWORD }}
+          APP_STORE_PROFILE: ${{ secrets.INFINIGAME_APP_STORE_IOS_PROFILE }}
+        run: script/testflight --verify
+      - name: Upload the verified macOS archive
+        id: upload-mac
+        if: ${{ !cancelled() && env.PUBLISH == 'true' && steps.groups.outcome == 'success' && steps.verify-mac.outcome == 'success' }}
+        env: *sign-mac
+        run: script/testflight --upload-archive
+      - name: Upload the verified iOS archive
+        id: upload-ios
+        if: ${{ !cancelled() && env.PUBLISH == 'true' && steps.groups.outcome == 'success' && steps.verify-ios.outcome == 'success' }}
+        env: *sign-ios
+        run: script/testflight --upload-archive
+
+  distribute:
+    name: TestFlight
+    needs: apple
+    if: >-
+      ${{ !cancelled() && github.event_name == 'push' &&
+      (needs.apple.outputs.mac-number != '' || needs.apple.outputs.ios-number != '') }}
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [iOS, macOS]
+    env:
+      RELEASE_VERSION: ${{ needs.apple.outputs.release-version }}
+      APP_STORE_KEY: ${{ secrets.NOTARIZATION_KEY }}
+      APP_STORE_KEY_ID: ${{ secrets.NOTARIZATION_KEY_ID }}
+      APP_STORE_ISSUER_ID: ${{ secrets.NOTARIZATION_ISSUER_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        id: checkout
         with:
           persist-credentials: false
-      - name: Reconcile uploaded builds with tester groups
+      - name: Distribute macOS
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && needs.apple.outputs.mac-number != '' }}
         env:
-          TESTFLIGHT_PLATFORM: ${{ matrix.platform }}
-          TESTFLIGHT_PUBLIC_GROUP: ${{ vars.TESTFLIGHT_PUBLIC_GROUP }}
-          TESTFLIGHT_INTERNAL_GROUP: ${{ vars.TESTFLIGHT_INTERNAL_GROUP }}
-          GH_TOKEN: ${{ github.token }}
-          APP_STORE_KEY: ${{ secrets.NOTARIZATION_KEY }}
-          APP_STORE_KEY_ID: ${{ secrets.NOTARIZATION_KEY_ID }}
-          APP_STORE_ISSUER_ID: ${{ secrets.NOTARIZATION_ISSUER_ID }}
-        run: ruby .github/testflight.rb retry-distribution
+          TESTFLIGHT_PLATFORM: macOS
+          BUILD_NUMBER: ${{ needs.apple.outputs.mac-number }}
+        run: ruby .github/testflight.rb public
+      - name: Distribute iOS
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && needs.apple.outputs.ios-number != '' }}
+        env:
+          TESTFLIGHT_PLATFORM: iOS
+          BUILD_NUMBER: ${{ needs.apple.outputs.ios-number }}
+        run: ruby .github/testflight.rb public

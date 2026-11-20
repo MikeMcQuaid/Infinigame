@@ -60,7 +60,9 @@ These follow [scripts to rule them all](https://github.com/github/scripts-to-rul
 | `script/test --unity` | Also runs the EditMode and PlayMode tests inside Unity and saves pictures to `Logs/Screenshots`. |
 | `script/unity` | Runs the pinned editor against this project with any arguments. |
 
-The root [Infinigame.xcodeproj](Infinigame.xcodeproj) shortcut points at the generated iOS project. [CI.md](CI.md) describes the desktop downloads and how each push to `main` reaches internal and public TestFlight testers.
+Each push to `main` offers Windows and Steam Deck downloads and a Mac ZIP made from the same app as the TestFlight beta. In the Actions run, open **Artifacts** and choose your platform. [Builds and downloads](https://github.com/MikeMcQuaid/Infinigame/actions/workflows/release.yml?query=event%3Apush) · [CI and TestFlight setup](CI.md)
+
+The root [Infinigame.xcodeproj](Infinigame.xcodeproj) shortcut points at the generated iOS project.
 
 Read the [privacy policy](PRIVACY.md) for local storage, optional AI services and TestFlight diagnostics. [TESTFLIGHT.md](TESTFLIGHT.md) contains public beta submission copy and preparation steps.
 

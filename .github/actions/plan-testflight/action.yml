@@ -1,0 +1,75 @@
+name: Plan TestFlight build
+description: Check build history and recover the reserved identity on a release rerun
+inputs:
+  key:
+    description: App Store Connect private key
+    required: true
+  key-id:
+    description: App Store Connect key ID
+    required: true
+  issuer:
+    description: App Store Connect issuer ID
+    required: true
+outputs:
+  needed:
+    description: Build and validate this platform
+    value: ${{ steps.plan.outputs.needed || 'true' }}
+  build-number:
+    description: Candidate or reserved build number
+    value: ${{ steps.prepare.outputs.build_number }}
+  release-version:
+    description: Unity marketing version
+    value: ${{ steps.prepare.outputs.release_version }}
+runs:
+  using: composite
+  steps:
+    - name: Restore public TestFlight upload intent
+      if: env.PUBLISH == 'true'
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        pattern: ${{ env.TESTFLIGHT_PLATFORM == 'macOS' && 'testflight-macos' || 'testflight' }}-upload-*
+        path: tmp/${{ env.TESTFLIGHT_PLATFORM }}
+        merge-multiple: true
+    - name: Prepare TestFlight upload identity
+      id: prepare
+      env:
+        GH_TOKEN: ${{ github.token }}
+        APP_STORE_KEY: ${{ inputs.key }}
+        APP_STORE_KEY_ID: ${{ inputs.key-id }}
+        APP_STORE_ISSUER_ID: ${{ inputs.issuer }}
+      shell: bash
+      run: |
+        RELEASE_VERSION=$(awk '/^  bundleVersion:/ {print $2}' ProjectSettings/ProjectSettings.asset)
+        [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid Unity bundleVersion' >&2; exit 1; }
+        export RELEASE_VERSION
+        if [[ "$PUBLISH" == true && -f "tmp/$TESTFLIGHT_PLATFORM/testflight-upload.json" ]]; then
+          BUILD_NUMBER="$(ruby .github/testflight.rb resume-public)"
+        else
+          BUILD_NUMBER="$(ruby .github/testflight.rb next-build-number)"
+          if [[ "$PUBLISH" == true ]]; then
+            export BUILD_NUMBER
+            ruby .github/testflight.rb record-public
+            echo 'fresh=true' >>"$GITHUB_OUTPUT"
+          fi
+        fi
+        echo "build_number=$BUILD_NUMBER" >>"$GITHUB_OUTPUT"
+        echo "release_version=$RELEASE_VERSION" >>"$GITHUB_OUTPUT"
+    - name: Save public TestFlight upload intent
+      if: steps.prepare.outputs.fresh == 'true'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ env.TESTFLIGHT_PLATFORM == 'macOS' && 'testflight-macos' || 'testflight' }}-upload-${{ steps.prepare.outputs.build_number }}-v${{ steps.prepare.outputs.release_version }}
+        path: tmp/${{ env.TESTFLIGHT_PLATFORM }}/testflight-upload.json
+        if-no-files-found: error
+        retention-days: 90
+    - name: Reconcile public TestFlight upload
+      id: plan
+      if: env.PUBLISH == 'true'
+      env:
+        RELEASE_VERSION: ${{ steps.prepare.outputs.release_version }}
+        BUILD_NUMBER: ${{ steps.prepare.outputs.build_number }}
+        APP_STORE_KEY: ${{ inputs.key }}
+        APP_STORE_KEY_ID: ${{ inputs.key-id }}
+        APP_STORE_ISSUER_ID: ${{ inputs.issuer }}
+      shell: bash
+      run: ruby .github/testflight.rb plan-public
