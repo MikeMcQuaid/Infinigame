@@ -38,6 +38,11 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Require a repository branch for platform builds
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo 'Run the platform builds from a branch in this repository to use the Unity licence.' >&2
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0

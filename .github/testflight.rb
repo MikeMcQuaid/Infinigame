@@ -50,14 +50,10 @@ class TestFlight
   end
 
   def self.signing_key
-    pem = ENV.fetch('APP_STORE_KEY').strip.gsub(/\\r\\n|\\n/, "\n")
-    unless pem.start_with?('-----BEGIN ')
-      pem = Base64.strict_decode64(pem.delete(" \t\r\n"))
-      pem = "-----BEGIN PRIVATE KEY-----\n#{Base64.encode64(pem)}-----END PRIVATE KEY-----" unless pem.start_with?('-----BEGIN ')
-    end
-    key = OpenSSL::PKey.read(pem, '')
+    data = ENV.fetch('APP_STORE_KEY').strip.gsub(/\\r\\n|\\n/, "\n")
+    data = Base64.strict_decode64(data.delete(" \t\r\n")) unless data.start_with?('-----BEGIN ')
+    key = OpenSSL::PKey.read(data, '')
     raise ArgumentError unless key.is_a?(OpenSSL::PKey::EC) && key.private? && key.group.curve_name == 'prime256v1'
-    yield pem.strip + "\n" if block_given?
     key
   rescue ArgumentError, OpenSSL::OpenSSLError
     raise 'Set NOTARIZATION_KEY to the contents of the App Store Connect .p8 private key or its base64 encoding.'
@@ -304,7 +300,12 @@ end
 if $PROGRAM_NAME == __FILE__
   begin
     if ARGV.length == 2 && ARGV.first == 'write-key'
-      TestFlight.signing_key { |pem| File.open(ARGV.last, 'wb', 0600) { |file| file.write(pem) } }
+      key = TestFlight.signing_key
+      # CryptoKit expects PKCS#8 PEM with 64-column lines. OpenSSL accepts other encodings.
+      File.open(ARGV.last, 'wb', 0600) do |file|
+        IO.popen(%w[openssl pkcs8 -topk8 -nocrypt], 'w', out: file) { |input| input.write(key.to_pem) }
+        raise 'Could not encode NOTARIZATION_KEY for Xcode' unless $?.success?
+      end
       exit
     end
     case ARGV

@@ -298,10 +298,14 @@ key = OpenSSL::PKey::EC.generate('prime256v1')
 Dir.mktmpdir('api-key-', 'tmp') do |dir|
   path = File.join(dir, 'AuthKey.p8')
   pem = key.to_pem
-  [pem, Base64.strict_encode64(pem), pem.gsub("\n") { '\n' }].each do |secret|
+  pkcs8, status = Open3.capture2('openssl', 'pkcs8', '-topk8', '-nocrypt', stdin_data: pem)
+  assert(status.success?, 'Generate a PKCS#8 test key')
+  body = pkcs8.lines[1...-1].join.delete("\n")
+  wrapped = "-----BEGIN PRIVATE KEY-----\n#{body.scan(/.{1,60}/).join("\n")}\n-----END PRIVATE KEY-----\n"
+  [pkcs8, wrapped, body, pem, Base64.strict_encode64(pem), pem.gsub("\n") { '\n' }].each do |secret|
     _, error, status = Open3.capture3({ 'APP_STORE_KEY' => secret }, RbConfig.ruby, '.github/testflight.rb', 'write-key', path)
     assert(status.success?, "Could not prepare a signing key for Xcode: #{error}")
-    assert(OpenSSL::PKey.read(File.read(path)).public_key == key.public_key, 'Preserve the Apple signing key')
+    assert(File.read(path) == pkcs8, 'Write canonical 64-column PKCS#8 PEM for Xcode, preserving the key')
   end
   ['invalid-key-fixture', OpenSSL::PKey::RSA.generate(1024).to_pem].each do |bad|
     output, error, status = Open3.capture3({ 'APP_STORE_KEY' => bad }, RbConfig.ruby, '.github/testflight.rb', 'write-key', path)

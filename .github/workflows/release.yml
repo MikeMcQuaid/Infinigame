@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   platforms:
+    name: Desktop release builds
     if: github.event_name == 'push'
     uses: ./.github/workflows/build.yml
     with:
