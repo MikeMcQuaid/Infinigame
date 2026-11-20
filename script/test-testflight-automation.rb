@@ -229,6 +229,13 @@ api.processing = [[build('current', now, 'INTERNAL_ONLY')]]
 rejects('audience') { api.distribute }
 
 api = TestFlightFixture.new
+api.check_distribution
+assert(api.writes.empty?, 'Preflight must not publish or change tester groups')
+api = TestFlightFixture.new
+api.groups.reject! { |group| group['id'] == 'public' }
+rejects('external group') { api.check_distribution }
+
+api = TestFlightFixture.new
 api.groups.last['attributes']['hasAccessToAllBuilds'] = false
 api.processing = [[build('current', now, 'APP_STORE_ELIGIBLE')]]
 api.distribute
@@ -252,7 +259,7 @@ api.assigned = ['current']
 api.state = 'IN_BETA_TESTING'
 api.writes.clear
 api.retry_distribution
-assert(api.writes.empty?, 'Hourly checks leave distributed builds alone')
+assert(api.writes.empty?, 'An explicit retry leaves distributed builds alone')
 api.state = 'READY_FOR_BETA_TESTING'
 api.retry_distribution
 assert(api.writes.map { |w| w[1] } == ['/v1/buildBetaNotifications'], 'Notify approved builds already in the public group')
@@ -262,8 +269,8 @@ api.processing = [[build('current', now, 'APP_STORE_ELIGIBLE')]]
 api.distribute
 assert(api.writes.any? { |w| w[1] == '/v1/betaGroups/public/relationships/builds' && w[2][:data] == [{ type: 'builds', id: 'current' }] },
        'Release build must be added to the external group')
-assert(api.writes.any? { |w| w[1] == '/v1/buildBetaDetails/detail' && w[2].dig(:data, :attributes, :autoNotifyEnabled) == true },
-       'Future testers must be notified automatically')
+assert(api.writes.none? { |w| w[1].start_with?('/v1/buildBetaDetails/') },
+       'Review submission must not require permission to change automatic notification settings')
 assert(api.writes.any? { |w| w[1] == '/v1/betaBuildLocalizations' && w[2].dig(:data, :attributes, :locale) == 'en-GB' },
        'Supply What to Test in the app locale')
 assert(api.writes.count { |w| w[1] == '/v1/betaAppReviewSubmissions' } == 1, 'Submit exactly once for review')
@@ -467,8 +474,9 @@ ensure
   Process.define_singleton_method(:clock_gettime, original_clock)
 end
 
-workflow = YAML.load_file('.github/workflows/release.yml')
-steps = workflow.fetch('jobs').fetch('testflight').fetch('steps')
+workflow = YAML.safe_load(File.read('.github/workflows/release.yml'), aliases: true)
+apple_steps = workflow.fetch('jobs').fetch('apple').fetch('steps')
+plan_steps = YAML.load_file('.github/actions/plan-testflight/action.yml').fetch('runs').fetch('steps')
 helper = File.expand_path('../.github/testflight.rb', __dir__)
 Dir.mktmpdir('testflight-workflow.', 'tmp') do |scratch|
   Dir.chdir(scratch) do
@@ -477,7 +485,7 @@ Dir.mktmpdir('testflight-workflow.', 'tmp') do |scratch|
     File.write('script/testflight', <<~'SH')
       #!/bin/bash
       printf '%s %s\n' "${BUILD_NUMBER}" "$*" >>uploads
-      if [[ "$*" == --external ]]; then
+      if [[ "$*" == --upload-archive ]]; then
         [[ -f saved-intent ]] || exit 99
         [[ "${APPLE_ACCEPTS:-1}" == 0 ]] || touch accepted
       fi
@@ -499,17 +507,23 @@ Dir.mktmpdir('testflight-workflow.', 'tmp') do |scratch|
     env = {
       'PATH' => "#{Dir.pwd}/bin:#{ENV.fetch('PATH')}",
       'TEST_RUBY' => RbConfig.ruby, 'TEST_HELPER' => helper,
-      'GITHUB_SHA' => 'original-commit', 'GITHUB_RUN_ID' => '42',
+      'PUBLISH' => 'true', 'TESTFLIGHT_PLATFORM' => 'iOS', 'GITHUB_SHA' => 'original-commit', 'GITHUB_RUN_ID' => '42',
       'GITHUB_OUTPUT' => File.expand_path('outputs'),
       'RELEASE_VERSION' => '1.2.3', 'BUILD_NUMBER' => '42.2', 'NEXT_NUMBER' => '44'
     }
     execute = lambda do |id|
       File.write('outputs', '')
-      File.write('workflow-step.sh', steps.find { |item| item['id'] == id }.fetch('run'))
+      step = (plan_steps + apple_steps).find { |item| item['id'] == id }
+      File.write('workflow-step.sh', step.fetch('run'))
       _out, err, status = Open3.capture3(env, 'bash', '-euo', 'pipefail', 'workflow-step.sh')
       outputs = File.readlines('outputs', chomp: true).map { |line| line.split('=', 2) }.to_h
       [status.success?, outputs, err]
     end
+    env['PUBLISH'] = 'false'
+    success, outputs, err = execute.call('prepare')
+    assert(success && outputs['build_number'] == '44', err)
+    assert(!outputs.key?('fresh') && !File.exist?(TestFlight::UPLOAD_RECORD), 'PRs read build history without reserving a release')
+    env['PUBLISH'] = 'true'
     success, outputs, err = execute.call('prepare')
     assert(success, err)
     env['BUILD_NUMBER'] = outputs.fetch('build_number')
@@ -520,13 +534,13 @@ Dir.mktmpdir('testflight-workflow.', 'tmp') do |scratch|
     success, outputs, err = execute.call('plan')
     assert(success && outputs.fetch('needed') == 'true', err)
     env['UPLOAD_STATUS'] = '1'
-    assert(!execute.call('upload')[0], 'Simulate failure after Apple accepted the upload')
+    assert(!execute.call('upload-ios')[0], 'Simulate failure after Apple accepted the upload')
     uploaded = File.read('uploads')
     assert(File.read('saved-intent') == receipt, 'Failed uploads must already have a durable recovery identity')
 
     # A clean retry restores the pre-upload artefact and reconciles acceptance.
     FileUtils.rm_rf('tmp')
-    FileUtils.mkdir_p('tmp')
+    FileUtils.mkdir_p(File.dirname(TestFlight::UPLOAD_RECORD))
     FileUtils.cp('saved-intent', TestFlight::UPLOAD_RECORD)
     env['NEXT_NUMBER'] = '46'
     success, outputs, err = execute.call('prepare')
@@ -534,15 +548,16 @@ Dir.mktmpdir('testflight-workflow.', 'tmp') do |scratch|
     assert(!outputs.key?('fresh'), 'A retry must preserve the original intent')
     success, outputs, err = execute.call('plan')
     assert(success && outputs.fetch('needed') == 'false', err)
-    upload_step = steps.find { |item| item['id'] == 'upload' }
-    assert(upload_step.fetch('if') == "steps.plan.outputs.needed == 'true'" && outputs.fetch('needed') == 'false',
-           'An accepted upload must skip the upload step')
     assert(File.read('uploads') == uploaded, 'Public retry must not upload another build')
     assert(File.read(TestFlight::UPLOAD_RECORD) == receipt, 'Preserve the identity across clean retries')
 
     env['TESTFLIGHT_PLATFORM'] = 'macOS'
-    assert(!execute.call('prepare')[0], 'A Mac job must reject a legacy iOS upload intent')
-    env.delete('TESTFLIGHT_PLATFORM')
+    success, outputs, err = execute.call('prepare')
+    assert(success && outputs['fresh'] == 'true' && outputs['build_number'] == '46', err)
+    assert(File.read(TestFlight::UPLOAD_RECORD) == receipt, 'Preparing macOS must preserve the iOS reservation')
+    FileUtils.cp('saved-intent', 'tmp/macOS/testflight-upload.json')
+    assert(!execute.call('prepare')[0], 'Reject an iOS intent restored under macOS')
+    env['TESTFLIGHT_PLATFORM'] = 'iOS'
     env['GITHUB_SHA'] = 'another-commit'
     assert(!execute.call('prepare')[0], 'Mismatched recovery must fail')
     assert(File.read('uploads') == uploaded, 'Mismatched recovery must not upload')

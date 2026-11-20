@@ -3,8 +3,8 @@
 set +x
 set -euo pipefail
 cd "$(dirname "$0")/.."
-[[ $# == 1 && ($1 == --dry-run || $1 == --internal || $1 == --external) ]] || {
-  echo 'Usage: script/testflight --dry-run|--internal|--external' >&2; exit 1
+[[ $# == 1 && ($1 == --dry-run || $1 == --verify || $1 == --upload-archive || $1 == --internal || $1 == --external) ]] || {
+  echo 'Usage: script/testflight --dry-run|--verify|--upload-archive|--internal|--external' >&2; exit 1
 }
 : "${APP_STORE_KEY:?}" "${APP_STORE_KEY_ID:?}" "${APP_STORE_ISSUER_ID:?}"
 : "${APP_STORE_CERTIFICATES:?}" "${APP_STORE_CERTIFICATES_PASSWORD:?}"
@@ -16,6 +16,8 @@ case "$platform" in
     plist=Build/iOS/Info.plist
     profile=${APP_STORE_PROFILE:-${APP_STORE_IOS_PROFILE:?Missing iOS App Store profile}}
     identifier_key='application-identifier'
+    altool_platform=ios
+    binary_extension=ipa
     extension=mobileprovision
     ;;
   macOS)
@@ -24,13 +26,13 @@ case "$platform" in
     plist=Build/MacStore/Infinigame/Info.plist
     profile=${APP_STORE_PROFILE:-${APP_STORE_MACOS_PROFILE:?Missing Mac App Store profile}}
     identifier_key=com.apple.application-identifier
+    altool_platform=macos
+    binary_extension=pkg
     extension=provisionprofile
     ;;
   *) echo "Unknown TestFlight platform: $platform" >&2; exit 1 ;;
 esac
 [[ -f "$project/project.pbxproj" ]] || { echo "Missing Unity export: $project" >&2; exit 1; }
-destination=upload
-[[ "$1" != --dry-run ]] || destination='export'
 umask 077
 mkdir -p tmp Logs Build/TestFlight
 scratch="$(mktemp -d "$PWD/tmp/testflight.XXXXXX")"
@@ -48,13 +50,12 @@ cleanup() {
   rm -rf "$scratch"
 }
 trap cleanup EXIT
-ruby .github/testflight.rb write-key "$scratch/key.p8"
+key="$scratch/AuthKey_${APP_STORE_KEY_ID}.p8"
+ruby .github/testflight.rb write-key "$key"
 if [[ "$1" != --dry-run ]]; then
   [[ "${RELEASE_VERSION:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "${BUILD_NUMBER:-}" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || {
     echo 'Allocate RELEASE_VERSION and BUILD_NUMBER through the TestFlight workflow.' >&2; exit 1
   }
-  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" \
-    -c "Set :CFBundleShortVersionString $RELEASE_VERSION" "$plist"
 fi
 base64 --decode <<<"$profile" > "$scratch/profile"
 security cms -D -i "$scratch/profile" > "$scratch/profile.plist"
@@ -84,6 +85,8 @@ if [[ ! -e "$profile_directory/$uuid.$extension" ]]; then
   installed_profile="$profile_directory/$uuid.$extension"
   cp "$scratch/profile" "$installed_profile"
 fi
+destination=upload
+if [[ "$1" == --dry-run || "$1" == --verify ]]; then destination='export'; fi
 plutil -create xml1 "$scratch/export.plist"
 /usr/libexec/PlistBuddy -c 'Add :method string app-store-connect' \
   -c "Add :destination string $destination" -c 'Add :signingStyle string manual' \
@@ -103,21 +106,48 @@ if [[ "$platform" == macOS ]]; then
     exit 1
   fi
   /usr/libexec/PlistBuddy -c "Add :installerSigningCertificate string $installer" "$scratch/export.plist"
-  plutil -replace ITSAppUsesNonExemptEncryption -bool NO "$plist"
-  plutil -replace NSHumanReadableCopyright -string 'Copyright Infinigame' "$plist"
 fi
 archive="Build/TestFlight/$platform.xcarchive"
-xcodebuild -project "$project" -scheme "$scheme" \
-  -configuration Release -destination "generic/platform=$platform" \
-  -derivedDataPath "Build/${platform}Derived" -archivePath "$archive" \
-  "DEVELOPMENT_TEAM=$team" CODE_SIGN_STYLE=Manual 'CODE_SIGN_IDENTITY=Apple Distribution' \
-  "${signing[@]}" archive 2>&1 | tee Logs/testflight-archive.log
-xcodebuild -exportArchive -archivePath "$archive" \
-  -exportOptionsPlist "$scratch/export.plist" -exportPath "Build/TestFlight/export/$platform" \
-  -authenticationKeyPath "$scratch/key.p8" -authenticationKeyID "$APP_STORE_KEY_ID" \
-  -authenticationKeyIssuerID "$APP_STORE_ISSUER_ID" -allowProvisioningUpdates 2>&1 | tee Logs/testflight-export.log
-if [[ "$destination" == export ]]; then
-  echo "Exported $platform beta to $PWD/Build/TestFlight/export/$platform."
+# Xcode packages these files for root to install and ordinary users to run.
+umask 022
+if [[ "$1" == --upload-archive ]]; then
+  info="$archive/Info.plist"
+  [[ "$(plutil -extract ApplicationProperties.CFBundleVersion raw "$info")" == "$BUILD_NUMBER" &&
+     "$(plutil -extract ApplicationProperties.CFBundleShortVersionString raw "$info")" == "$RELEASE_VERSION" &&
+     "$(plutil -extract ApplicationProperties.CFBundleIdentifier raw "$info")" == "$bundle_id" ]] || {
+    echo "The archive does not match $bundle_id $RELEASE_VERSION ($BUILD_NUMBER)." >&2; exit 1
+  }
 else
-  echo 'Uploaded. The workflow will check processing and distribute the build.'
+  if [[ "$1" != --dry-run ]]; then
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" \
+      -c "Set :CFBundleShortVersionString $RELEASE_VERSION" "$plist"
+  fi
+  if [[ "$platform" == macOS ]]; then
+    plutil -replace ITSAppUsesNonExemptEncryption -bool NO "$plist"
+    plutil -replace NSHumanReadableCopyright -string 'Copyright Infinigame' "$plist"
+    chmod -R a+rX Build/MacStore
+  fi
+  xcodebuild -project "$project" -scheme "$scheme" \
+    -configuration Release -destination "generic/platform=$platform" \
+    -derivedDataPath "Build/${platform}Derived" -archivePath "$archive" \
+    "DEVELOPMENT_TEAM=$team" CODE_SIGN_STYLE=Manual 'CODE_SIGN_IDENTITY=Apple Distribution' \
+    "${signing[@]}" archive 2>&1 | tee Logs/testflight-archive.log
+fi
+if [[ "$platform" == iOS && "$1" != --dry-run ]]; then
+  app=$(plutil -extract ApplicationProperties.ApplicationPath raw "$archive/Info.plist")
+  sdk=$(plutil -extract DTSDKName raw "$archive/Products/$app/Info.plist")
+  echo "Archived with $sdk"
+  [[ "$sdk" =~ ^iphoneos([0-9]+)(\.[0-9]+)*$ && "${BASH_REMATCH[1]}" -ge 27 ]] || {
+    echo "Expected an iOS 27 or newer device SDK, found $sdk." >&2; exit 1
+  }
+fi
+xcodebuild -exportArchive -archivePath "$archive" \
+  -exportOptionsPlist "$scratch/export.plist" -exportPath "Build/TestFlight/$destination/$platform" \
+  -authenticationKeyPath "$key" -authenticationKeyID "$APP_STORE_KEY_ID" \
+  -authenticationKeyIssuerID "$APP_STORE_ISSUER_ID" -allowProvisioningUpdates 2>&1 | tee "Logs/testflight-$destination.log"
+if [[ "$1" == --verify ]]; then
+  packages=(Build/TestFlight/export/"$platform"/*."$binary_extension")
+  [[ ${#packages[@]} == 1 && -f "${packages[0]}" ]] || { echo "Expected one signed .$binary_extension" >&2; exit 1; }
+  API_PRIVATE_KEYS_DIR="$scratch" xcrun altool --validate-app -f "${packages[0]}" -t "$altool_platform" \
+    --apiKey "$APP_STORE_KEY_ID" --apiIssuer "$APP_STORE_ISSUER_ID"
 fi

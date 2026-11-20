@@ -3,3 +3,5 @@ paths:
     ignore:
       # GitHub supports queued concurrency; actionlint 1.7.12 does not.
       - '^unexpected key "queue" for "concurrency" section\.'
+      # The hosted Xcode 27 image is newer than actionlint's runner list.
+      - '^label "xcode-27" is unknown\.'

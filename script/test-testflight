@@ -3,89 +3,50 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ruby -ryaml <<'WORKFLOW'
-workflow = YAML.load_file('.github/workflows/release.yml')
+workflow = YAML.safe_load(File.read('.github/workflows/release.yml'), aliases: true)
 events = workflow['on'] || workflow.fetch(true)
-abort 'Publish both TestFlight platforms on main pushes' unless
-  events.dig('push', 'branches') == ['main'] && !events['push'].key?('tags') &&
-  workflow.dig('jobs', 'testflight', 'strategy', 'matrix', 'platform') == %w[iOS macOS]
-abort 'Retry pending external reviews without another push' unless events.key?('schedule')
+abort 'Use the same platform jobs for PRs, main pushes and manual checks' unless
+  events.dig('pull_request', 'branches') == ['main'] && events.dig('push', 'branches') == ['main'] &&
+  events.key?('workflow_dispatch')
+abort 'CI must not run on a schedule' if events.key?('schedule')
 jobs = workflow.fetch('jobs')
-build = YAML.load_file('.github/workflows/build.yml')
-builder = YAML.load_file('.github/actions/compile-unity/action.yml').dig('runs', 'steps')
-              .find { |step| step['uses'].to_s.start_with?('game-ci/unity-builder@') }.fetch('with')
-abort 'Use GameCI custom versioning only for releases' unless
-  builder['versioning'] == "${{ inputs.version != '' && 'Custom' || 'None' }}" && builder['version'] == '${{ inputs.version }}'
-build_jobs = build.fetch('jobs')
-uploads = build_jobs.values.flat_map { |job| job.fetch('steps') }.select { |step| step['uses'].to_s.start_with?('actions/upload-artifact@') }
-abort 'Only playable desktop builds belong in platform artefacts' unless uploads.map { |step| step.dig('with', 'name') }.sort == ['Infinigame-${{ matrix.name }}', 'Infinigame-SteamDeck'].sort &&
-  build_jobs.dig('build', 'strategy', 'matrix', 'include').map { |row| row.fetch('name') }.sort == %w[Windows macOS]
-[build_jobs.fetch('build'), jobs.fetch('testflight')].each do |job|
-  checkout = job.fetch('steps').find { |step| step['uses'].to_s.start_with?('actions/checkout@') }
-  abort 'Build numbers need the full commit history' unless checkout.dig('with', 'fetch-depth') == 0
+mac = jobs.fetch('apple')
+abort 'Share one Xcode 27 runner between macOS and iOS' unless mac['runs-on'] == 'xcode-27' && !mac.key?('strategy')
+%w[windows apple].each do |id|
+  platform = jobs.fetch(id)
+  abort "#{id} must run independently and skip fork PRs" unless !platform.key?('needs') &&
+    platform.fetch('if') == "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository"
 end
-credentials = %w[UNITY_EMAIL UNITY_PASSWORD].to_h { |key| [key, "${{ secrets.#{key} }}"] }
-events = build['on'] || build.fetch(true)
-required = events.fetch('workflow_call').fetch('secrets').select { |_, value| value['required'] }.keys
-abort 'Hosted builds require Unity Personal credentials' unless required.sort == credentials.keys.sort
-ci_workflow = YAML.safe_load(File.read('.github/workflows/ci.yml'), aliases: true)
-ci_events = ci_workflow['on'] || ci_workflow.fetch(true)
-abort 'Run platform CI for pull requests to main' unless ci_events.dig('pull_request', 'branches') == ['main']
-ci = ci_workflow.fetch('jobs')
-access = ci.fetch('apple-access')
-abort 'PRs must run the individual checks directly' if ci.key?('required') || ci.fetch('platforms').key?('if')
-[build_jobs.fetch('build'), access].each do |job|
-  guard = job.fetch('steps').first
-  abort 'Credentialled jobs must fail fork PRs before checkout' unless
-    !job.key?('if') && guard['if'] == "github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository" &&
-    guard.fetch('run', '').lines.last.to_s.strip == 'exit 1'
+abort 'Only a push to main may publish builds' unless workflow.dig('env', 'PUBLISH') ==
+  "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"
+steps = mac.fetch('steps')
+abort 'Prepare the shared Unity editor only once' unless steps.count { |s| s['uses'] == './.github/actions/prepare-unity' } == 1
+by_id = steps.select { |s| s['id'] }.to_h { |s| [s['id'], s] }
+targets = %w[mac ios]
+targets.each do |target|
+  plan, compile, verify, upload = %w[plan compile verify upload].map { |phase| by_id.fetch("#{phase}-#{target}") }
+  abort 'Use the platform build identity and the same signing credentials throughout' unless
+    plan['uses'] == './.github/actions/plan-testflight' && compile['uses'] == './.github/actions/compile-unity' &&
+    verify['run'] == 'script/testflight --verify' && upload['run'] == 'script/testflight --upload-archive' &&
+    verify['env'] == upload['env'] && verify.dig('env', 'TESTFLIGHT_PLATFORM') == plan.dig('env', 'TESTFLIGHT_PLATFORM') &&
+    upload.fetch('if').include?("env.PUBLISH == 'true'") && upload.fetch('if').include?("steps.verify-#{target}.outcome == 'success'") &&
+    upload.fetch('if').include?("steps.groups.outcome == 'success'")
 end
-checkout = access.fetch('steps').find { |step| step['uses'].to_s.start_with?('actions/checkout@') }
-abort 'Read Apple credentials only with base-branch code' unless checkout.dig('with', 'ref') == "${{ github.event.pull_request.base.sha || 'main' }}"
-[ci, jobs].each do |caller|
-  abort 'Missing platform build credentials' unless caller.dig('platforms', 'secrets') == credentials
-end
-abort 'Build the desktop players before using the Unity seat for TestFlight' unless
-  jobs.dig('testflight', 'needs') == 'platforms' && jobs.dig('platforms', 'if') == "github.event_name == 'push'"
-abort 'A desktop build failure must not skip the Apple betas' unless
-  jobs.dig('testflight', 'if') == "${{ !cancelled() && github.event_name == 'push' }}"
-abort 'Scheduled reviews must not build players' unless jobs.dig('review', 'if') == "github.event_name == 'schedule'"
-abort 'PR CI must not duplicate main builds' if ci_events.key?('push')
-steps = jobs.dig('testflight', 'steps')
-signing = access.fetch('steps').select { |step| step['run'].to_s.rstrip.end_with?('script/testflight --dry-run') }
-upload_env = steps.find { |step| step['id'] == 'upload' }.fetch('env')
-abort 'Run both signing checks in one job alongside the platform builds' unless
-  !access.key?('strategy') && !access.key?('needs') && access['runs-on'] == jobs.dig('testflight', 'runs-on') &&
-  signing.map { |step| step.dig('env', 'TESTFLIGHT_PLATFORM') } == jobs.dig('testflight', 'strategy', 'matrix', 'platform')
-signing.each do |step|
-  env = step.fetch('env')
-  profile = "INFINIGAME_APP_STORE_#{env.fetch('TESTFLIGHT_PLATFORM').upcase}_PROFILE"
-  abort 'Export with the release credentials and the correct platform profile' unless
-    upload_env.select { |key, _| key.start_with?('APP_STORE_') && key != 'APP_STORE_PROFILE' }.all? { |key, value| env[key] == value } &&
-    env['APP_STORE_PROFILE'] == "${{ secrets.#{profile} }}" && !step['continue-on-error']
-end
-abort 'Attempt the Mac export even when iOS signing fails' unless signing.last['if'] == "${{ !cancelled() && steps.projects.outcome == 'success' }}"
-platform_steps = build_jobs.fetch('build').fetch('steps')
-abort 'Run the PR tooling tests on the Apple build runner' unless
-  build_jobs.keys == ['build'] && platform_steps.any? { |step| step['run'] == 'script/test-testflight' && step['if'] == "matrix.name == 'macOS' && !inputs.desktop-only" }
-abort 'Archive the native Mac TestFlight app on pull requests' unless
-  platform_steps.any? { |step| step.dig('with', 'method').to_s.include?('CIMacAndTestFlight') } &&
-  platform_steps.any? { |step| step['run'].to_s.include?('MacStore.xcodeproj') && step['run'].include?('CODE_SIGNING_ALLOWED=NO archive') }
-prepare_ios = platform_steps.find { |step| step['id'] == 'prepare-ios' }
-ios = platform_steps.find { |step| step.dig('with', 'compile-ios') == 'true' }
-abort 'Compile unsigned iOS on the desktop Mac runner for unversioned builds' unless
-  prepare_ios && prepare_ios.fetch('if').include?("matrix.name == 'macOS'") && prepare_ios.fetch('if').include?('!inputs.desktop-only') &&
-  ios && ios.fetch('if').include?("steps.prepare-ios.outcome == 'success'") &&
-  platform_steps.count { |step| step['uses'] == './.github/actions/prepare-unity' } == 1
-abort 'Sign the iOS export in the same job' if steps.any? { |step| step.dig('with', 'name') == 'Infinigame-iOS' }
-abort 'Uploads must share a fixed queue' unless workflow.fetch('concurrency') == { 'group' => 'infinigame-release', 'cancel-in-progress' => false, 'queue' => 'max' }
-identity = steps.index { |step| step['id'] == 'prepare' }
-save = steps.index { |step| step['name'] == 'Save public TestFlight upload intent' }
-plan = steps.index { |step| step['id'] == 'plan' }
-upload = steps.index { |step| step['id'] == 'upload' }
-abort 'Save and reconcile the identity before uploading' unless [identity, save, plan, upload].all? && identity < save && save < plan && plan < upload
-abort 'Upload one external-eligible build for both audiences' unless steps[upload]['run'] == 'script/testflight --external' &&
-  steps[upload]['if'] == "steps.plan.outputs.needed == 'true'"
-abort 'Public intent must outlive reruns' unless steps[save].dig('with', 'retention-days') == 90
+ids = steps.map { |s| s['id'] }
+abort 'Finish both platform checks and the Mac download before uploading' unless
+  ids.index('verify-ios') < ids.index('upload-mac') && ids.index('verify-mac') < ids.index('upload-ios') &&
+  ids.index('package') < ids.index('upload-mac')
+abort 'Keep a downloadable Mac build when Apple validation fails' unless by_id.fetch('package').fetch('if').include?('!cancelled()') &&
+  steps.any? { |s| s.dig('with', 'name') == 'Infinigame-macOS' && s.fetch('if').include?("steps.package.outcome == 'success'") }
+windows = jobs.dig('windows', 'steps').select { |s| s['uses'].to_s.start_with?('actions/upload-artifact@') }
+abort 'Only publish merged Windows builds' unless windows.map { |s| s.dig('with', 'name') }.sort == %w[Infinigame-SteamDeck Infinigame-Windows] &&
+  windows.all? { |s| s['if'] == "env.PUBLISH == 'true'" }
+dist = jobs.fetch('distribute')
+abort 'Only hand recovered builds to distribution after checking the tester groups' unless
+  targets.all? { |target| mac.fetch('outputs').fetch("#{target}-number").include?("steps.groups.outcome == 'success'") }
+abort 'Distribute uploaded builds on Linux on main pushes' unless dist['runs-on'] == 'ubuntu-24.04' &&
+  dist['needs'] == 'apple' && dist['if'].include?("github.event_name == 'push'") &&
+  dist.fetch('steps').select { |step| step.key?('run') }.map { |step| step['run'] } == ['ruby .github/testflight.rb public'] * 2
 puts 'TestFlight workflow checks passed'
 WORKFLOW
 mkdir -p tmp
@@ -120,6 +81,8 @@ plutil -create xml1 "$scratch/Build/iOS/Info.plist"
   git checkout -q --detach main^
   [ "$(script/build-number)" = 1 ]
 )
+# The fixtures exercise iOS first, even in the macOS workflow job.
+unset TESTFLIGHT_PLATFORM APP_STORE_PROFILE
 export TESTFLIGHT_TEST_DIRECTORY="$scratch"
 export PATH="$scratch/bin:$PATH"
 cat > "$scratch/bin/security" <<'SECURITY'
@@ -167,29 +130,37 @@ SECURITY
 cat > "$scratch/bin/xcodebuild" <<'XCODEBUILD'
 #!/bin/bash
 set -euo pipefail
+if [[ ${TESTFLIGHT_PLATFORM:-iOS} == macOS ]]; then
+  test "$(umask)" = 0022 || { echo 'Mac builds must be readable by other users' >&2; exit 1; }
+fi
 echo /archive-concurrent.keychain-db >>"${TESTFLIGHT_TEST_DIRECTORY}/keychains"
 if [[ "$1" == -exportArchive ]]; then
   [[ "$8" == -authenticationKeyPath ]]
   openssl pkey -in "$9" -noout
   case "$TESTFLIGHT_TEST_FAILURE" in
-    dry-run) destination=export internal=false ;;
-    external) destination=upload internal=false ;;
-    *) destination=upload internal=true ;;
+    dry-run|verify|validation|upload-archive) internal=false ;;
+    external) internal=false ;;
+    *) internal=true ;;
   esac
-  test "$(/usr/libexec/PlistBuddy -c 'Print :destination' "$5")" = "$destination"
+  destination="$(/usr/libexec/PlistBuddy -c 'Print :destination' "$5")"
   test "$(/usr/libexec/PlistBuddy -c 'Print :testFlightInternalTestingOnly' "$5")" = "$internal"
   if [[ "${TESTFLIGHT_PLATFORM:-iOS}" == macOS ]]; then
     test "$(/usr/libexec/PlistBuddy -c 'Print :installerSigningCertificate' "$5")" = DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD || {
       echo 'Mac export must select the imported team installer by fingerprint' >&2; exit 1
     }
   fi
-  echo export >> "$TESTFLIGHT_TEST_DIRECTORY/calls"
+  if [[ "$destination" == export ]]; then
+    mkdir -p "$7"
+    if [[ "${TESTFLIGHT_PLATFORM:-iOS}" == macOS ]]; then touch "$7/Game.pkg"; else touch "$7/Game.ipa"; fi
+  fi
+  echo "$destination" >> "$TESTFLIGHT_TEST_DIRECTORY/calls"
   /usr/libexec/PlistBuddy -c 'Print :provisioningProfiles:com.mikemcquaid.Infinigame' "$5" > "$TESTFLIGHT_TEST_DIRECTORY/exported-profile"
   [[ "$TESTFLIGHT_TEST_FAILURE" != export ]]
 else
   plist=Build/iOS/Info.plist
   if [[ "${TESTFLIGHT_PLATFORM:-iOS}" == macOS ]]; then
     plist=Build/MacStore/Infinigame/Info.plist
+    test "$(stat -f %Lp Build/MacStore/Infinigame/private-resource)" = 644
     [[ "$2" == Build/MacStore/MacStore.xcodeproj && "$4" == Infinigame ]]
     [[ " $* " == *" -destination generic/platform=macOS "* && " $* " == *" PROVISIONING_PROFILE_SPECIFIER="* ]]
     [[ -f "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$PROFILE_UUID.provisionprofile" ]]
@@ -199,10 +170,39 @@ else
     [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")" == 44 ]]
     [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" == 1.2.3 ]]
   fi
+  archive="Build/TestFlight/${TESTFLIGHT_PLATFORM:-iOS}.xcarchive"
+  mkdir -p "$archive"
+  plutil -create xml1 "$archive/Info.plist"
+  /usr/libexec/PlistBuddy -c 'Add :ApplicationProperties dict' \
+    -c 'Add :ApplicationProperties:ApplicationPath string Applications/Infinigame.app' \
+    -c 'Add :ApplicationProperties:CFBundleVersion string 44' \
+    -c 'Add :ApplicationProperties:CFBundleShortVersionString string 1.2.3' \
+    -c 'Add :ApplicationProperties:CFBundleIdentifier string com.mikemcquaid.Infinigame' "$archive/Info.plist"
+  if [[ ${TESTFLIGHT_PLATFORM:-iOS} == iOS ]]; then
+    app="$archive/Products/Applications/Infinigame.app"
+    mkdir -p "$app"
+    plutil -create xml1 "$app/Info.plist"
+    plutil -replace DTSDKName -string iphoneos27.1 "$app/Info.plist"
+  fi
   echo archive >> "$TESTFLIGHT_TEST_DIRECTORY/calls"
   [[ "$TESTFLIGHT_TEST_FAILURE" != archive ]]
 fi
 XCODEBUILD
+cat > "$scratch/bin/xcrun" <<'XCRUN'
+#!/bin/bash
+set -euo pipefail
+test "$1 $2 $3" = 'altool --validate-app -f'
+test -f "$4"
+if [[ "${TESTFLIGHT_PLATFORM:-iOS}" == macOS ]]; then
+  [[ "$4" == *.pkg && "$5 $6" == '-t macos' ]]
+else
+  [[ "$4" == *.ipa && "$5 $6" == '-t ios' ]]
+fi
+test -f "$API_PRIVATE_KEYS_DIR/AuthKey_${APP_STORE_KEY_ID}.p8"
+test "$(stat -f %Lp "$API_PRIVATE_KEYS_DIR/AuthKey_${APP_STORE_KEY_ID}.p8")" = 600
+echo validate >> "$TESTFLIGHT_TEST_DIRECTORY/calls"
+[[ "$TESTFLIGHT_TEST_FAILURE" != validation ]]
+XCRUN
 chmod +x "$scratch/bin/"*
 export APP_STORE_KEY_ID=KEY1234567 APP_STORE_ISSUER_ID=issuer
 APP_STORE_KEY=$(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:prime256v1 -pkeyopt ec_param_enc:named_curve | base64)
@@ -216,7 +216,7 @@ plutil -create xml1 "$scratch/profile.plist"
   -c 'Add :Entitlements dict' \
   -c 'Add :Entitlements:application-identifier string OLDPREFIX1.com.mikemcquaid.Infinigame' "$scratch/profile.plist"
 cp "$scratch/profile.plist" "$scratch/invalid.plist"
-for failure in profile-case profile-prefix list create import archive export none external dry-run; do
+for failure in profile-case profile-prefix list create import archive export none external dry-run verify validation upload-archive; do
   export TESTFLIGHT_TEST_FAILURE="$failure"
   APP_STORE_IOS_PROFILE="$(base64 -i "$scratch/profile.plist")"
   if [[ "$failure" == profile-* ]]; then
@@ -228,11 +228,14 @@ for failure in profile-case profile-prefix list create import archive export non
   rm -f "$scratch/security.log" "$scratch/calls"
   flag=--internal
   [[ "$failure" != external* ]] || flag=--external
-  [[ "$failure" != dry-run ]] || flag=--dry-run
+  case "$failure" in
+    verify|validation) flag=--verify ;;
+    dry-run|upload-archive) flag="--$failure" ;;
+  esac
   if "$scratch/script/testflight" "$flag" > "$scratch/run.log" 2>&1; then
-    [[ "$failure" == none || "$failure" == external || "$failure" == dry-run ]] || { echo "Ignored $failure failure" >&2; exit 1; }
+    [[ "$failure" == none || "$failure" == external || "$failure" == dry-run || "$failure" == verify || "$failure" == upload-archive ]] || { echo "Ignored $failure failure" >&2; exit 1; }
   else
-    [[ "$failure" != none && "$failure" != external && "$failure" != dry-run ]] || { cat "$scratch/run.log"; exit 1; }
+    [[ "$failure" != none && "$failure" != external && "$failure" != dry-run && "$failure" != verify && "$failure" != upload-archive ]] || { cat "$scratch/run.log"; exit 1; }
   fi
   [[ ! -e "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$uuid.mobileprovision" ]]
   [[ -z "$(ls -A "$scratch/tmp")" ]]
@@ -256,23 +259,45 @@ for failure in profile-case profile-prefix list create import archive export non
   case "$failure" in
     profile-*|list|create|import) [[ ! -e "$scratch/calls" ]] ;;
     archive) [[ "$(cat "$scratch/calls")" == archive ]] ;;
-    export|none|external|dry-run) [[ "$(cat "$scratch/calls")" == $'archive\nexport' ]] ;;
+    dry-run) [[ "$(cat "$scratch/calls")" == $'archive\nexport' ]] ;;
+    verify|validation) [[ "$(cat "$scratch/calls")" == $'archive\nexport\nvalidate' ]] ;;
+    upload-archive) [[ "$(cat "$scratch/calls")" == upload ]] ;;
+    none|external|export) [[ "$(cat "$scratch/calls")" == $'archive\nupload' ]] ;;
   esac
 done
+ios_app="$scratch/Build/TestFlight/iOS.xcarchive/Products/Applications/Infinigame.app"
+plutil -replace DTSDKName -string iphoneos26.5 "$ios_app/Info.plist"
+rm "$scratch/calls"
+if TESTFLIGHT_TEST_FAILURE=upload-archive "$scratch/script/testflight" --upload-archive > "$scratch/run.log" 2>&1; then
+  echo 'Uploaded an existing iOS archive built with SDK 26.5' >&2; exit 1
+fi
+grep -q 'iphoneos26.5' "$scratch/run.log"
+test ! -e "$scratch/calls"
 [[ "$(cat "$scratch/exported-profile")" == "$uuid" ]]
 mkdir -p "$scratch/Build/MacStore/MacStore.xcodeproj" "$scratch/Build/MacStore/Infinigame"
 touch "$scratch/Build/MacStore/MacStore.xcodeproj/project.pbxproj"
 cp "$scratch/Build/iOS/Info.plist" "$scratch/Build/MacStore/Infinigame/"
 /usr/libexec/PlistBuddy -c 'Delete :Entitlements:application-identifier' \
   -c 'Add :Entitlements:com.apple.application-identifier string OLDPREFIX1.com.mikemcquaid.Infinigame' "$scratch/profile.plist"
-for mode in external dry-run; do
-  rm "$scratch/calls"
+touch "$scratch/Build/MacStore/Infinigame/private-resource"
+chmod 600 "$scratch/Build/MacStore/Infinigame/private-resource"
+for mode in external dry-run verify upload-archive; do
+  rm -f "$scratch/calls"
   TESTFLIGHT_TEST_FAILURE="$mode" TESTFLIGHT_PLATFORM=macOS APP_STORE_PROFILE="$(base64 -i "$scratch/profile.plist")" PROFILE_UUID="$uuid" \
     "$scratch/script/testflight" "--$mode" > "$scratch/run.log" 2>&1 || { cat "$scratch/run.log"; exit 1; }
-  test "$(cat "$scratch/calls")" = $'archive\nexport'
+  expected=$'archive\nexport'
+  [[ "$mode" != external ]] || expected=$'archive\nupload'
+  [[ "$mode" != verify ]] || expected+=$'\nvalidate'
+  [[ "$mode" != upload-archive ]] || expected=upload
+  test "$(cat "$scratch/calls")" = "$expected"
   test ! -e "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$uuid.provisionprofile"
 done
 rm "$scratch/calls"
+if BUILD_NUMBER=45 TESTFLIGHT_TEST_FAILURE=upload-archive TESTFLIGHT_PLATFORM=macOS APP_STORE_PROFILE="$(base64 -i "$scratch/profile.plist")" \
+    "$scratch/script/testflight" --upload-archive > "$scratch/run.log" 2>&1; then
+  echo 'Uploaded an archive with the wrong build number' >&2; exit 1
+fi
+test ! -e "$scratch/calls"
 if TESTFLIGHT_TEST_FAILURE=missing-installer TESTFLIGHT_PLATFORM=macOS APP_STORE_PROFILE="$(base64 -i "$scratch/profile.plist")" PROFILE_UUID="$uuid" \
     "$scratch/script/testflight" --dry-run > "$scratch/run.log" 2>&1; then
   echo 'Accepted a bundle without a valid installer identity for this team' >&2; exit 1

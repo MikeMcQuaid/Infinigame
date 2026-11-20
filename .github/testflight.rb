@@ -8,7 +8,7 @@ require 'time'
 require 'timeout'
 
 class TestFlight
-  UPLOAD_RECORD = 'tmp/testflight-upload.json'
+  UPLOAD_RECORD = "tmp/#{ENV.fetch('TESTFLIGHT_PLATFORM', 'iOS')}/testflight-upload.json"
   PUBLIC_ARTIFACT = /\Atestflight-(?:macos-)?(upload|attempt)-([0-9]+(?:\.[0-9]+){0,2})(?:-v([0-9]+\.[0-9]+\.[0-9]+))?(?:-[0-9]+)?\z/
   PLATFORMS = { 'iOS' => 'IOS', 'macOS' => 'MAC_OS' }.freeze
 
@@ -28,14 +28,11 @@ class TestFlight
     number
   end
 
-  def self.github_pages(path)
-    output = IO.popen(['gh', 'api', '--paginate', '--slurp', "repos/#{ENV.fetch('GITHUB_REPOSITORY')}/#{path}"], &:read)
-    raise 'Could not read GitHub upload history' unless $?.success?
-    JSON.parse(output)
-  end
-
   def public_artifacts
-    self.class.github_pages('actions/artifacts?per_page=100').flat_map { |page| page.fetch('artifacts') }.select do |artifact|
+    output = IO.popen(['gh', 'api', '--paginate', '--slurp',
+                       "repos/#{ENV.fetch('GITHUB_REPOSITORY')}/actions/artifacts?per_page=100"], &:read)
+    raise 'Could not read GitHub upload history' unless $?.success?
+    JSON.parse(output).flat_map { |page| page.fetch('artifacts') }.select do |artifact|
       name = artifact.fetch('name')
       next false unless name.match?(PUBLIC_ARTIFACT) && name.start_with?('testflight-macos-') == (@platform == 'MAC_OS')
       run = artifact['workflow_run']
@@ -148,6 +145,18 @@ class TestFlight
     groups.first.fetch('id')
   end
 
+  def check_distribution
+    public_group
+    internal_group
+    what_to_test
+  end
+
+  def what_to_test
+    notes = File.read(File.expand_path('../TESTFLIGHT.md', __dir__))[/^## What to Test\s*\n(.+?)(?=^## |\z)/m, 1].to_s.strip
+    raise 'Enter What to Test in TESTFLIGHT.md.' if notes.empty?
+    notes
+  end
+
   def tester_groups
     @tester_groups ||= list("/v1/apps/#{@app.fetch('id')}/betaGroups")
   end
@@ -235,8 +244,7 @@ class TestFlight
     when 'READY_FOR_BETA_SUBMISSION'
       locale = @app.fetch('attributes').fetch('primaryLocale')
       existing = list("/v1/builds/#{id}/betaBuildLocalizations").find { |item| item.dig('attributes', 'locale') == locale }
-      notes = File.read(File.expand_path('../TESTFLIGHT.md', __dir__))[/^## What to Test\s*\n(.+?)(?=^## |\z)/m, 1].to_s.strip
-      raise 'Enter What to Test in TESTFLIGHT.md.' if notes.empty?
+      notes = what_to_test
       if existing
         request('PATCH', "/v1/betaBuildLocalizations/#{existing.fetch('id')}", data: {
           type: 'betaBuildLocalizations', id: existing.fetch('id'), attributes: { whatsNew: notes }
@@ -247,9 +255,6 @@ class TestFlight
           relationships: { build: { data: { type: 'builds', id: id } } }
         })
       end
-      request('PATCH', "/v1/buildBetaDetails/#{detail.fetch('id')}", data: {
-        type: 'buildBetaDetails', id: detail.fetch('id'), attributes: { autoNotifyEnabled: true }
-      })
       request('POST', '/v1/betaAppReviewSubmissions', data: {
         type: 'betaAppReviewSubmissions', relationships: { build: { data: { type: 'builds', id: id } } }
       })
@@ -309,6 +314,7 @@ if $PROGRAM_NAME == __FILE__
       exit
     end
     case ARGV
+    when ['check-distribution'] then TestFlight.new.check_distribution
     when ['next-build-number'] then puts TestFlight.new.next_build_number(Integer(`script/build-number`, 10))
     when ['record-public'] then TestFlight.record_public
     when ['resume-public'] then puts TestFlight.resume_public
@@ -318,7 +324,7 @@ if $PROGRAM_NAME == __FILE__
       File.open(ENV.fetch('GITHUB_OUTPUT'), 'a') { |file| file.puts "needed=#{needed}" }
     when ['public'] then TestFlight.new.distribute
     when ['retry-distribution'] then TestFlight.new.retry_distribution
-    else raise 'Usage: ruby .github/testflight.rb next-build-number|record-public|resume-public|plan-public|public|retry-distribution'
+    else raise 'Usage: ruby .github/testflight.rb check-distribution|next-build-number|record-public|resume-public|plan-public|public|retry-distribution'
     end
   rescue StandardError => error
     warn error.message

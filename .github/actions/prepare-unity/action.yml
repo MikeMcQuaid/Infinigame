@@ -1,16 +1,9 @@
 name: Prepare Unity
 description: Restore the editor and build caches and prepare native speech
 inputs:
-  platform:
-    description: Native speech platform
-    required: true
   target:
-    description: Unity target
+    description: Apple or StandaloneWindows64
     required: true
-  include-ios:
-    description: Include both native libraries in the speech cache for a shared Mac runner
-    required: false
-    default: 'false'
 runs:
   using: composite
   steps:
@@ -51,13 +44,14 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: Build/Speech
-        key: speech-${{ runner.os }}-${{ runner.arch }}-${{ inputs.include-ios == 'true' && 'macOS-iOS' || inputs.target }}-${{ hashFiles('ThirdParty/Festival/**', 'script/build-speech') }}
-    - name: Build the shared Festival voice
-      env:
-        PLATFORM: ${{ inputs.platform }}
+        key: speech-${{ runner.os }}-${{ runner.arch }}-${{ inputs.target }}-${{ hashFiles('ThirdParty/Festival/**', 'script/build-speech') }}
+    - name: Build and test the Apple speech libraries
+      if: inputs.target == 'Apple'
       shell: bash
-      run: script/build-speech "$PLATFORM"
-    - name: Check native speech without playing audio
-      if: inputs.target == 'StandaloneOSX'
+      run: |
+        script/test-speech
+        script/build-speech iOS
+    - name: Build the Windows speech library
+      if: inputs.target == 'StandaloneWindows64'
       shell: bash
-      run: script/test-speech
+      run: script/build-speech Windows
