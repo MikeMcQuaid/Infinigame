@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""Copy the player's icon images and groups into a Win32 linker resource."""
+from pathlib import Path
+import struct
+import sys
+
+player = Path(sys.argv[1]).read_bytes()
+pe = struct.unpack_from("<I", player, 60)[0]
+sections = struct.unpack_from("<H", player, pe + 6)[0]
+first = pe + 24 + struct.unpack_from("<H", player, pe + 20)[0]
+section = next(i for i in range(first, first + sections * 40, 40) if player[i:i + 5] == b".rsrc")
+rva, _, root = struct.unpack_from("<III", player, section + 12)
+
+
+def entries(directory):
+    address = root + directory
+    count = sum(struct.unpack_from("<HH", player, address + 12))
+    return {name: offset & 0x7fffffff for name, offset in
+            struct.iter_unpack("<II", player[address + 16:address + 16 + count * 8])}
+
+
+def record(kind, name, language, data):
+    header = struct.pack("<IIHHHHIHHII", len(data), 32, 65535, kind, 65535, name, 0, 0, language, 0, 0)
+    return header + data + bytes(-len(data) % 4)
+
+
+resources = bytearray(record(0, 0, 0, b""))
+types = entries(0)
+for kind in (3, 14):  # RT_ICON and RT_GROUP_ICON
+    for name, group in entries(types[kind]).items():
+        for language, location in entries(group).items():
+            start, size = struct.unpack_from("<II", player, root + location)
+            start += root - rva
+            resources.extend(record(kind, name, language, player[start:start + size]))
+Path(sys.argv[2]).write_bytes(resources)

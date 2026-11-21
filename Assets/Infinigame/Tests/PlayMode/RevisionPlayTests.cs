@@ -122,10 +122,9 @@ namespace Infinigame.Tests
             yield return Seconds(0.3f);
             var companion = Object.FindObjectsByType<Transform>().Single(part => part.name == "Hermit");
             Assert.AreEqual("Copilot", companion.parent.name);
-            Vector3 eye = Camera.main.WorldToViewportPoint(companion.Find("Torso/Neck/Head").position);
-            Assert.Greater(eye.z, 0);
-            Assert.That(eye.x, Is.InRange(0f, 1f));
-            Assert.That(eye.y, Is.InRange(0f, 1f));
+            Vector3 head = companion.Find("Torso/Neck/Head").position;
+            Assert.Less(Camera.main.transform.InverseTransformPoint(head).z, 0, "The copilot rides behind the pilot");
+            Assert.Greater(companion.parent.InverseTransformPoint(head).y, 0, "Its head is visible above the socket");
             yield return Seconds(2);
             var target = new RenderTexture(1600, 1000, 24);
             Camera.main.targetTexture = target;
@@ -141,7 +140,7 @@ namespace Infinigame.Tests
             Object.Destroy(target);
             yield return Press(new Controls { talk = true });
             Assert.IsTrue(game.Hermit.Talking);
-            StringAssert.Contains("NO MODEL", game.Hermit.Source);
+            Assert.AreEqual("COMPANION BRIEFING", game.Hermit.Source);
         }
 
         [UnityTest]
@@ -157,7 +156,7 @@ namespace Infinigame.Tests
             game = Object.FindAnyObjectByType<Game>();
             while (!game.Ready) yield return null;
             Assert.IsNotEmpty(game.Ruins.Single(ruin => ruin.stage == 2).broken);
-            Assert.AreEqual(1, Object.FindObjectsByType<Transform>().Count(part => part.name == "Mind burrow"));
+            Assert.AreEqual(2, Object.FindObjectsByType<Transform>().Count(part => part.name == "Mind burrow"), "The breached site and the next live burrow both survive reload");
         }
 
         [UnityTest]
@@ -195,9 +194,8 @@ namespace Infinigame.Tests
             var display = new GameObject("Presence review").transform;
             display.SetParent(robot.parent, false);
             display.localPosition = new Vector3(-6, 1, -3);
-            var hull = Shapes.Hull(new Color(0.5f, 0.43f, 0.35f), 1.2f);
-            var glow = Shapes.Hull(Color.black, 1.2f, new Color(2.5f, 0.12f, 0.015f));
-            var sentryShell = Shapes.SentryShell();
+            var hull = Shapes.PresenceShell(1.2f);
+            var glow = Shapes.PresenceOptics(1.2f);
             var metrics = new System.Text.StringBuilder();
             foreach (var caste in new[] { MotileCaste.Stalker, MotileCaste.Breacher, MotileCaste.Spitter })
             {
@@ -205,11 +203,11 @@ namespace Infinigame.Tests
                 int triangles = (shell.triangles.Length + senses.triangles.Length + Models.LimbCount(caste) * limb.triangles.Length) / 3;
                 metrics.AppendLine($"{caste}: {triangles:N0} triangles");
                 Assert.Greater(triangles, 30000, "Close bodies must retain curved anatomy and shell detail");
-                Shapes.Part(display, "Body", shell, sentryShell, Vector3.zero, Vector3.one);
+                Shapes.Part(display, "Body", shell, hull, Vector3.zero, Vector3.one);
                 Shapes.Part(display, "Eyes", senses, glow, Vector3.zero, Vector3.one);
                 for (int i = 0; i < Models.LimbCount(caste); i++)
                 {
-                    var part = Shapes.Part(display, "Leg", limb, sentryShell, Models.LimbRoot(caste, i), Vector3.one);
+                    var part = Shapes.Part(display, "Leg", limb, hull, Models.LimbRoot(caste, i), Vector3.one);
                     part.transform.localRotation = Quaternion.Euler(0, i < Models.LimbCount(caste) / 2 ? 180 : 0, 0);
                 }
                 string name = caste == MotileCaste.Stalker ? "94-presence-sentry" : "99-" + caste.ToString().ToLowerInvariant();

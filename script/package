@@ -2,9 +2,9 @@
 # Package existing build output. The same archives are used locally, in CI and in releases.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-platform=${1:?Usage: script/package macOS|Windows|SteamDeck|iOS}
+platform=${1:?Usage: script/package macOS|Windows|iOS}
 case "$platform" in
-  macOS|Windows|SteamDeck|iOS) ;;
+  macOS|Windows|iOS) ;;
   *) echo "Unknown platform: $platform" >&2; exit 1 ;;
 esac
 package="Build/Packages/$platform/Infinigame"
@@ -13,15 +13,11 @@ mkdir -p "$package"
 case "$platform" in
   macOS)
     /usr/bin/ditto "${2:-Build/Infinigame.app}" "$package/Infinigame.app"
-    if [[ -n "${2:-}" ]]; then
-      # Direct downloads run outside the Mac App Store. Sign only the copy.
-      rm -f "$package/Infinigame.app/Contents/embedded.provisionprofile"
-      codesign --force --deep --sign - "$package/Infinigame.app"
-      codesign --verify --deep --strict "$package/Infinigame.app"
-    fi
     ;;
-  Windows|SteamDeck)
+  Windows)
     cp -R "Build/$platform/." "$package/"
+    script/lib/windows-icon "$package/Infinigame.exe" Build/windows-icon.res
+    script/lib/windows-cc -Os -s -municode -mwindows -Wl,--subsystem,windows script/lib/windows-launcher.c Build/windows-icon.res -o "$package/Infinigame-VR.exe"
     cp Assets/Infinigame/Icon.png "$package/Infinigame.png"
     ;;
   iOS)
@@ -29,6 +25,14 @@ case "$platform" in
     /usr/bin/ditto Build/iOSDerived/Build/Products/Release-iphoneos/Infinigame.app "$package/Infinigame.app"
     ;;
 esac
+# Unity keeps symbol and debugging backups beside the player for the developer.
+find "$package" -type d \( -iname '*ButDontShipItWithYourGame*' -o -iname '*_DoNotShip' \) -prune -exec rm -rf {} +
+if [[ "$platform" == macOS && -n "${2:-}" ]]; then
+  # Direct downloads run outside the Mac App Store. Sign only the staged copy.
+  rm -f "$package/Infinigame.app/Contents/embedded.provisionprofile"
+  codesign --force --deep --sign - "$package/Infinigame.app"
+  codesign --verify --deep --strict "$package/Infinigame.app"
+fi
 cat > "$package/INSTALL.md" <<EOF
 # Infinigame: $platform
 
@@ -41,11 +45,9 @@ Open Infinigame.app. This build is ad-hoc signed rather than Developer ID notari
 EOF
     ;;
   Windows) cat >> "$package/INSTALL.md" <<'EOF'
-Run Infinigame.exe. For VR, install SteamVR, choose it as the OpenXR runtime in SteamVR Settings > OpenXR, connect your headset and launch the game.
-EOF
-    ;;
-  SteamDeck) cat >> "$package/INSTALL.md" <<'EOF'
-In Desktop Mode, use Steam > Games > Add a Non-Steam Game > Browse and select Infinigame.exe. In its Properties > Compatibility, force Proton Experimental. Set General > Game Resolution to Native, then return to Gaming Mode. Use the Gamepad with Mouse Trackpad Steam Input layout. A confirms, RT fires, Y changes weapon, X interacts and View toggles the map. Touch also works. Infinigame.png is included for the Steam shortcut icon.
+Run Infinigame.exe for automatic detection. Infinigame-VR.exe explicitly requests a headset and shares the same game files. For VR, install SteamVR, choose it as the OpenXR runtime in SteamVR Settings > OpenXR, connect your headset and launch the game.
+
+On Steam Deck, in Desktop Mode, use Steam > Games > Add a Non-Steam Game > Browse and select Infinigame.exe. In its Properties > Compatibility, force Proton Experimental. Set General > Game Resolution to Native, then return to Gaming Mode. Use the Gamepad with Mouse Trackpad Steam Input layout. A confirms, RT fires, Y changes weapon, X interacts and View toggles the map. Touch also works. Infinigame.png is included for the Steam shortcut icon.
 EOF
     ;;
   iOS) cat >> "$package/INSTALL.md" <<'EOF'
@@ -58,10 +60,17 @@ cat >> "$package/INSTALL.md" <<'EOF'
 [Controls, voice options and detailed platform instructions](https://github.com/MikeMcQuaid/Infinigame/blob/main/PLATFORMS.md)
 EOF
 archive="$PWD/Build/Infinigame-$platform.zip"
-rm -f "$archive"
-if [[ "$(uname -s)" == Darwin ]]; then
-  /usr/bin/ditto -c -k --keepParent "$package" "$archive"
+temporary=$(mktemp -d "$PWD/Build/.package.XXXXXX")
+trap 'rm -rf "$temporary"' EXIT
+if [[ "$(uname -s)" == Darwin && "$platform" != Windows ]]; then
+  /usr/bin/ditto -c -k --keepParent "$package" "$temporary/game.zip"
 else
-  (cd "Build/Packages/$platform" && zip -qr "$archive" Infinigame)
+  (cd "Build/Packages/$platform" && zip -Xqr "$temporary/game.zip" Infinigame)
 fi
+unzip -Z1 "$temporary/game.zip" > "$temporary/contents"
+if grep -Ei 'ButDontShipItWithYourGame|_DoNotShip(/|$)' "$temporary/contents" >&2; then
+  echo "Unity backup found in $platform download" >&2
+  exit 1
+fi
+mv -f "$temporary/game.zip" "$archive"
 echo "Packaged: $archive"

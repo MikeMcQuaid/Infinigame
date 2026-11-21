@@ -95,7 +95,7 @@ For signing or upload failures, inspect the job log with `gh run view RUN_ID --l
 
 ## Desktop builds and caching
 
-On a push to `main`, the Actions run keeps **Infinigame-Windows**, **Infinigame-SteamDeck** and **Infinigame-macOS** for one day. The Mac ZIP contains an ad hoc signed copy of the app from the TestFlight archive. Once Xcode has produced the archive, the ZIP can be downloaded even if Apple validation, upload or tester distribution fails. If macOS prompts on first launch, follow `INSTALL.md` in the ZIP.
+On a push to `main`, the Actions run keeps **Infinigame-Windows** (also for Steam Deck and SteamVR) and **Infinigame-macOS** for one day. The Mac ZIP contains an ad hoc signed copy of the app from the TestFlight archive. Once Xcode has produced the archive, the ZIP can be downloaded even if Apple validation, upload or tester distribution fails. If macOS prompts on first launch, follow `INSTALL.md` in the ZIP.
 
 Windows builds and packages both Windows players in one Unity invocation on Linux. The Apple job can start at the same time on its own runner. TestFlight distribution depends only on the Apple job. macOS and iOS share one Mac runner, editor installation, Bee cache and speech build directory. Each Unity invocation restores its own target’s `Library`. The iOS archive also caches native IL2CPP objects by Unity dependencies, Xcode, SDK, runner image and generated C++ sources. [GameCI caching](https://game.ci/docs/github/builder/#caching) · [GitHub cache access](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache)
 

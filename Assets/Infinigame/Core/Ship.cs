@@ -61,7 +61,8 @@ namespace Infinigame.Core
 
             // rotation: rate commands, eased so the ship has some weight
             float3 turn = input.turn;
-            if (assist && math.abs(turn.z) < 0.01f) turn.z += nearness * RollLevelling * math.dot(math.rotate(s.rotation, new float3(1, 0, 0)), up);
+            if (assist && body.kind != BodyKind.Station && math.abs(turn.z) < 0.01f) turn.z += nearness * RollLevelling * math.dot(math.rotate(s.rotation, new float3(1, 0, 0)), up);
+            if (input.turn.z != 0 && turn.x == 0 && turn.y == 0) s.angularVelocity.xy = 0;
             s.angularVelocity = math.lerp(s.angularVelocity, new float3(-turn.x, turn.y, -turn.z), math.saturate(TurnResponse * dt));
             s.rotation = math.normalize(math.mul(s.rotation, quaternion.EulerXYZ(s.angularVelocity * dt)));
             if (input.land) s.rotation = math.slerp(s.rotation, Upright(s.rotation, up), math.saturate(2f * dt));
@@ -73,7 +74,7 @@ namespace Infinigame.Core
                 float3 target = math.rotate(s.rotation, thrust * new float3(SideSpeed, SideSpeed, MaxSpeed(body, altitude) * boost * (thrust.z < 0f ? 0.3f : 1f)));
                 s.velocity = Walker.MoveTowards(s.velocity, target, Acceleration * boost * dt);
                 // terrain following: the hover engines lift the ship over whatever lies under or ahead of it
-                if (thrust.y >= 0f)
+                if (body.kind != BodyKind.Station && thrust.y >= 0f)
                 {
                     float clear = math.length(s.position) - Floor(body, up);
                     for (float t = 0.25f; t < 0.8f; t += 0.25f)
@@ -86,6 +87,7 @@ namespace Infinigame.Core
 
             s.position += s.velocity * dt;
             float3 newUp = math.normalize(s.position);
+            if (body.kind == BodyKind.Station) return;
             if (assist)
             {
                 // horizon lock: carry heading and velocity round the curve so level flight laps the body

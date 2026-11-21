@@ -127,8 +127,6 @@ namespace Infinigame.Tests
     // Every finished sound, made once and kept along with what the tests measure of it.
     static class Heard
     {
-        public static readonly Song Song = Riffs.Compose(1);
-
         static readonly Dictionary<string, Func<float[]>> recipes = new Dictionary<string, Func<float[]>>
         {
             ["chime"] = Chime, ["warp"] = Warp, ["alarm"] = Alarm, ["engage"] = Engage, ["thud"] = () => Thud(), ["hurt"] = Hurt,
@@ -136,8 +134,6 @@ namespace Infinigame.Tests
             ["reload"] = Reload, ["dry fire"] = DryFire, ["dig"] = () => Dig(),
             ["charge"] = Charge, ["mind"] = Mind, ["engine"] = Engine, ["beam"] = Beam, ["whine"] = Whine, ["wind"] = Wind, ["rain"] = Rain, ["jetpack"] = Jetpack, ["bike"] = Bike,
             ["geiger 0"] = () => Geiger(0), ["geiger 1"] = () => Geiger(1), ["geiger 2"] = () => Geiger(2),
-            ["calm music"] = () => Riffs.Render(Song, false), ["heavy music"] = () => Riffs.Render(Song, true),
-            ["another heavy song"] = () => Riffs.Render(Riffs.Compose(2), true),
         };
         static readonly Dictionary<string, float[]> stereo = new Dictionary<string, float[]>(), mono = new Dictionary<string, float[]>();
         static readonly Dictionary<string, double[]> spectra = new Dictionary<string, double[]>();
@@ -165,7 +161,7 @@ namespace Infinigame.Tests
             }
         }
 
-        public static readonly string[] Loops = { "charge", "mind", "engine", "beam", "whine", "wind", "rain", "jetpack", "bike", "geiger 0", "geiger 1", "geiger 2", "calm music", "heavy music", "another heavy song" };
+        public static readonly string[] Loops = { "charge", "mind", "engine", "beam", "whine", "wind", "rain", "jetpack", "bike", "geiger 0", "geiger 1", "geiger 2" };
         // Sounds that are mostly the silence between their clicks.
         public static readonly string[] Clicks = { "reload", "dry fire", "geiger 0", "geiger 1", "geiger 2" };
         public static readonly int[] Firearms = { 3, 9 };
@@ -229,6 +225,14 @@ namespace Infinigame.Tests
 
     public class SoundTests
     {
+        [Test] public void MindBreathAndHeartHaveSpaceBetweenBeats()
+        {
+            var sound = Heard.Mono("mind");
+            int hop = Rate / 12;
+            var levels = Enumerable.Range(0, sound.Length / hop).Select(i => Measure.Rms(new ArraySegment<float>(sound, i * hop, hop))).OrderBy(level => level).ToArray();
+            Assert.Greater(levels[levels.Length * 8 / 10], levels[levels.Length / 10] * 2);
+        }
+
         [TestCaseSource(typeof(Heard), nameof(Heard.All))]
         public void IsLoudEnoughNeverClipsAndSitsOnZero(string name)
         {
@@ -531,7 +535,6 @@ namespace Infinigame.Tests
         public void TheBusiestFightStaysUnderFullScale()
         {
             var fight = new Moment(12f);
-            fight.Loop("heavy music", Mix.Music);
             fight.Loop("engine", Mix.Engine);
             fight.Loop("wind", Mix.Wind);
             fight.Every("shot 2", 0.5f, 0.8f, Mix.Shots[2]);
@@ -541,7 +544,7 @@ namespace Infinigame.Tests
             fight.Every("hurt", 2f, 1.3f, Mix.Hurt);
             fight.Hit("big boom", 3f, Mix.Boom);
             fight.Every("big boom", 7.2f, 0.3f, Mix.Boom, 2);
-            Assert.Less(fight.Peak, 1f);
+            Assert.Less(fight.Peak + Mix.Music, 1f, "Reserve headroom for a full-scale music track");
         }
 
         // The same on foot with the rifle: the heavy song, rain and wind, the counter crackling, magazines of thirty
@@ -551,7 +554,6 @@ namespace Infinigame.Tests
         public void AFirefightWithTheRifleStaysUnderFullScale()
         {
             var fight = new Moment(12f);
-            fight.Loop("heavy music", Mix.Music);
             fight.Loop("rain", Mix.Rain);
             fight.Loop("wind", 0.3f * Mix.Wind);
             for (int loop = 0; loop < 3; loop++) fight.Loop($"geiger {loop}", Mix.Geiger);
@@ -567,7 +569,7 @@ namespace Infinigame.Tests
             fight.Every("step 0", 0.2f, 0.33f, Mix.Step);
             fight.Hit("boom", 4f, 0.9f * Mix.Boom);
             fight.Every("boom", 9f, 0.4f, 0.9f * Mix.Boom, 2);
-            Assert.Less(fight.Peak, 1f);
+            Assert.Less(fight.Peak + Mix.Music, 1f, "Reserve headroom for a full-scale music track");
         }
 
         // And with the torpedo: a dogfight with the cannon held down, the counter crackling, the launch, then the blast
@@ -576,7 +578,6 @@ namespace Infinigame.Tests
         public void TheTorpedoAndItsBlastStayUnderFullScale()
         {
             var fight = new Moment(16f);
-            fight.Loop("heavy music", Mix.Music);
             fight.Loop("engine", Mix.Engine);
             fight.Loop("wind", Mix.Wind);
             for (int loop = 0; loop < 3; loop++) fight.Loop($"geiger {loop}", Mix.Geiger);
@@ -588,82 +589,7 @@ namespace Infinigame.Tests
             fight.Hit("nuke", 6f, Mix.Nuke);
             fight.Hit("big boom", 6.1f, Mix.Boom);
             fight.Hit("big boom take 1", 9f, Mix.Boom);
-            Assert.Less(fight.Peak, 1f);
-        }
-    }
-
-    public class MusicTests
-    {
-        [Test]
-        public void ASeedAlwaysGivesTheSameSongAndAnotherSeedADifferentOne()
-        {
-            Assert.IsTrue(Heard.Stereo("calm music").SequenceEqual(Riffs.Render(Riffs.Compose(1), false)));
-            Assert.IsFalse(Heard.Stereo("heavy music").SequenceEqual(Heard.Stereo("another heavy song")));
-        }
-
-        [Test]
-        public void SongsAreSixteenBarsLongTunedLowInADarkModeAndNoTwoAlike()
-        {
-            var songs = Enumerable.Range(1, 40).Select(seed => Riffs.Compose((uint)seed)).ToList();
-            foreach (var song in songs)
-            {
-                Assert.AreEqual(16 * 16 * song.Step, song.Length);
-                Assert.That(song.Tempo, Is.InRange(140f, 190f));
-                // from B to D below the E a guitar's lowest string is usually tuned to
-                Assert.That(song.Root, Is.InRange(35, 38));
-                CollectionAssert.Contains(new[] { "phrygian", "locrian", "harmonic minor" }, song.Mode);
-                foreach (var note in new[] { song.Heavy, song.Calm }.SelectMany(part => part.Rhythm.Concat(part.Leads[0]).Concat(part.Leads[1])))
-                {
-                    Assert.Greater(note.steps, 0);
-                    Assert.That(note.step, Is.InRange(0, 256 - note.steps), "notes stay inside the loop");
-                }
-                for (int bar = 0; bar < 16; bar++)
-                {
-                    Assert.IsTrue(song.Heavy.Rhythm.Any(note => note.step / 16 == bar), $"heavy bar {bar}");
-                    Assert.IsTrue(song.Calm.Rhythm.Any(note => note.step / 16 == bar), $"calm bar {bar}");
-                }
-                // the calm arrangement takes its snare at half the pace and carries a melody for two guitars a third apart throughout
-                Assert.Greater(song.Heavy.Drums.Count(hit => hit.drum == Drum.Snare), 1.5f * song.Calm.Drums.Count(hit => hit.drum == Drum.Snare));
-                Assert.AreEqual(48, song.Calm.Leads[0].Count);
-                foreach (var (low, high) in song.Calm.Leads[0].Zip(song.Calm.Leads[1], (low, high) => (low, high)))
-                {
-                    Assert.AreEqual(low.step, high.step);
-                    Assert.That(high.pitch - low.pitch, Is.InRange(3, 4));
-                }
-                // more than a short loop: the riff comes back after the tremolo run, which is something else, as is the breakdown
-                string Section(int index) => string.Join(" ", song.Heavy.Rhythm.Where(note => note.step / 64 == index).Select(note => $"{note.step % 64}:{note.pitch}:{note.strings.Length}:{note.muted}"));
-                Assert.AreEqual(Section(0), Section(2));
-                Assert.AreNotEqual(Section(0), Section(1));
-                Assert.AreNotEqual(Section(0), Section(3));
-                Assert.AreNotEqual(Section(1), Section(3));
-            }
-            Assert.AreEqual(3, songs.Select(song => song.Mode).Distinct().Count());
-            Assert.Greater(songs.Select(song => song.Step).Distinct().Count(), 15);
-            Assert.Greater(songs.Select(song => string.Join(" ", song.Heavy.Rhythm.Select(note => $"{note.step}:{note.pitch}:{note.muted}"))).Distinct().Count(), 35);
-        }
-
-        [Test]
-        public void TheTwoArrangementsKeepTheSameTimeAndTheHeavyOneIsLouder()
-        {
-            Assert.AreEqual(2 * Heard.Song.Length, Heard.Stereo("calm music").Length);
-            Assert.AreEqual(2 * Heard.Song.Length, Heard.Stereo("heavy music").Length);
-            Assert.Greater(Measure.Rms(Heard.Mono("heavy music")), 1.5f * Measure.Rms(Heard.Mono("calm music")));
-        }
-
-        [TestCase("calm music", 1u)]
-        [TestCase("heavy music", 1u)]
-        [TestCase("another heavy song", 2u)]
-        public void TheMusicKeepsTheTempoItWasWrittenAt(string name, uint seed)
-        {
-            float written = Riffs.Compose(seed).Tempo;
-            Assert.AreEqual(written, Measure.Tempo(Heard.Mono(name), written), 0.015f * written);
-        }
-
-        [Test]
-        public void AKickDrumIsMostlyLow()
-        {
-            var spectrum = Measure.Spectrum(Riffs.Kick());
-            Assert.Greater(Measure.Band(spectrum, 0f, 300f), 0.75 * spectrum.Sum());
+            Assert.Less(fight.Peak + Mix.Music, 1f, "Reserve headroom for a full-scale music track");
         }
     }
 
@@ -672,6 +598,8 @@ namespace Infinigame.Tests
     {
         [TestCase(EncounterCue.Emitter)]
         [TestCase(EncounterCue.Threat)]
+        [TestCase(EncounterCue.Breacher)]
+        [TestCase(EncounterCue.Spitter)]
         [TestCase(EncounterCue.Collapse)]
         [TestCase(EncounterCue.Footfall)]
         [TestCase(EncounterCue.ShellHit)]

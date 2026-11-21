@@ -1,23 +1,17 @@
 using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using Infinigame.Core;
 using Unity.Mathematics;
 using UnityEngine;
 
 namespace Infinigame
 {
-    // Plays what Synth works out: engine, bike, wind, rain, jetpack, footsteps, digging, knocks, the
-    // scanner's chime, the radiation counter, the warp and the noises of a fight, each as loud as Mix says. Each sound is synthesised
-    // on a background thread at start-up and becomes a clip here once it is ready; until then,
-    // asking for it does nothing.
+    // Finished takes share a live spatial mix with engine speed, tunnel echoes and speech.
     public class Sounds : MonoBehaviour
     {
         [NonSerialized] public Game game;
-        readonly List<(Task<float[]> sound, Action<AudioClip> ready)> making = new List<(Task<float[]>, Action<AudioClip>)>();
         readonly AudioClip[][] shots = new AudioClip[Mix.Shots.Length][];
         readonly AudioSource[] voices = new AudioSource[8];
-        readonly AudioClip[][] encounters = new AudioClip[(int)EncounterCue.Footfall + 1][];
+        readonly AudioClip[][] encounters = new AudioClip[Enum.GetValues(typeof(EncounterCue)).Length][];
         readonly (AudioSource source, AudioLowPassFilter filter, AudioEchoFilter echo)[] nearby = new (AudioSource, AudioLowPassFilter, AudioEchoFilter)[4];
         readonly float3[] origins = new float3[4];
         readonly float[] gains = new float[4];
@@ -56,52 +50,20 @@ namespace Infinigame
             for (int i = 0; i < encounters.Length; i++)
             {
                 var cue = (EncounterCue)i;
-                encounters[i] = Takes(3, take => Synth.Encounter(cue, take));
+                encounters[i] = Takes("Encounter " + cue, 3);
             }
-            engine = Loop(Synth.Engine);
-            whine = Loop(Synth.Whine);
-            wind = Loop(Synth.Wind);
-            rain = Loop(Synth.Rain);
-            jetpack = Loop(Synth.Jetpack);
-            beam = Loop(Synth.Beam);
-            charge = Loop(Synth.Charge); mind = Loop(Synth.Mind);
-            bike = Loop(Synth.Bike);
-            for (int i = 0; i < geiger.Length; i++)
-            {
-                int density = i;
-                geiger[i] = Loop(() => Synth.Geiger(density));
-            }
-            Make(Synth.Chime, clip => chime = clip);
-            Make(Synth.Warp, clip => warp = clip);
-            Make(Synth.Alarm, clip => alarm = clip);
-            Make(Synth.Engage, clip => engage = clip);
-            Make(Synth.Hurt, clip => hurt = clip);
-            Make(Synth.Reload, clip => reload = clip);
-            Make(Synth.DryFire, clip => dryFire = clip);
-            Make(Synth.Nuke, clip => nuke = clip);
-            for (int i = 0; i < shots.Length; i++)
-            {
-                int voice = i;
-                shots[i] = Takes(Mix.Takes[i], take => Synth.Shot(voice, take));
-            }
-            steps = Takes(Mix.Steps, Synth.Step);
-            thuds = Takes(Mix.Thuds, Synth.Thud);
-            digs = Takes(Mix.Digs, Synth.Dig);
-            booms = Takes(Mix.Booms, take => Synth.Boom(false, take));
-            bigBooms = Takes(Mix.Booms, take => Synth.Boom(true, take));
+            engine = Loop("Engine"); whine = Loop("Whine"); wind = Loop("Wind"); rain = Loop("Rain");
+            jetpack = Loop("Jetpack"); beam = Loop("Beam"); charge = Loop("Charge"); mind = Loop("Mind", true); bike = Loop("Bike");
+            for (int i = 0; i < geiger.Length; i++) geiger[i] = Loop("Geiger " + i);
+            chime = Clip("Chime"); warp = Clip("Warp"); alarm = Clip("Alarm"); engage = Clip("Engage");
+            hurt = Clip("Hurt"); reload = Clip("Reload"); dryFire = Clip("Dry fire"); nuke = Clip("Nuke");
+            for (int i = 0; i < shots.Length; i++) shots[i] = Takes("Shot " + i, Mix.Takes[i]);
+            steps = Takes("Step", Mix.Steps); thuds = Takes("Thud", Mix.Thuds); digs = Takes("Dig", Mix.Digs);
+            booms = Takes("Boom", Mix.Booms); bigBooms = Takes("Heavy boom", Mix.Booms);
         }
 
         void Update()
         {
-            // one clip a frame at most, so a rush of finished sounds cannot hold a frame up
-            int done = making.FindIndex(item => item.sound.IsCompleted);
-            if (done >= 0)
-            {
-                var (sound, ready) = making[done];
-                making.RemoveAt(done);
-                ready(Clip(sound.Result));
-            }
-
             duck = Mathf.MoveTowards(duck, game.Speech.Speaking ? 0.42f : 1f, Time.unscaledDeltaTime * 4);
             effects.volume = duck;
             foreach (var voice in voices) voice.volume = duck;
@@ -134,8 +96,8 @@ namespace Infinigame
             foreach (var foe in game.Battle.Foes)
                 if (foe.kind == FoeKind.Mind && foe.health > 0 && math.distance(foe.position, player.Position) < nearestMind)
                 { nearestMind = math.distance(foe.position, player.Position); mindAt = foe.position; }
-            mind.volume = live ? (1 - nearestMind / 90) * (game.Outpost.Visible(player.Position, mindAt) ? 0.5f : 0.2f) : 0;
-            mind.panStereo = math.dot(math.normalizesafe(mindAt - player.Position), (float3)Camera.main.transform.right) * 0.7f;
+            mind.transform.position = mindAt - game.System.Anchor;
+            mind.volume = live && nearestMind < 90 ? game.Outpost.Visible(player.Position, mindAt) ? 0.5f : 0.2f : 0;
             // falling fuel means the jetpack is firing
             jetpack.volume = Mathf.Lerp(jetpack.volume, live && !player.flying && player.walker.fuel < lastFuel ? Mix.Jetpack : 0f, 3f * blend);
             lastFuel = player.walker.fuel;
@@ -239,40 +201,29 @@ namespace Infinigame
             source.PlayOneShot(clip, volume);
         }
 
-        void Make(Func<float[]> recipe, Action<AudioClip> ready) => making.Add((Task.Run(recipe), ready));
+        static AudioClip Clip(string name) => Resources.Load<AudioClip>("Effects/" + name);
 
-        // Every take of one sound, each filled in as it is ready.
-        AudioClip[] Takes(int count, Func<int, float[]> recipe)
+        static AudioClip[] Takes(string name, int count)
         {
             var clips = new AudioClip[count];
-            for (int i = 0; i < count; i++)
-            {
-                int take = i;
-                Make(() => recipe(take), clip => clips[take] = clip);
-            }
+            for (int i = 0; i < count; i++) clips[i] = Clip(name + " " + i);
             return clips;
         }
 
-        // A source that starts silent and repeats its sound for ever once that is ready.
-        AudioSource Loop(Func<float[]> recipe)
+        AudioSource Loop(string name, bool spatial = false)
         {
-            var source = gameObject.AddComponent<AudioSource>();
-            source.loop = true;
-            source.volume = 0f;
-            Make(recipe, clip =>
+            var source = (spatial ? new GameObject(name) : gameObject).AddComponent<AudioSource>();
+            if (spatial)
             {
-                source.clip = clip;
-                source.Play();
-            });
+                source.transform.SetParent(transform, false);
+                source.spatialBlend = 1; source.dopplerLevel = 0;
+                source.rolloffMode = AudioRolloffMode.Linear; source.minDistance = 3; source.maxDistance = 90;
+            }
+            source.loop = true;
+            source.volume = 0;
+            source.clip = Clip(name);
+            source.Play();
             return source;
-        }
-
-        // Synth's interleaved stereo as something Unity can play.
-        public static AudioClip Clip(float[] sound)
-        {
-            var clip = AudioClip.Create("Synth", sound.Length / 2, 2, Synth.Rate, false);
-            clip.SetData(sound, 0);
-            return clip;
         }
     }
 }

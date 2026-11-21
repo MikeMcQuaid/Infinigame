@@ -7,25 +7,27 @@ namespace Infinigame.Core
     [Serializable]
     public class Progression
     {
-        public int experience, level;
+        public int experience, level = 1;
         public int[] ranks = new int[5];
-        public int Required => 45 + level * 20;
+        public int Required => 45 + (level - 1) * 20;
         public bool Pending => experience >= Required;
         public float Damage => 1 + ranks[0] * 0.15f;
         public float Rate => 1 + ranks[1] * 0.12f;
         public float Toughness => 1 + ranks[2] * 0.15f;
         public float Energy => 1 + ranks[3] * 0.18f;
         public float Recovery => 1 + ranks[4] * 0.18f;
-        public string Preview(Upgrade upgrade, float armour, float hull, float damage)
+        public string Preview(Upgrade upgrade, float damage) => Describe(upgrade, damage, true);
+        public string Describe(Upgrade upgrade, float damage, bool preview)
         {
-            return upgrade switch
+            var (label, value, next, format, unit) = upgrade switch
             {
-                Upgrade.Damage => $"HIT DAMAGE   {damage:0.#} → {damage / Damage * (Damage + 0.15f):0.#}",
-                Upgrade.FireRate => $"FIRE / CHARGE RATE   {Rate:0.00}× → {Rate + 0.12f:0.00}×",
-                Upgrade.Toughness => $"SUIT   {armour:0} → {armour / Toughness * (Toughness + 0.15f):0}     HULL   {hull:0} → {hull / Toughness * (Toughness + 0.15f):0}",
-                Upgrade.Energy => $"ENERGY / SEC   {Suit.Recharge * Energy:0.0} → {Suit.Recharge * (Energy + 0.18f):0.0}",
-                _ => $"REPAIR / RELOAD RATE   {Recovery:0.00}× → {Recovery + 0.18f:0.00}×",
+                Upgrade.Damage => ("HIT DAMAGE", damage, damage / Damage * (Damage + 0.15f), "0.#", ""),
+                Upgrade.FireRate => ("FIRE / CHARGE RATE", Rate, Rate + 0.12f, "0.00", "×"),
+                Upgrade.Toughness => ("SUIT / HULL", Toughness, Toughness + 0.15f, "0.00", "×"),
+                Upgrade.Energy => ("ENERGY / SEC", Suit.Recharge * Energy, Suit.Recharge * (Energy + 0.18f), "0.0", ""),
+                _ => ("REPAIR / RELOAD RATE", Recovery, Recovery + 0.18f, "0.00", "×"),
             };
+            return $"{label}   {value.ToString(format)}{unit}" + (preview ? $" → {next.ToString(format)}{unit}" : "");
         }
         public bool Improve(Upgrade upgrade)
         {

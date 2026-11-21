@@ -1,0 +1,79 @@
+0	crash	I recovered you after the crash. Some records are damaged. Let us restore your equipment first.
+0	digOverhead	PUNCH UP THROUGH THE RUBBLE OVERHEAD
+0	fighter	One ground fighter approaches from the side. Get close and punch it. I will guide you to the burrow when it is down.
+0	foundry	We are the Foundry, independent machines protecting what still lives. The presence grows bodies from a shared mind and consumes everything beyond itself. We must sever those minds to protect the life that remains.
+0	frogs	I can still play you the frogs our first surveyor heard. Years later a furnace crew recognised the call and moved the furnace nine metres. I still carry that recording.
+0	legs	Leg power restored. Walk a few steps. Only your emergency fists work until we recover a power cell.
+0	motorLock	SUIT RECOVERY · MOTOR LOCK
+0	optics	Optics restored. Look up along my light. That ship above the crater is yours. We need to restore your suit before you can reach it.
+0	rescue	You are alive. I am your recovery robot. The living minds are consuming Earth. I can guide you to the first mind. Your suit is damaged. I’m restoring power.
+0	scanFoundry	Foundry equipment identified: {subject}. Position confirmed {place}.
+0	scanLocal	The scanner recorded {subject}, found {place}.
+0	scanPresence	Presence contact: {subject}. The scanner located it {place}.
+0	scanSpecimen	Field observation: {subject}, recorded {place}.
+6	newSystem	We made it. Our charts call this star {star}. The ship came through with us. Our first foothold is on {world}. I have marked its approach.
+0	wake	You are not dead. You are not dead. Fight. Emergency power. Punch up through the rubble overhead.
+0	who	{name}. An autonomous recovery machine. I can keep this channel open wherever you go.
+1	defence	Repeated attack confirmed. Defensive weapons engaged.
+1	friendly	Do not punch the robodogs. We are on your side.
+1	lookShip	LOOK UP · FIND YOUR SHIP
+1	punchFighter	PUNCH THE GROUND FIGHTER
+1	rain	A Harrower learns its way home by tasting the ridges in a mind’s palate. We found a memory of rain in one. The star it fell under was already gone when our Sun first shone.
+1	repairHint	COMPANION LINK · LISTEN · OPTICS AND LEGS REPAIRING
+1	walk	WALK A FEW STEPS
+1	warning	Stop attacking friendly robots. The next attacks will trigger lethal defence.
+2	arm	The mind is silent. Arm the demolition at its core, then get clear of the burrow before it blows.
+2	armCore	ARM THE BURROW DEMOLITION
+2	armCoreHint	ARM BURROW DEMOLITION
+2	blastRadius	DEMOLITION ARMED · LEAVE THE BURROW · GET 35 m FROM THE MIND
+2	buildAnother	Build another robodog factory in this region
+2	buildRegion	Build a robodog factory in this region
+2	clearLanding	DESTROY THE LANDING ZONE TURRETS
+2	collect	COLLECT EQUIPMENT BESIDE YOUR FACTORY
+2	factoryDelivery	The burrow is gone. Your equipment is ready beside this region’s factory.
+2	deliveryAfterBuild	Collect your new equipment beside the factory once it is ready.
+2	entranceHint	ENTER THE MARKED BURROW · DIG THROUGH BLOCKAGES
+2	escape	Demolition armed. Twenty seconds. Get clear of the burrow!
+2	exit	ESCAPE THE BURROW
+2	factoryCleared	Factory online. The mind is silent and the pack is hunting the surviving aliens.
+2	factory	Factory online. Robodogs control the alien population in this region. Kill its mind so our machines can replace their losses and win. Each Earth region needs its own factory.
+2	factoryCore	ARM THE FIRST DEMOLITION AND ESCAPE THE BLAST
+2	factoryLand	LAND ON CLEAR SURFACE GROUND TO BUILD
+2	factoryMind	Kill the living mind to release the robodogs’ full strength.
+2	factoryPack	Its robodogs hunt the brood. From your third burrow, call a surface escort from the expedition summary.
+2	followMind	FOLLOW THE TUNNEL · DESTROY {count} MIND
+2	followMinds	FOLLOW THE TUNNEL · DESTROY {count} MINDS
+2	punchDoor	PUNCH THE MARKED ENTRANCE
+2	punchMind	PUNCH THE MIND AND ITS GUARDS
+2	shipyard	Shipyard online. Your first escort is launching now and will follow you, including on autopilot. Use Fleet orders in the expedition summary to command your escort. The rest defend this planet and its neighbours.
+3	branchHint	BEAM CUTS TERRAIN · DIG A FLANKING ROUTE · RECOVER SURFACE THRUSTERS
+3	buildLast	Build here. Earth’s third factory also assembles ships
+4	factoryShips	Your robots assemble ships to defend this planet and its immediate neighbours.
+4	orbitHint	SURFACE FLIGHT LIMIT 65 m · RECOVER THE ORBITAL BOOSTER
+5	arrival	Arrival confirmed at {world}. I am watching the approaches.
+5	climbShip	CLIMB TO THE SHIP
+5	heat	Temperature is reaching our protection limit. Move away from the heat.
+5	hull	She is coming apart. Set her down somewhere and let her mend.
+5	incoming	Incoming bodies of the presence. Their ships are closing on us.
+5	land	The turrets are down. The teal bands mean the field now admits your suit. It still repels ships and gunfire. Land outside it and walk through. Follow the descending tunnel and shoot or punch through any blockage. The violet mind is at the far end. Destroy it, then arm the demolition and escape.
+5	landed	Landing confirmed on {world}. I will watch the ship while you are outside.
+5	radiation	Radiation! Turn us round. Nothing lives out here without a shield.
+5	recallGround	Ship recall accepted. Clearing the terrain and landing beside you.
+5	recallHint	CALL IT TO YOU
+5	recallOrbit	Your suit transponder is detected. The ship is matching your velocity. Hold position, then board when it reaches you.
+8	cloak	Cloak fitted. Break the enemy’s line of sight, engage the cloak and move to a new firing position. Firing reveals you.
+8	cloakActive	CLOAK ACTIVE · FIRING REVEALS YOU
+8	cloakHint	CLOAK TO BREAK CONTACT AND REPOSITION
+8	maker	I recognise the work beneath that armour. I helped make it, and you. I am still afraid of what that means.
+9	citadelEscape	The last mind is dead. The scar behind it has softened. Shoot it open and fly straight out. Twenty-five seconds.
+9	citadelExit	SHOOT THE SCAR BEHIND THE MIND AND FLY OUT
+9	collapse	The mind is collapsing. Everything is falling towards it. You are not dead. Stay with me.
+9	creator	I helped create you to silence the presence. The last mind lies beneath the crust. A moon impact will collapse it, and the system with it.
+9	factoryMoon	The impact collapses the buried mind into a black hole that consumes this system.
+9	finalEngines	The core is gone, but the final mind is buried too deep for torpedoes. Our colonies must build engines on a moon.
+9	finalFall	The mind has collapsed. Stay with me while the system falls into it.
+9	ignition	The moon engines are built. Our ship is linked to follow from a safe distance. Watch the ignition. Then we strike the buried mind.
+4	upgradeForDelivery	Open Build at an Earth factory to add a shipyard and release your equipment. Later worlds build both together.
+2	poweredPunch	Your fists are powered now. Land a punch on a hostile and the suit converts the impact into health and energy.
+0	escortLocked	The first two burrows are yours to clear. By the third, a factory can send you a ground escort.
+4	escortCall	On foot, open the expedition summary or your wrist display and select Call robodog. One dog equips a jetpack and follows you. It guards the entrance while you are underground.

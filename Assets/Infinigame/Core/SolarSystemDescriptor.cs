@@ -63,7 +63,7 @@ namespace Infinigame.Core
         public bool destroyed;
         public float blight;
         public readonly List<float4> foundations = new List<float4>();
-        public readonly List<Burrow> burrows = new List<Burrow>();
+        public Burrow[] burrows = Array.Empty<Burrow>();
         public bool Dry(float3 point)
         {
             foreach (var burrow in burrows) if (burrow.Contains(point)) return true;
@@ -137,6 +137,20 @@ namespace Infinigame.Core
             float2 flat = 0f;
             for (int i = 0; i < left.Length; i++) TerrainNoise.Shape(direction, left[i], radius, ref height, ref pool, ref flat);
             return radius + math.lerp(math.max(height, pool), flat.x, flat.y);
+        }
+
+        public float LavaDamage(float3 position, float contactHeight, float now)
+        {
+            if (kind != BodyKind.Rock) return 0;
+            float3 dir = math.normalizesafe(position);
+            bool hot = false;
+            foreach (var volcano in volcanoes)
+                if (volcano.lava > 0 && TerrainNoise.Cone(dir, volcano, radius, out float across).y > 0 && TerrainNoise.Flows(dir, volcano, across).x > 0.5f) { hot = true; break; }
+            foreach (var blast in blasts)
+                if (blast.scar == Scar.Lava && now - blast.born < 75 && math.distance(dir, blast.crater.xyz) * radius < blast.crater.w * blast.pool) { hot = true; break; }
+            if (!hot || Dry(position)) return 0;
+            float gap = math.length(position) - GroundRadius(dir);
+            return gap >= -0.5f && gap <= contactHeight + 0.35f && math.length(position) >= SeaRadius ? 32f : 0;
         }
 
         // What a blast leaves of the ground at a spot. The sea boils wherever it covers the ground;

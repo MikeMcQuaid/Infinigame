@@ -7,6 +7,39 @@ namespace Infinigame.Tests
 {
     public class DeviceRevisionTests
     {
+        [Test] public void ASpineLauncherTurnsToItsShotWhileItsBaseStaysGrounded()
+        {
+            var body = World.Moon;
+            float3 up = World.Land(body), along = World.Tangent(up);
+            var foe = Combat.Spawn(FoeKind.Sentry, up * (body.GroundRadius(up) + 1), -along, 1, 17);
+            foe.stationary = true;
+            foe.forward = -along;
+            float3 target = foe.position + 45 * along + 25 * up;
+            float3 basePosition = foe.position;
+            Assert.IsFalse(Combat.Hunt(ref foe, body, target, float3.zero, 1, World.Dt, out _));
+            Assert.Greater(math.dot(foe.forward, -along), 0.99f, "The rack must first turn towards the target");
+            bool fired = false;
+            for (int i = 0; i < 240 && !fired; i++)
+                if (Combat.Hunt(ref foe, body, target, float3.zero, 1, World.Dt, out var shot))
+                {
+                    Assert.Greater(math.dot(foe.forward, math.normalize(shot.velocity)), 0.98f);
+                    Assert.Less(math.distance(foe.position, basePosition), 0.05f);
+                    Assert.Less(math.distance(shot.position, foe.position + foe.forward * 1.55f), 0.02f);
+                    fired = true;
+                }
+            Assert.IsTrue(fired);
+        }
+
+        [TestCase(1, 0)] [TestCase(0, 1)] [TestCase(-1, 0)] [TestCase(0, -1)]
+        public void EitherStickStepsAMenuOnceBeforeRepeating(int left, int right)
+        {
+            var nav = new StickNavigation();
+            Assert.AreEqual(left + right, nav.Read(left, right, 0));
+            Assert.AreEqual(0, nav.Read(left, right, 0.1f));
+            Assert.AreEqual(left + right, nav.Read(left, right, 0.41f));
+            Assert.AreEqual(0, nav.Read(0, 0, 0.42f));
+            Assert.AreEqual(-left - right, nav.Read(-right, -left, 0.43f));
+        }
         [TestCase(0, 1)] [TestCase(4, 3)] [TestCase(8, 5)]
         public void SilencingTheMindLetsAnEmptyFactoryRecoverAndWin(int rank, int depth)
         {
@@ -16,7 +49,7 @@ namespace Infinigame.Tests
             Assert.That(front.aliens, Is.GreaterThan(0).And.LessThan(front.dogs / 4));
             Assert.Greater(front.dogs, 0);
         }
-        [TestCase(2, 0)] [TestCase(6, 2)] [TestCase(7, 4)] [TestCase(11, 12)] [TestCase(12, 0)]
+        [TestCase(2, 0)] [TestCase(6, 2)] [TestCase(7, 4)] [TestCase(8, 6)] [TestCase(Campaign.Citadel, 0)]
         public void LaterBurrowsGainGroundAndAirDefenders(int stage, int count) => Assert.AreEqual(count, Campaign.OuterDefences(stage));
 
         [Test] public void AFactoryCannotConquerAnActiveMind()

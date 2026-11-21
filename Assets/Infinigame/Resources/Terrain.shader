@@ -117,19 +117,19 @@ Shader "Infinigame/Terrain"
                 float3 p = position * scale, dx = dpdx * scale, dy = dpdy * scale;
                 if (axes.x > 0.01)
                 {
-                    float2 n = SAMPLE_TEXTURE2D_GRAD(normalMap, sampler_Albedo0, p.zy, dx.zy, dy.zy).rg * 2.0 - 1.0;
+                    float2 n = UnpackNormal(SAMPLE_TEXTURE2D_GRAD(normalMap, sampler_Albedo0, p.zy, dx.zy, dy.zy)).xy;
                     colour += axes.x * SAMPLE_TEXTURE2D_GRAD(albedoMap, sampler_Albedo0, p.zy, dx.zy, dy.zy);
                     slope += share * axes.x * float3(0.0, n.y, n.x);
                 }
                 if (axes.y > 0.01)
                 {
-                    float2 n = SAMPLE_TEXTURE2D_GRAD(normalMap, sampler_Albedo0, p.xz, dx.xz, dy.xz).rg * 2.0 - 1.0;
+                    float2 n = UnpackNormal(SAMPLE_TEXTURE2D_GRAD(normalMap, sampler_Albedo0, p.xz, dx.xz, dy.xz)).xy;
                     colour += axes.y * SAMPLE_TEXTURE2D_GRAD(albedoMap, sampler_Albedo0, p.xz, dx.xz, dy.xz);
                     slope += share * axes.y * float3(n.x, 0.0, n.y);
                 }
                 if (axes.z > 0.01)
                 {
-                    float2 n = SAMPLE_TEXTURE2D_GRAD(normalMap, sampler_Albedo0, p.xy, dx.xy, dy.xy).rg * 2.0 - 1.0;
+                    float2 n = UnpackNormal(SAMPLE_TEXTURE2D_GRAD(normalMap, sampler_Albedo0, p.xy, dx.xy, dy.xy)).xy;
                     colour += axes.z * SAMPLE_TEXTURE2D_GRAD(albedoMap, sampler_Albedo0, p.xy, dx.xy, dy.xy);
                     slope += share * axes.z * float3(n.x, n.y, 0.0);
                 }

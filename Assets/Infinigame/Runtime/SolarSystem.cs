@@ -135,8 +135,6 @@ namespace Infinigame
                 for (int k = 0; k < orbits[i].positionCount; k++)
                     orbits[i].SetPosition(k, Scene(centre + orbit.Position(orbit.period * k / orbits[i].positionCount)));
             }
-            // the stars keep their inertial directions while the scene turns with the ground
-            if (RenderSettings.skybox != null) RenderSettings.skybox.SetMatrix("_StarRotation", Matrix4x4.Rotate(ReferenceBody.Rotation(Clock)));
 
             // Every world's shaders light it from where the sun (body 0) stands for that world, and the
             // home world's clouds gather where its storms are.
@@ -178,6 +176,15 @@ namespace Infinigame
             float height = math.length(Focus) - body.radius, elevation = math.dot(up, toSun);
             float air = body.air > 0f ? math.exp(-math.max(height, 0f) / (body.radius * (Shapes.AirTop(body) - 1f) * 0.125f)) : 0f;
             float day = math.smoothstep(-0.1f, 0.25f, elevation), low = air * math.saturate(body.air) * (1f - math.smoothstep(0f, 0.4f, elevation));
+            var stars = RenderSettings.skybox;
+            if (stars != null)
+            {
+                stars.SetMatrix("_StarRotation", Matrix4x4.Rotate(body.Rotation(Clock)));
+                float daylight = math.smoothstep(-0.17f, 0.04f, elevation);
+                if (second > 0)
+                    daylight = math.max(daylight, math.smoothstep(-0.17f, 0.04f, math.dot(up, math.normalizesafe(ToReference(second) - Focus))));
+                stars.SetFloat("_Brightness", 1.8f * (ShowOrbits || Clear ? 1 : 1 - math.smoothstep(0.005f, 0.3f, air * body.air) * daylight));
+            }
             float blocked = math.saturate(1f - height / (0.5f * body.radius)) * (1f - math.smoothstep(-0.15f, 0.02f, elevation));
             bool underCloud = height < body.radius * (Shapes.CloudDeck(body) - 1f), underwater = body.SeaRadius > 0f && height + Walker.EyeHeight < 0f && !body.Dry(Focus);
             Rain = underCloud ? Weather.Rain(body, up, Clock) : 0f;

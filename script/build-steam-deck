@@ -1,11 +1,3 @@
 #!/bin/bash
-# A desktop Windows build without automatic XR, playable through Proton.
-set -euo pipefail
-cd "$(dirname "$0")/.."
-script/lib/build-target Win64 Infinigame.Editor.Platforms.SteamDeck Logs/build-steam-deck.log
-script/package SteamDeck
-echo "Built: $PWD/Build/Infinigame-SteamDeck.zip"
-echo "On Deck: Power > Switch to Desktop. Copy and extract this zip into Documents."
-echo "Steam > Games > Add a Non-Steam Game > Browse: choose Infinigame/Infinigame.exe."
-echo "Properties > Compatibility > Force a compatibility tool: choose Proton Experimental. Return to Gaming Mode and launch."
-echo "Use the Gamepad with Mouse Trackpad Steam Input layout. A confirms, RT fires, Y changes weapon, X interacts and View toggles the map. Touch and keyboard also work. Set Steam Properties > General > Game Resolution to Native."
+# Deck runs the shared Windows player through Proton.
+exec "$(dirname "$0")/build-windows" "$@"

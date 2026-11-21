@@ -34,9 +34,9 @@ namespace Infinigame.Core
     public struct Wall
     {
         public float3 centre, half;
-        public bool door, broken;
+        public bool door, broken, bedrock;
         public float damage;
-        public Wall(float3 centre, float3 half, bool door = false) { this.centre = centre; this.half = half; this.door = door; broken = false; damage = 0; }
+        public Wall(float3 centre, float3 half, bool door = false) { this.centre = centre; this.half = half; this.door = door; broken = bedrock = false; damage = 0; }
     }
 
     // Collision belongs to the built rooms only. Outside these boxes the terrain stays authoritative.
@@ -44,6 +44,30 @@ namespace Infinigame.Core
     {
         public Wall[] walls;
         public bool indestructible;
+        HashSet<int2> corridors;
+        public int escapeWall = -1;
+        public bool coreDestroyed;
+        public bool InsideCitadel(float3 p) => corridors != null && math.abs(p.y) < 30 && corridors.Contains((int2)math.round(new float2(p.x, p.z + 260) / 58));
+
+        public static float2 MantleRadii(float t, float angle)
+        {
+            float belly = math.pow(math.max(0, math.sin(math.PI * t)), 0.57f);
+            return (math.lerp(new float2(64, 59), new float2(26, 24), t) + new float2(218, 100) * belly)
+                * (1 + 0.09f * math.cos(7 * angle + t * 5) + 0.047f * math.sin(14 * angle - t * 11));
+        }
+
+        bool InMantle(float3 p, float radius)
+        {
+            if (corridors == null || p.z < -329 - radius || p.z > 896 + radius || InsideCitadel(p)) return false;
+            if (p.z < entrance.z + 4 && math.abs(p.x) + radius < 29 && math.abs(p.y) + radius < 29) return false;
+            if (p.z > core.z && walls[escapeWall].broken && math.abs(p.x - core.x) + radius < 26 && math.abs(p.y) + radius < 26) return false;
+            float t = math.saturate((p.z + 329) / 1225);
+            float2 offset = p.xy - new float2(132 * math.smoothstep(0, 1, 3 * t), 0);
+            float2 ellipse = MantleRadii(t, 0);
+            float angle = math.atan2(offset.y / ellipse.y, offset.x / ellipse.x);
+            return math.lengthsq(offset / (MantleRadii(t, angle) + radius)) <= 1;
+        }
+
         Wall[] bounded;
         float3 minimum, maximum;
 
@@ -57,6 +81,7 @@ namespace Infinigame.Core
                     minimum = math.min(minimum, wall.centre - wall.half);
                     maximum = math.max(maximum, wall.centre + wall.half);
                 }
+                if (corridors != null) { minimum = new float3(-330, -200, -330); maximum = new float3(475, 200, 897); }
                 bounded = walls;
             }
             return math.any(math.max(from, to) + radius < minimum) || math.any(math.min(from, to) - radius > maximum);
@@ -101,13 +126,29 @@ namespace Infinigame.Core
                 foreach (float z in new[] { -8f, 14f })
                     walls.Add(new Wall(new float3(0, TunnelFloor(z) + 1.5f, z), new float3(5, 1.5f, 2)));
             walls.Add(new Wall(new float3(0, TunnelFloor(40) + 3, 40), new float3(8, 8, 3)));
-            return new Interior { entrance = new float3(0, 1, -26), core = new float3(0, TunnelFloor(32) + 1, 32), console = new float3(10000), walls = walls.ToArray() };
+            float3 entrance = new float3(0, 1, -26), core = new float3(0, TunnelFloor(32) + 1, 32);
+            var route = new List<float3> { entrance };
+            if (variant > 0)
+            {
+                // Leave the old wall indices intact for saved demolition damage.
+                foreach (int z in new[] { -17, 18 })
+                {
+                    float side = z < 0 ? 1 : -1;
+                    walls.Add(new Wall(new float3(-side * 1.65f, TunnelFloor(z) + 2, z), new float3(3.2f, 6, 1.4f)) { bedrock = true });
+                    route.Add(new float3(side * 3.3f, TunnelFloor(z - 3) + (variant == 1 ? 2 : 4.3f), z - 3));
+                    route.Add(new float3(side * 3.3f, TunnelFloor(z + 3) + (variant == 1 ? 2 : 4.3f), z + 3));
+                    if (z < 0) route.Add(new float3(side * 3.3f, TunnelFloor(13) + (variant == 1 ? 2 : 4.3f), 13));
+                }
+            }
+            route.Add(core);
+            return new Interior { entrance = entrance, core = core, console = new float3(10000), route = route.ToArray(), walls = walls.ToArray() };
         }
         public static Interior Citadel()
         {
             var cells = new HashSet<int2>();
-            int2[] turns = { new int2(0, 0), new int2(0, 2), new int2(2, 2), new int2(2, 4), new int2(0, 4), new int2(0, 6), new int2(2, 6), new int2(2, 8),
-                new int2(4, 8), new int2(4, 10), new int2(1, 10), new int2(1, 12), new int2(4, 12), new int2(4, 15), new int2(2, 15), new int2(2, 18) };
+            int2[] turns = { new int2(0, 0), new int2(0, 3), new int2(1, 3), new int2(1, 7),
+                new int2(4, 7), new int2(4, 12), new int2(2, 12), new int2(2, 18) };
+            int exit = -1;
             for (int i = 1; i < turns.Length; i++)
             {
                 int2 at = turns[i - 1], step = (int2)math.sign(turns[i] - at);
@@ -123,12 +164,20 @@ namespace Infinigame.Core
                 foreach (var side in new[] { new int2(-1, 0), new int2(1, 0), new int2(0, -1), new int2(0, 1) })
                 {
                     if (cells.Contains(cell + side) || cell.Equals(int2.zero) && side.y == -1) continue;
+                    if (cell.Equals(turns[^1]) && side.y == 1) exit = walls.Count;
                     walls.Add(new Wall(centre + new float3(side.x * 29, 0, side.y * 29), new float3(side.x != 0 ? 1 : 29, 30, side.y != 0 ? 1 : 29)));
                 }
             }
             var route = new List<float3> { new float3(0, 0, -290) };
             foreach (var turn in turns) route.Add(new float3(turn.x * 58, 0, -260 + turn.y * 58));
-            return new Interior { indestructible = true, entrance = route[0], core = route[^1], console = route[^1], route = route.ToArray(), walls = walls.ToArray() };
+            return new Interior { corridors = cells, escapeWall = exit, indestructible = true, entrance = route[0], core = route[^1], console = route[^1], route = route.ToArray(), walls = walls.ToArray() };
+        }
+        public bool Fits(float3 centre, float radius, bool open)
+        {
+            if (InMantle(centre, radius)) return false;
+            foreach (var wall in walls)
+                if (!wall.broken && !(wall.door && open) && math.all(math.abs(centre - wall.centre) < wall.half + radius)) return false;
+            return true;
         }
         public float3 Move(float3 from, float3 velocity, float radius, float dt, bool open, out bool hit, float stepHeight = 0)
         {
@@ -140,7 +189,9 @@ namespace Infinigame.Core
             {
                 for (int axis = 0; axis < 3; axis++)
                 {
+                    if (delta[axis] == 0) continue;
                     float3 next = at; next[axis] += delta[axis];
+                    if (InMantle(next, radius)) { hit = true; continue; }
                     bool blocked = false;
                     foreach (var wall in walls)
                     {
@@ -149,10 +200,7 @@ namespace Infinigame.Core
                         if (axis != 1 && delta.y <= 0 && stepHeight > 0 && top - at.y > 0 && top - at.y <= stepHeight)
                         {
                             float3 raised = new float3(next.x, top + 0.001f, next.z);
-                            bool clear = true;
-                            foreach (var ceiling in walls)
-                                if (!ceiling.broken && !(open && ceiling.door) && math.all(math.abs(raised - ceiling.centre) < ceiling.half + radius)) { clear = false; break; }
-                            if (clear) { next = raised; continue; }
+                            if (Fits(raised, radius, open)) { next = raised; continue; }
                         }
                         blocked = true;
                         break;
@@ -174,13 +222,13 @@ namespace Infinigame.Core
 
         public bool Breach(float3 point, float damage)
         {
-            if (indestructible) return false;
+            if (indestructible && !coreDestroyed) return false;
             for (int i = 0; i < walls.Length; i++)
             {
                 var wall = walls[i];
-                if (wall.broken || !math.all(math.abs(point - wall.centre) < wall.half + 0.15f)) continue;
+                if (indestructible && i != escapeWall || wall.broken || wall.bedrock || !math.all(math.abs(point - wall.centre) < wall.half + 0.15f)) continue;
                 wall.damage += damage;
-                wall.broken = wall.damage >= (wall.door || wall.centre.y < 0 ? 100 : 240);
+                wall.broken = wall.damage >= (i == escapeWall ? 12 : wall.door || wall.centre.y < 0 ? 100 : 240);
                 walls[i] = wall;
                 return wall.broken;
             }
@@ -190,6 +238,18 @@ namespace Infinigame.Core
         {
             if (Outside(from, to, 0)) return true;
             float3 delta = to - from;
+            if (corridors != null)
+            {
+                float3 inverse = math.rcp(math.select(delta, new float3(0.00001f), math.abs(delta) < 0.00001f));
+                float3 a = (minimum - from) * inverse, b = (maximum - from) * inverse;
+                float start = math.max(0, math.cmax(math.min(a, b))), end = math.min(1, math.cmin(math.max(a, b)));
+                if (start <= end)
+                {
+                    int steps = math.max(1, (int)math.ceil(math.length(delta) * (end - start) / 6));
+                    for (int i = 0; i <= steps; i++)
+                        if (InMantle(from + delta * math.lerp(start, end, (float)i / steps), 0)) return false;
+                }
+            }
             foreach (var wall in walls)
             {
                 if (wall.broken || open && wall.door) continue;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Infinigame.Core;
 using Unity.Collections;
 using Unity.Jobs;
@@ -113,6 +114,7 @@ namespace Infinigame
                 clouds.SetColor("_Tint", descriptor.SeaRadius > 0f ? Color.white : Color.Lerp(Shapes.Colour(descriptor.sky), Color.white, 0.3f));
                 Shell("Clouds", Shapes.CloudDeck(descriptor), clouds);
             }
+            if (descriptor.kind == BodyKind.Gas) Shell("Cloud tops", 1, terrain);
             if (descriptor.SeaRadius == 0f) return;
 
             // a world with seas is alive, and its poles glow at night
@@ -131,33 +133,38 @@ namespace Infinigame
 
         public void SealBurrow(Burrow burrow)
         {
-            Descriptor.burrows.Add(burrow);
+            Descriptor.burrows = Descriptor.burrows.Append(burrow).ToArray();
             if (water == null) return;
             var frames = new Matrix4x4[8];
-            for (int i = 0; i < math.min(8, Descriptor.burrows.Count); i++)
+            for (int i = 0; i < math.min(8, Descriptor.burrows.Length); i++)
             {
                 var cave = Descriptor.burrows[i];
                 frames[i] = Matrix4x4.TRS(cave.origin, cave.rotation, Vector3.one).inverse;
             }
             water.SetMatrixArray("_Burrows", frames);
-            water.SetInt("_BurrowCount", math.min(8, Descriptor.burrows.Count));
+            water.SetInt("_BurrowCount", math.min(8, Descriptor.burrows.Length));
         }
 
         void Update()
         {
             if (terrain == null) return;
+            if (Descriptor.kind == BodyKind.Gas)
+            {
+                terrain.SetFloat("_Haze", IsReference ? math.smoothstep(0.95f, 0.6f, Vector3.Distance(Camera.main.transform.position, transform.position) / Descriptor.soiRadius) : 0);
+                return;
+            }
             if (tier != LodSettings.Tier)
             {
                 // a new quality level changes patch resolution, so start again from the roots
                 Clear();
                 tier = LodSettings.Tier;
                 lod = LodSettings.Current;
-                // cloud tops are smooth, so a giant needs only enough patches to look round
-                maxDepth = math.min(QuadtreeLod.MaxDepth(Descriptor.radius, lod.quads, lod.finestQuad), Descriptor.kind == BodyKind.Gas ? 3 : 99);
+                maxDepth = QuadtreeLod.MaxDepth(Descriptor.radius, lod.quads, lod.finestQuad);
                 if (sea != null)
                 {
                     if (sea.sharedMesh != null) Destroy(sea.sharedMesh);
-                    sea.sharedMesh = Shapes.Sphere(Descriptor.SeaRadius, lod.waterQuads);
+                    // Keep even the lowest-detail sea within centimetres of the shoreline and excavated crater floors.
+                    sea.sharedMesh = Shapes.Sphere(Descriptor.SeaRadius, math.max(lod.waterQuads, (int)math.ceil(math.sqrt(Descriptor.SeaRadius / 0.08f))));
                 }
             }
 

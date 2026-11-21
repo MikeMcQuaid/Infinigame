@@ -23,6 +23,58 @@ namespace Infinigame.Tests
             if (turret) Assert.Greater(bolts[0].velocity.x, 0);
             else Assert.AreEqual(0, bolts[0].velocity.x, 0.001f);
         }
+        [Test] public void BeamMeetsTheSameGroundAsWalkingAndFlight()
+        {
+            var system = SolarSystemDescriptor.Generate(91);
+            var random = new Unity.Mathematics.Random(42);
+            var foes = new List<Foe>();
+            foreach (int world in new[] { SolarSystemDescriptor.Home, SolarSystemDescriptor.Moon })
+            {
+                var body = system.bodies[world];
+                for (int i = 0; i < 16; i++)
+                {
+                    float3 up = random.NextFloat3Direction(), from = up * (Combat.Surface(body, up * body.radius) + random.NextFloat(5, 180));
+                    float3 direction = math.normalizesafe(Walker.Project(random.NextFloat3Direction(), up) - up * random.NextFloat(0.25f, 2));
+                    const int range = 450;
+                    float distance = 0.5f;
+                    for (; distance < range; distance += 0.5f)
+                    {
+                        float3 point = from + direction * distance;
+                        if (math.length(point) < Combat.Surface(body, point)) break;
+                    }
+                    float3 end = Combat.Ray(foes, body, from, direction, range, 0, false, default, null);
+                    Assert.That(math.distance(end, from), Is.EqualTo(distance).Within(0.51f));
+                }
+            }
+        }
+
+        [Test] public void BackMissileClearsTheHelmetAndFliesAlongTheSightLine()
+        {
+            var body = new BodyDescriptor { kind = BodyKind.Station };
+            var origin = new float3(0, 100, 0);
+            var bolts = new List<Bolt>();
+            var random = new Unity.Mathematics.Random(3);
+            Combat.Fire(Combat.Arms[2], origin, new float3(0, 0, 1), float3.zero, ref random, bolts, launchUp: new float3(0, 1, 0));
+            var foes = new List<Foe>();
+            for (int i = 0; i < 12; i++) Combat.Step(bolts, foes, body, origin, float3.zero, 1, 1f / 60, null);
+            Assert.That(bolts[0].position.y - origin.y, Is.InRange(0.2f, 1f));
+            Assert.Greater(bolts[0].velocity.z, 200);
+        }
+
+        [Test] public void FactoryProjectilesSpareMindsEvenInSplashRange()
+        {
+            var body = new BodyDescriptor { kind = BodyKind.Station };
+            var at = new float3(0, 100, 5);
+            var mind = Combat.Spawn(FoeKind.Mind, at, new float3(0, 0, -1), 1, 1);
+            var foes = new List<Foe> { mind, Combat.Spawn(FoeKind.Sentry, at, new float3(0, 0, -1), 1, 2),
+                Combat.Spawn(FoeKind.Mind, at + new float3(5, 0, 0), new float3(0, 0, -1), 1, 3) };
+            var bolts = new List<Bolt> { new Bolt { robot = true, position = at - new float3(0, 0, 5), velocity = new float3(0, 0, 50), life = 1, blast = 12, damage = 500 } };
+            Combat.Step(bolts, foes, body, float3.zero, float3.zero, 1, 0.1f, null);
+            Assert.AreEqual(mind.health, foes[0].health);
+            Assert.AreEqual(mind.health, foes[2].health);
+            Assert.LessOrEqual(foes[1].health, 0);
+        }
+
         [Test] public void ShipBeamHasTwoEmittersAndAnAccurateName()
         {
             Assert.AreEqual("Beam", Combat.Guns[2].name);

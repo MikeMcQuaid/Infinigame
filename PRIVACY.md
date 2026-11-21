@@ -1,6 +1,6 @@
 # Infinigame privacy policy
 
-Last updated: 18 November 2026.
+Last updated: 21 November 2026.
 
 Infinigame is developed by Mike McQuaid. This policy covers the game, including its iPhone and iPad beta. It has no developer-operated player account service, advertising or tracking analytics. Unity Analytics, Ads and cloud diagnostics are disabled. The developer does not automatically receive your saved games or conversations.
 
@@ -12,7 +12,7 @@ Optional AI account details are kept separately from saved games. On iPhone and 
 
 ## Optional AI services
 
-The game works without an AI account, using observed scanner facts and authored companion replies. If you configure Anthropic or OpenAI, the game sends requests to that provider to generate scanner entries and companion dialogue. A request can contain game facts, your current objective and progress, your message and recent conversation context. Anything personal you type or say in a message can therefore reach the selected provider. Requests also expose normal connection and account information, such as your IP address and authentication data.
+The game works without an AI account, using observed scanner facts and authored companion replies. If you configure Anthropic or OpenAI, the game automatically sends the expedition seed, known lore, authored lines and world descriptions to that provider to prepare mission guidance, companion dialogue and scanner wording. You can also send free-form questions. A request can contain game facts, your current objective and progress, your message and recent conversation context. Anything personal you type or say in a message can therefore reach the selected provider. Requests also expose normal connection and account information, such as your IP address and authentication data.
 
 On iPhone and iPad, requests go directly to the selected provider over HTTPS. On desktop, the game can also use your signed-in Claude Code or Codex tools. Browser sign-in takes place on the provider's pages; the game does not collect your provider password. API keys and tokens authenticate requests to the relevant provider, not to the developer.
 
@@ -20,7 +20,7 @@ Generated replies and journal entries can be saved with your game. Provider rete
 
 ## Microphone, speech and clipboard
 
-Voice input is optional. On iPhone and iPad, the game asks permission to use the microphone and speech recognition when you use voice input. Recognition requires on-device processing; if that is unavailable, voice input cannot start. Raw microphone audio is not sent to an AI provider or the developer by the game. The resulting text is treated like a typed message and can be sent to your configured AI provider. The companion's spoken replies are synthesised locally.
+Voice input is available when you connect a language model. On iPhone and iPad, the game asks permission to use the microphone and speech recognition when you use voice input. Recognition requires on-device processing; if that is unavailable, voice input cannot start. Raw microphone audio is not sent to an AI provider or the developer by the game. The resulting text is treated like a typed message and can be sent to your configured AI provider. The companion's spoken replies are synthesised locally.
 
 The game reads clipboard content when you choose **Use the key on the clipboard** to import an API key. It does not monitor the clipboard.
 
@@ -32,7 +32,7 @@ I use beta diagnostics and information you send me to investigate problems, repl
 
 ## Your choices
 
-You can play without configuring an AI provider. To remove stored credentials, open **Settings**, select **Claude** or **ChatGPT** and choose **Forget key and sign-in**. On desktop, separately remove any environment credentials or sign out of command-line tools the game can use. Revoke keys or sign-in access with the provider to stop their use completely. Removing credentials does not remove saved dialogue or information already received by a provider.
+You can play without configuring an AI provider. To remove stored credentials, open **Expedition language model** on the title screen or in Settings, select the connected provider and choose **Disconnect language model**. On desktop, separately remove any environment credentials or sign out of command-line tools the game can use. Revoke keys or sign-in access with the provider to stop their use completely. Removing credentials does not remove saved dialogue or information already received by a provider.
 
 You can deny or revoke microphone and speech recognition permission in system settings and use typed input instead. Deleting the iOS app removes its local saves and preferences; offloading retains them. Keychain entries can survive app deletion, so remove credentials in the game first. Desktop saves, account files, exported logs and device backups must be removed separately when no longer needed.
 

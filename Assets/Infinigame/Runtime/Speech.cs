@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -11,8 +12,7 @@ namespace Infinigame
     // One offline voice for authored dialogue and generated replies on every platform.
     public class Speech : MonoBehaviour
     {
-        public static bool Muted, Robot;
-        public static float RobotStrength = 1;
+        public static bool Muted;
         public const string Choice = "cmu_us_slt_arctic_hts";
         const int Rate = 32000;
         public static Func<string, string, float[]> Render = Festival;
@@ -48,63 +48,104 @@ namespace Infinigame
             return samples.ToArray();
         }
 
+        readonly Queue<(string words, Action start, bool caption)> lines = new Queue<(string, Action, bool)>();
         AudioSource source;
-        bool paused, preview;
+        bool paused;
         volatile int asked;
         int pending;
-        public bool Speaking => pending != 0 || source != null && (source.isPlaying || paused && source.clip != null);
+        float reading;
+        public bool Speaking => pending != 0 || reading > 0 || source.isPlaying || paused && source.clip != null || lines.Count > 0;
         void Awake()
         {
-            source = gameObject.AddComponent<AudioSource>();
+            source = new GameObject("Companion voice").AddComponent<AudioSource>();
+            source.transform.SetParent(transform, false);
             source.ignoreListenerPause = true;
+            source.minDistance = 5;
+            source.dopplerLevel = 0;
         }
         void Update()
         {
             var game = GetComponent<Game>();
-            bool hold = !preview && (game.Paused || game.Dead || game.ShowControls || game.Player.SystemView);
-            if (paused == hold) return;
-            paused = hold;
-            if (hold) source.Pause(); else source.UnPause();
+            source.mute = Muted;
+            bool hold = game.Paused || game.Dead || game.ShowControls || game.Player.SystemView;
+            source.mute = Muted;
+            if (hold != paused)
+            {
+                paused = hold;
+                if (hold) source.Pause(); else source.UnPause();
+            }
+            if (paused) return;
+            bool nearby = !game.Hermit.Aboard && game.System.Reference == Core.SolarSystemDescriptor.Home
+                && Unity.Mathematics.math.distance(game.Hermit.Position, game.Player.Position) < 30;
+            source.spatialBlend = nearby ? 1 : 0;
+            if (nearby) source.transform.position = game.Hermit.Position - game.System.Anchor + Unity.Mathematics.math.normalizesafe(game.Hermit.Position);
+            reading = Mathf.Max(0, reading - Time.unscaledDeltaTime);
+            if (pending != 0 || source.isPlaying || reading > 0) return;
+            if (source.clip != null) { Destroy(source.clip); source.clip = null; }
+            if (lines.Count > 0) PlayNext();
         }
         public void Silence()
         {
-            asked++; pending = 0; source.Stop(); Destroy(source.clip); source.clip = null;
+            asked++; pending = 0; reading = 0; lines.Clear();
+            source.Stop(); Destroy(source.clip); source.clip = null;
         }
-        void OnDestroy() { asked++; }
+        void OnDestroy() => asked++;
 
-        public async void Say(string words, bool preview = false)
+        public void Say(string words, bool interrupt = false, Action start = null, bool caption = false)
         {
-            Silence();
-            this.preview = preview;
-            if (Muted || string.IsNullOrWhiteSpace(words)) return;
+            if (string.IsNullOrWhiteSpace(words)) return;
+            if (interrupt)
+            {
+                asked++; pending = 0;
+                source.Stop(); Destroy(source.clip); source.clip = null;
+                start?.Invoke();
+                reading = caption ? 2 + words.Length / 18f : 0;
+                if (!Muted) RenderLine(words, ++asked);
+                return;
+            }
+            bool idle = !Speaking;
+            lines.Enqueue((words, start, caption));
+            if (idle) PlayNext();
+        }
+        void PlayNext()
+        {
+            var (words, start, caption) = lines.Dequeue();
+            start?.Invoke();
+            reading = caption ? 2 + words.Length / 18f : 0;
+            if (!Muted) RenderLine(words, ++asked);
+        }
+
+        async void RenderLine(string words, int mine)
+        {
             var render = Render;
             // Scene tests supply a stand-in; batch builds never invoke the real voice engine.
             if (Application.isBatchMode && render == Festival) return;
-            int mine = asked;
             pending = mine;
 #if UNITY_EDITOR
             string directory = Path.GetFullPath("Build/Speech/Voice");
 #else
             string directory = Path.Combine(Application.streamingAssetsPath, "Festival");
 #endif
-            float strength = Robot ? Mathf.Clamp01(RobotStrength) : 0;
             float[] sound = null;
             try
             {
                 sound = await Task.Run(() =>
                 {
-                    lock (synthesis) return mine == asked ? render(words, directory) : null;
+                    float[] samples;
+                    lock (synthesis) samples = mine == asked ? render(words, directory) : null;
+                    if (samples != null)
+                        for (int i = 0; i < samples.Length; i++)
+                            samples[i] *= 0.65f + 0.35f * (float)Math.Sin(i * (2 * Math.PI * 65 / Rate));
+                    return samples;
                 });
             }
             catch (Exception error) { Debug.LogWarning("Speech unavailable: " + error.Message); }
             if (pending == mine) pending = 0;
             if (this == null || mine != asked || sound == null || sound.Length == 0 || Muted) return;
-            if (strength > 0)
-                for (int i = 0; i < sound.Length; i++) sound[i] *= 1 - 0.35f * strength + 0.35f * strength * Mathf.Sin(i * 2 * Mathf.PI * 65 / Rate);
             source.clip = AudioClip.Create("Speech", sound.Length, 1, Rate, false);
             source.clip.SetData(sound, 0);
             source.Play();
-            if (paused && !preview) source.Pause();
+            if (paused) source.Pause();
         }
     }
 }

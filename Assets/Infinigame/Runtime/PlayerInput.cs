@@ -12,10 +12,11 @@ namespace Infinigame
         public bool jump, sprint, interact, scan, travel, toggleAssist, toggleView, tierUp, tierDown, warp, help, menu, confirm, mute, reload, ride, talk, voice, cheats;
         // Which weapon to take up, 1 to 5, or 0 to keep the one in hand; and a step to the next or the last.
         public int select, cycle;
-        public bool systemView, fire, interfaceActive; // systemView toggles, fire is held
+        public bool systemView, fire, automaticFire, interfaceActive; // systemView toggles, fire is held
         // For menus and for talking: step up or down a list, point and click, and what was typed this frame.
         public bool up, down, click, erase;
-        public Vector2 pointer;
+        public Vector2 pointer, mapDrag;
+        public float mapPinch;
         public string typed, replaceText;
     }
 
@@ -23,17 +24,18 @@ namespace Infinigame
     {
         const float StickDegreesPerSecond = 150f;
 
-        // Degrees turned per count of mouse movement. Adjusted in play with - and =.
+        // Degrees turned per count of mouse movement. Adjusted in Settings.
         public static float Sensitivity = 0.25f;
 
         static readonly System.Text.StringBuilder typed = new System.Text.StringBuilder();
         static Keyboard listening;
-        static int navigation;
-        static float nextNavigation;
+        static Core.StickNavigation navigation;
         public static bool UsingPad { get; private set; }
         public static bool KeyboardUsed { get; private set; }
 
-        public static Controls Read()
+        public static Controls Read() => Read(false, false);
+
+        public static Controls Read(bool flying, bool invertShipPitch)
         {
             var c = new Controls();
             var keys = Keyboard.current;
@@ -58,19 +60,15 @@ namespace Infinigame
                 c.toggleAssist = keys.zKey.wasPressedThisFrame;
                 c.toggleView = keys.vKey.wasPressedThisFrame;
                 c.travel = keys.tKey.wasPressedThisFrame;
-                c.mute = keys.mKey.wasPressedThisFrame;
                 c.select = keys.digit1Key.wasPressedThisFrame ? 1 : keys.digit2Key.wasPressedThisFrame ? 2 : keys.digit3Key.wasPressedThisFrame ? 3 : keys.digit4Key.wasPressedThisFrame ? 4
                     : keys.digit5Key.wasPressedThisFrame ? 5 : 0;
                 c.reload = keys.rKey.wasPressedThisFrame;
                 c.ride = keys.bKey.wasPressedThisFrame;
-                c.tierUp = keys.rightBracketKey.wasPressedThisFrame;
-                c.tierDown = keys.leftBracketKey.wasPressedThisFrame;
                 c.warp = keys.gKey.wasPressedThisFrame;
                 c.systemView = keys.tabKey.wasPressedThisFrame;
                 c.voice = keys.yKey.isPressed;
                 c.menu = keys.escapeKey.wasPressedThisFrame;
                 c.confirm = c.talk = keys.enterKey.wasPressedThisFrame && !keys.altKey.isPressed;
-                c.help = keys.hKey.wasPressedThisFrame;
                 c.up = keys.upArrowKey.wasPressedThisFrame || keys.wKey.wasPressedThisFrame;
                 c.down = keys.downArrowKey.wasPressedThisFrame || keys.sKey.wasPressedThisFrame;
                 c.erase = keys.backspaceKey.wasPressedThisFrame;
@@ -78,6 +76,7 @@ namespace Infinigame
             if (Mouse.current != null && Cursor.lockState != CursorLockMode.Locked)
             {
                 c.pointer = Mouse.current.position.ReadValue();
+                if (Mouse.current.leftButton.isPressed) c.mapDrag = Mouse.current.delta.ReadValue() / Mathf.Max(1, Screen.height);
                 c.cycle = (int)Mathf.Sign(Mouse.current.scroll.ReadValue().y) * (Mouse.current.scroll.ReadValue().y == 0 ? 0 : 1);
                 c.click = Mouse.current.leftButton.wasPressedThisFrame;
             }
@@ -94,14 +93,17 @@ namespace Infinigame
             var pad = Gamepad.current;
             if (pad != null)
             {
-                c.move += pad.leftStick.ReadValue();
-                c.look += pad.rightStick.ReadValue() * (StickDegreesPerSecond * Time.unscaledDeltaTime);
-                // triggers fire and scan, as on any pad, so the shoulders climb and descend and roll is left to the keys
-                c.lift += Axis(pad.rightShoulder.isPressed, pad.leftShoulder.isPressed);
+                Vector2 stick = pad.leftStick.ReadValue(), turn = pad.rightStick.ReadValue();
+                float shoulder = Axis(pad.rightShoulder.isPressed, pad.leftShoulder.isPressed);
+                c.move += new Vector2(flying ? 0 : stick.x, stick.y);
+                if (flying) c.roll += stick.x;
+                c.lift += shoulder;
+                if (flying && invertShipPitch) turn.y = -turn.y;
+                c.look += turn * (StickDegreesPerSecond * Time.unscaledDeltaTime);
                 c.fire |= pad.rightTrigger.ReadValue() > 0.5f;
                 c.scan |= pad.leftTrigger.wasPressedThisFrame;
                 c.jump |= pad.buttonSouth.isPressed;
-                c.sprint |= pad.leftStickButton.isPressed;
+                c.sprint |= pad.leftStickButton.isPressed || (!flying && stick.y >= 0.9f);
                 c.interact |= pad.buttonWest.wasPressedThisFrame;
                 c.toggleAssist |= pad.buttonNorth.wasPressedThisFrame && pad.leftTrigger.isPressed;
                 if (pad.buttonNorth.wasPressedThisFrame && !pad.leftTrigger.isPressed) c.cycle = 1;
@@ -120,14 +122,9 @@ namespace Infinigame
                 c.talk |= pad.dpad.left.wasPressedThisFrame && pad.leftTrigger.isPressed;
                 c.up |= pad.dpad.up.wasPressedThisFrame;
                 c.down |= pad.dpad.down.wasPressedThisFrame;
-                float vertical = Mathf.Abs(pad.leftStick.y.ReadValue()) > Mathf.Abs(pad.rightStick.y.ReadValue()) ? pad.leftStick.y.ReadValue() : pad.rightStick.y.ReadValue();
-                int direction = vertical > 0.65f ? 1 : vertical < -0.65f ? -1 : 0;
-                if (direction != 0 && (direction != navigation || Time.unscaledTime >= nextNavigation))
-                {
-                    c.up |= direction > 0; c.down |= direction < 0;
-                    nextNavigation = Time.unscaledTime + (direction != navigation ? 0.4f : 0.16f);
-                }
-                navigation = direction;
+                int step = navigation.Read(pad.leftStick.y.ReadValue(), pad.rightStick.y.ReadValue(), Time.unscaledTime);
+                c.up |= step > 0;
+                c.down |= step < 0;
                 if (pad.leftStick.ReadValue().sqrMagnitude > 0.1f || pad.rightStick.ReadValue().sqrMagnitude > 0.1f || (pad.buttonSouth.wasPressedThisFrame || pad.buttonNorth.wasPressedThisFrame || pad.buttonWest.wasPressedThisFrame || pad.buttonEast.wasPressedThisFrame || pad.startButton.wasPressedThisFrame || pad.selectButton.wasPressedThisFrame || pad.dpad.ReadValue().sqrMagnitude > 0 || pad.rightTrigger.isPressed || pad.leftTrigger.isPressed)) { UsingPad = true; KeyboardUsed = false; }
             }
             if (keys?.anyKey.wasPressedThisFrame == true) { UsingPad = false; KeyboardUsed = true; }

@@ -49,6 +49,7 @@ Shader "Infinigame/Puff"
 
             struct Varyings
             {
+                UNITY_VERTEX_OUTPUT_STEREO
                 float4 positionCS : SV_POSITION;
                 // across the puff from -1 to 1, how many metres of it sink softly into the ground, and the fog
                 float4 uv : TEXCOORD0;
@@ -65,6 +66,7 @@ Shader "Infinigame/Puff"
             {
                 Varyings output;
                 UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
                 float4 look = UNITY_ACCESS_INSTANCED_PROP(Puffs, _Look), heat = UNITY_ACCESS_INSTANCED_PROP(Puffs, _Heat);
                 // the matrix says only where the puff is and which way its axis runs, as long as the puff is wide
                 float3 centre = TransformWorldToView(float3(UNITY_MATRIX_M._m03, UNITY_MATRIX_M._m13, UNITY_MATRIX_M._m23));
@@ -104,6 +106,7 @@ Shader "Infinigame/Puff"
 
             half4 Fragment(Varyings input) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
                 float2 uv = input.uv.xy;
                 float out2 = dot(uv, uv);
                 clip(1.0 - out2);

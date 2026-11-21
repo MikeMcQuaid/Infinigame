@@ -39,7 +39,7 @@ abort 'Finish both platform checks and the Mac download before uploading' unless
 abort 'Keep a downloadable Mac build when Apple validation fails' unless by_id.fetch('package').fetch('if').include?('!cancelled()') &&
   steps.any? { |s| s.dig('with', 'name') == 'Infinigame-macOS' && s.fetch('if').include?("steps.package.outcome == 'success'") }
 windows = jobs.dig('windows', 'steps').select { |s| s['uses'].to_s.start_with?('actions/upload-artifact@') }
-abort 'Only publish merged Windows builds' unless windows.map { |s| s.dig('with', 'name') }.sort == %w[Infinigame-SteamDeck Infinigame-Windows] &&
+abort 'Only publish merged Windows builds' unless windows.map { |s| s.dig('with', 'name') }.sort == %w[Infinigame-Windows] &&
   windows.all? { |s| s['if'] == "env.PUBLISH == 'true'" }
 dist = jobs.fetch('distribute')
 abort 'Only hand recovered builds to distribution after checking the tester groups' unless

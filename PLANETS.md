@@ -7,7 +7,7 @@ The mission table in `MISSIONS.md` is executable content. The encounter ideas be
 | World | Identity and existing tools | Proposed encounter objective | Why behaviour changes |
 |---|---|---|---|
 | Earth | Emergency fists, hand beam, back missiles, rail gauntlet and hemisphere lasers before ship recovery | Three short regional burrows: entrance breach, branching nest, vertical brood | Learn one capability at a time; use digging to flank, then robots to hold cleared ground. |
-| Luna | Low gravity, exposed ground turrets and flying guards; suit and ship missiles | Break air cover before opening the mind's shield | Use terrain and controlled boosts; reserve guided fire for machines and ships. |
+| Luna | Low gravity, exposed ground turrets and flying guards; suit and ship missiles | Destroy the ground turrets to open the mind’s shield | Use terrain and controlled boosts; reserve guided fire for machines and ships. |
 | Mars | Breachers and spitters; suit rail and ship beams | Cut a tunnelling brood's reinforcement routes | Watch below as well as ahead; pierce narrow firing lanes or dig another approach. |
 | Venus | Heat, reduced visibility and shields; cloak, heat plating and ship rail | Disable separated shield organs in a dense nest | Reposition under cloak and fight at close range, avoiding straight exchanges through shields. |
 | Mercury | Bare terrain and heat; hull repair | Cross an exposed stronghold by carving temporary cover | Trade fast traversal against exposure; accuracy and resource recovery matter. |
@@ -21,4 +21,4 @@ Keep XP choices to damage, fire/charge rate, toughness, energy recharge and repa
 
 ![The level-up screen with five attributes](docs/level-up.png)
 
-Death restarts the current burrow. Completed regional objectives and permanent equipment remain. Do not award player XP for unlimited autonomous robot kills. Important movement equipment remains a guaranteed objective reward.
+Before you build a factory, defeat returns you to the rubble near your current objective. An established factory rebuilds the suit, and a shipyard replaces a lost ship. Completed regional objectives and permanent equipment remain. Do not award player XP for unlimited autonomous robot kills. Important movement equipment remains a guaranteed objective reward.

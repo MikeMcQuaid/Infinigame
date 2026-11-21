@@ -17,6 +17,7 @@ namespace Infinigame.Core
             float3 axis = rnd.NextFloat3Direction(), start = math.normalize(math.cross(axis, rnd.NextFloat3Direction()));
             double lap = rnd.NextDouble(900, 1800), breath = rnd.NextDouble(150, 300);
             float size = rnd.NextFloat(0.22f, 0.4f) * (0.7f + 0.3f * (float)math.sin(2 * math.PI_DBL * time / breath));
+            if (body.name == "Earth") size *= 2.42f;
             return new float4(math.rotate(quaternion.AxisAngle(axis, (float)(2 * math.PI_DBL * math.frac(time / lap))), start), size);
         }
 

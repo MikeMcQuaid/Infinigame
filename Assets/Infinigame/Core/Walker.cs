@@ -9,6 +9,7 @@ namespace Infinigame.Core
         public float yaw; // radians to turn this step, positive to the right
         public bool jump, sprint; // holding jump in the air fires the jetpack
         public bool space;
+        public float3 gaze; // tracked headset direction in the body's frame, when available
         public float lift;
         public bool bare; // with nothing on their back, so that holding jump in the air does nothing
         public bool riding; // on the bike: far faster, and it goes only where it points
@@ -59,18 +60,28 @@ namespace Infinigame.Core
             float3 level = Project(s.velocity, up);
             float r = math.length(s.position);
             bool jumped = false;
+            float3 aimForward = s.forward * math.cos(input.pitch) + up * math.sin(input.pitch);
+            float3 sight = math.normalizesafe(input.gaze, aimForward);
             if (input.space && !input.bare && !input.riding)
             {
-                float3 aim = s.forward * math.cos(input.pitch) + up * math.sin(input.pitch);
-                float3 wish = aim * move.y + math.cross(up, s.forward) * move.x + up * (input.jump ? 1 : input.lift);
+                float3 wish = (math.lengthsq(input.gaze) > 0 ? math.normalizesafe(Project(sight, up), s.forward) : aimForward) * move.y + math.cross(up, s.forward) * move.x;
+                wish += input.jump ? sight : up * input.lift;
                 wish /= math.max(1, math.length(wish));
                 s.velocity = MoveTowards(s.velocity, wish * (input.sprint ? 65 : 28), 22 * dt);
                 s.position += s.velocity * dt;
                 s.grounded = false; s.swimming = false;
-                s.height = math.length(s.position) - body.GroundRadius(math.normalize(s.position));
+                up = math.normalize(s.position);
+                s.height = math.length(s.position) - body.GroundRadius(up);
+                if (s.height <= 0)
+                {
+                    s.position -= up * s.height; s.height = 0;
+                    s.velocity -= up * math.min(0, math.dot(s.velocity, up));
+                    s.ground = body.GroundNormal(up); s.grounded = true;
+                }
                 return;
             }
 
+            bool directedBurn = !s.grounded && s.height > Adrift && input.jump && !input.bare && s.fuel > 0 && (math.lengthsq(input.gaze) > 0 || math.dot(sight, up) < -0.15f);
             s.swimming = body.SeaRadius > 0 && r + EyeHeight < body.SeaRadius && !body.Dry(s.position);
             if (s.grounded)
             {
@@ -98,24 +109,26 @@ namespace Infinigame.Core
                 float wish = burning ? JetpackSpeed : Tuning.WalkSpeed, room = wish - math.dot(level, heading), pull = math.length(body.GravityAt(s.position));
                 if (!input.bare && !input.riding && s.height > Adrift)
                 {
-                    // Well clear of the ground the pack pushes hard wherever its wearer looks, down as
-                    // well as along, for as long as they ask and on no fuel: a leap off a small moon
-                    // can always be flown home. Across, it stops well short of the speed that would
-                    // put them in orbit; straight down, of one that would hurt much to land at; and it
-                    // cannot out-climb the ground's pull: that is still the burn's to do.
-                    float3 aim = math.normalizesafe((s.forward * math.cos(input.pitch) + up * math.sin(input.pitch)) * move.y + math.cross(up, s.forward) * move.x);
+                    // Above the ground, a tracked burn follows the headset and counters local gravity.
+                    float3 aim = directedBurn ? sight : math.normalizesafe(sight * move.y + math.cross(up, s.forward) * move.x);
                     float most = math.lerp(math.min(JetpackSpeed, 0.6f * math.sqrt(pull * r)), SoftLanding, math.saturate(-math.dot(aim, up)));
                     float3 push = aim * math.clamp(most - math.dot(s.velocity, aim), 0f, AdriftThrust * dt);
-                    s.velocity += push - up * math.max(0f, math.dot(push, up) - 0.6f * pull * dt);
+                    if (directedBurn)
+                    {
+                        s.velocity -= body.GravityAt(s.position) * dt;
+                        s.velocity += push;
+                        s.fuel -= dt;
+                    }
+                    else s.velocity += push - up * math.max(0f, math.dot(push, up) - 0.6f * pull * dt);
                 }
                 else if (math.lengthsq(move) > 0f && room > 0f && !input.riding && math.length(s.velocity) < math.min(2f * wish, 0.6f * math.sqrt(pull * r)))
                     s.velocity += heading * math.min(room, (burning ? 2f : 1f) * AirAcceleration * dt);
             }
 
-            if (!s.grounded && input.jump && !jumped && !input.bare && s.fuel > 0f)
+            if (!s.grounded && input.jump && !jumped && !directedBurn && !input.bare && s.fuel > 0f)
             {
                 // thrust scales with local gravity: a strong hop anywhere, never an escape from a moon
-                s.velocity += up * ((1.5f * math.length(body.GravityAt(s.position)) + 3f) * dt);
+                s.velocity += up * ((math.length(body.GravityAt(s.position)) + 4f) * dt);
                 s.fuel -= dt;
             }
 

@@ -22,7 +22,9 @@ namespace Infinigame.Tests
             camera.targetTexture = target;
             // Overlay canvases do not render into a camera texture, so temporarily attach the visor.
             var visor = GameObject.Find("Suit glass").GetComponent<Canvas>();
-            visor.renderMode = RenderMode.ScreenSpaceCamera; visor.worldCamera = camera;
+            var visorMode = visor.renderMode;
+            if (visorMode != RenderMode.WorldSpace) visor.renderMode = RenderMode.ScreenSpaceCamera;
+            visor.worldCamera = camera;
             visor.planeDistance = game.Fall.active ? Mathf.Max(100, Mathf.NextPowerOfTwo((int)(camera.transform.position.magnitude * 0.02f))) : camera.nearClipPlane + 0.01f;
             var touch = GameObject.Find("Touch controls").GetComponent<Canvas>();
             touch.renderMode = RenderMode.ScreenSpaceCamera; touch.worldCamera = camera; touch.planeDistance = visor.planeDistance;
@@ -33,7 +35,7 @@ namespace Infinigame.Tests
             picture.ReadPixels(new Rect(0, 0, width, height), 0, 0);
             Directory.CreateDirectory("Logs/Screenshots");
             File.WriteAllBytes("Logs/Screenshots/" + name + ".png", picture.EncodeToPNG());
-            RenderTexture.active = null; camera.targetTexture = null; visor.renderMode = RenderMode.ScreenSpaceOverlay; touch.renderMode = RenderMode.ScreenSpaceOverlay;
+            RenderTexture.active = null; camera.targetTexture = null; visor.renderMode = visorMode; touch.renderMode = RenderMode.ScreenSpaceOverlay;
             Object.Destroy(target); Object.Destroy(picture);
         }
 
@@ -50,9 +52,9 @@ namespace Infinigame.Tests
             Assert.AreEqual("Emergency fists", Player.Weapon.name);
             yield return Press(new Controls { fire = true });
             Assert.AreEqual(0, game.Dug, "The boot sequence must finish before punching");
-            yield return Seconds(2);
+            yield return Seconds(6.5f);
             yield return ReworkShot("110-suit-boot");
-            yield return Seconds(Game.BootDuration - 1.5f);
+            yield return Seconds(Game.BootDuration - 6);
             yield return ReworkShot("111-emergency-hud");
             for (int i = 0; i < Game.Digs; i++) yield return Press(new Controls { fire = true });
             Assert.AreEqual(1, game.Stage);
@@ -63,9 +65,9 @@ namespace Infinigame.Tests
             Assert.IsFalse(game.Hermit.Talking, "The recovery briefing is inline and cannot be skipped");
             Assert.Less(math.distance(locked, Player.walker.position), 0.5f);
             Assert.Less(math.distance(facing, Player.walker.forward), 0.01f);
-            yield return new WaitForSeconds(17.5f);
+            yield return Until(() => game.Tutorial.PointingAtShip, 35);
             yield return Press(new Controls { look = new Vector2(60, 0) });
-            yield return Seconds(5.5f);
+            yield return Until(() => game.Tutorial.Hint.Contains("WALK A FEW STEPS"), 35);
             input = new Controls { move = Vector2.up }; yield return Seconds(1); input = default;
             yield return Until(() => game.Battle.Foes.Exists(foe => foe.kind == FoeKind.Sentry));
             Assert.AreEqual(1, game.Battle.Foes.Count);
@@ -126,20 +128,12 @@ namespace Infinigame.Tests
         public IEnumerator ReworkFactoryAndOrbitRecoveryArePlayable()
         {
             game.Jump(Campaign.Recovery);
-            Stand(Campaign.Site(Solar.Descriptor, Campaign.Stranger), new float3(0, 0, 1));
-            var front = game.Frontier.Local;
-            front.kills = War.RequiredKills(front);
-            front.aliens = 20;
-            game.Frontier.BuildFactory(0);
-            yield return null;
-            Assert.AreEqual(Campaign.Recovery, game.Stage); Assert.IsTrue(front.factory);
+            var yard = game.Colonies.Single(colony => colony.world == Home && game.Frontier.State(Home, colony.region).shipyard);
+            var up = math.normalize(yard.site);
+            Stand(math.normalize(yard.site + World(up) * 25), World(up));
             Assert.IsTrue(Player.captive); Assert.IsFalse(Player.Has(Gear.Ship));
             Assert.Greater(math.length(Player.ship.position), Body.radius * Shapes.AirTop(Body));
             Assert.Less(math.length(Player.ship.position), Body.radius * Shapes.AirTop(Body) + 60);
-            var cave = Body.burrows[0];
-            float3 outside = cave.origin + math.rotate(cave.rotation, new float3(0, 0, -38));
-            Player.walker = Walker.Spawn(Body, math.normalize(outside), math.rotate(cave.rotation, new float3(0, 0, -1)));
-            float3 up = math.normalize(Player.Position);
             float height = Player.Altitude;
             input.jump = true; yield return Seconds(4); input = default;
             Assert.Greater(Player.Altitude, height + 10);
@@ -150,27 +144,34 @@ namespace Infinigame.Tests
             Assert.IsTrue(Player.flying); Assert.IsTrue(Player.Has(Gear.Ship)); Assert.AreEqual(Campaign.Tower, game.Stage);
             yield return HoverOver(Moon, 20);
             Player.flying = false; Player.walker = Walker.Spawn(Body, math.normalize(Player.ship.position), new float3(0, 0, 1));
-            front = game.Frontier.Local; front.kills = War.RequiredKills(front); front.aliens = 20;
+            var front = game.Frontier.Local; front.kills = War.RequiredKills(front); front.aliens = 20;
             game.Frontier.BuildFactory(0);
-            Assert.IsFalse(front.shipyard);
-            front.aliens = 0; front.mindDead = true; game.Frontier.BuildFactory(1);
+            Assert.IsTrue(front.shipyard);
+            front.aliens = 0; front.mindDead = true;
             yield return Seconds(1);
             Assert.IsTrue(front.shipyard);
             Assert.IsNotNull(GameObject.Find("Robodog shipyard"));
+            float3 site = game.Colonies.Single(colony => colony.world == Moon).site;
+            float3 side = World(math.normalize(site));
+            Stand(math.normalize(site + side * 22), -side);
+            yield return Seconds(1);
             yield return ReworkShot("116-factory-war");
         }
 
         [UnityTest]
         public IEnumerator ReworkFactoryLeavesRoomAndMarksTheUnownedShip()
         {
-            game.Jump(Campaign.Recovery);
-            Stand(Campaign.Site(Solar.Descriptor, Campaign.Stranger), new float3(0, 0, 1));
+            game.Jump(Campaign.ThirdBurrow);
+            float3 site = Campaign.Site(Solar.Descriptor, Campaign.ThirdBurrow);
+            Stand(math.normalize(site * Body.radius + World(site) * 90), World(site));
             var front = game.Frontier.Local; front.kills = War.RequiredKills(front);
             game.Frontier.BuildFactory(0);
+            var factory = game.Colonies.Single(colony => colony.world == front.world && colony.region == front.region);
+            Assert.Greater(math.distance(Player.Position, factory.site), 8, "A new factory must leave room for the player");
+            game.Jump(Campaign.Recovery);
             yield return null;
             var labels = GameObject.Find("HUD").GetComponentsInChildren<UnityEngine.UI.Text>();
-            Assert.Greater(math.distance(Player.Position, game.Colonies.Single().site), 8, "A new factory must leave room for the player");
-            Assert.IsTrue(labels.Any(label => label.text == "UNMANNED SHIP" && label.enabled), "The recovery ship needs a visible marker before ownership");
+            Assert.IsTrue(labels.Any(label => label.text == "YOUR SHIP · IN ORBIT" && label.enabled), "The recovery ship needs a visible marker before ownership");
         }
 
         [UnityTest]
@@ -191,6 +192,16 @@ namespace Infinigame.Tests
         public IEnumerator ReworkVoiceUsesBoundedStateAndNeverARealMicrophone()
         {
             game.Jump(5);
+            game.GetComponent<VoiceInput>().Toggle();
+            Assert.Zero(asked, "A disconnected robot must not open the microphone");
+            Oracle.Voice = 0;
+            VoiceInput.Capture = mic =>
+            {
+                Assert.IsTrue(game.Hermit.Talking);
+                mic.Preview("How much");
+                Assert.AreEqual("How much", game.Hermit.Draft);
+                mic.Submit("How much power do I have?");
+            };
             game.GetComponent<VoiceInput>().Toggle();
             yield return null;
             Assert.AreEqual(1, asked);
@@ -226,12 +237,12 @@ namespace Infinigame.Tests
             }
             while (Solar.Clock < game.Fall.began + game.Fall.duration - 1) yield return null;
             yield return ReworkShot("moon-approach");
-            Assert.Greater(Vector2.Distance(moon, OnScreen(game.Fall.moon)), 0.035f, "The moon must move within the chase shot");
+            Assert.IsTrue(Player.Seated && Player.Cockpit.gameObject.activeInHierarchy, "Moon follow keeps the pilot at the windscreen");
             while (!game.Frontier.Collapsing) yield return null;
             Assert.IsTrue(Solar.Bodies[game.Fall.world].gameObject.activeSelf, "The flash starts on the still-visible planet");
             yield return ReworkShot("moon-contact");
             Assert.AreEqual(1, Solar.Bodies[Home].transform.localScale.x, 0.0001f, "The impact shot still shows the system at its normal scale");
-            yield return Seconds(1);
+            yield return Until(() => !Solar.Bodies[game.Fall.world].gameObject.activeSelf, 2);
             Assert.IsTrue(game.Frontier.Collapsing);
             Assert.IsTrue(GameObject.Find("HUD").GetComponent<Canvas>().enabled, "The ending keeps its phase captions visible");
             Assert.IsFalse(Solar.Bodies[game.Fall.moon].gameObject.activeSelf);
@@ -243,8 +254,14 @@ namespace Infinigame.Tests
             Assert.IsNotNull(GameObject.Find("Rising fire cloud"));
             Assert.GreaterOrEqual(GameObject.Find("Impact ejecta").transform.childCount, 64);
             Assert.AreEqual(Solar.Bodies[Home].transform.localScale.x, Solar.Bodies[Moon].transform.localScale.x, 0.0001f);
-            yield return Seconds(12);
+            yield return Until(() => game.Frontier.Ending.Contains("SYSTEM CONSUMPTION"));
             yield return ReworkShot("117-singularity");
+            yield return Until(() => game.Frontier.Ending.Contains("SHIP IN FREE FALL"));
+            Assert.IsTrue(game.Frontier.Ending.Contains("SHIP IN FREE FALL"));
+            float started = Time.realtimeSinceStartup;
+            yield return Until(() => game.Frontier.Whiteout > 0);
+            Assert.Less(Time.realtimeSinceStartup - started, 5, "The ship follows the last planet through the horizon within five seconds");
+            Assert.Less(math.distance(Player.ship.position, Solar.ToReference(game.Fall.world)), 1);
             for (float waited = 0; game.Frontier.Whiteout < 0.95f && waited < 45; waited += Time.unscaledDeltaTime) yield return null;
             Assert.GreaterOrEqual(game.Frontier.Whiteout, 0.95f);
             yield return ReworkShot("118-whiteout");

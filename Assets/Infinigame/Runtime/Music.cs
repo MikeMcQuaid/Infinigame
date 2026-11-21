@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Threading.Tasks;
 using Infinigame.Core;
 using Unity.Mathematics;
 using UnityEngine;
@@ -15,12 +14,9 @@ namespace Infinigame
         readonly AudioSource[,] decks = new AudioSource[2, 2];
         readonly Playlist[] lists = new Playlist[2];
         readonly int[] front = new int[2];
-        readonly AudioClip[] generated = new AudioClip[2];
         AudioClip[][] tracks = new AudioClip[2][];
-        Task<float[][]> song;
-        uint seed;
+        uint? seed;
         float gain, fight;
-        int loaded;
 
         void Awake()
         {
@@ -38,50 +34,30 @@ namespace Infinigame
         // Also lets scene tests supply short generated clips without touching a player's music.
         public void SetTracks(AudioClip[] explore, AudioClip[] battle)
         {
-            tracks = new[] { explore, battle.Length == 0 && explore.Length > 0 ? explore : battle };
-            seed = 0;
+            tracks = new[] { explore.Length > 0 ? explore : battle, battle.Length > 0 ? battle : explore };
+            seed = null;
         }
         void Update()
         {
             if (game.Seed != seed)
             {
-                uint wanted = seed = game.Seed;
-                bool calm = tracks[0].Length > 0 && tracks[0][0] != generated[0], heavy = tracks[1].Length > 0 && tracks[1][0] != generated[1];
-                song = Task.Run(() =>
+                seed = game.Seed;
+                double start = AudioSettings.dspTime + 0.1;
+                for (int mood = 0; mood < 2; mood++)
                 {
-                    if (calm && heavy) return new float[2][];
-                    var written = Riffs.Compose(wanted);
-                    return new[] { calm ? null : Riffs.Render(written, false), heavy ? null : Riffs.Render(written, true) };
-                });
-                loaded = 0;
-            }
-            if (song != null && song.IsCompletedSuccessfully && gain <= 0)
-            {
-                int mood = loaded;
-                decks[mood, 0].Stop(); decks[mood, 1].Stop();
-                if (song.Result[mood] != null)
-                {
-                    if (generated[mood] != null) Destroy(generated[mood]);
-                    generated[mood] = Sounds.Clip(song.Result[mood]);
-                    tracks[mood] = new[] { generated[mood] };
-                }
-                lists[mood] = null;
-                if (++loaded == 2)
-                {
-                    double start = AudioSettings.dspTime + 0.1;
-                    for (int i = 0; i < 2; i++)
-                    {
-                        front[i] = 0;
-                        lists[i] = new Playlist(tracks[i].Select(clip => clip.length).ToArray(), seed, start);
-                        decks[i, 0].clip = tracks[i][lists[i].index];
-                        decks[i, 0].PlayScheduled(start);
-                        Schedule(i);
-                    }
-                    song = null;
+                    decks[mood, 0].Stop();
+                    decks[mood, 1].Stop();
+                    lists[mood] = null;
+                    if (tracks[mood].Length == 0) continue;
+                    front[mood] = 0;
+                    lists[mood] = new Playlist(tracks[mood].Select(clip => clip.length).ToArray(), seed.Value, start);
+                    decks[mood, 0].clip = tracks[mood][lists[mood].index];
+                    decks[mood, 0].PlayScheduled(start);
+                    Schedule(mood);
                 }
             }
             float dt = Time.unscaledDeltaTime;
-            gain = Mathf.MoveTowards(gain, song != null && !game.Dead ? 0 : game.Paused || game.Speech.Speaking ? 0.35f : 1, dt);
+            gain = Mathf.MoveTowards(gain, game.Paused || game.Speech.Speaking ? 0.35f : 1, dt);
             bool foes = game.Battle.Foes.Any(foe => !foe.friendly && !foe.scattered);
             fight = Mathf.MoveTowards(fight, foes ? 1 : 0, dt / (foes ? 1 : 5));
             for (int mood = 0; mood < 2; mood++)
@@ -105,10 +81,6 @@ namespace Infinigame
             next.clip = tracks[mood][lists[mood].Next];
             next.volume = 0;
             next.PlayScheduled(lists[mood].nextAt);
-        }
-        void OnDestroy()
-        {
-            foreach (var clip in generated) if (clip != null) Destroy(clip);
         }
     }
 }

@@ -23,6 +23,8 @@ namespace Infinigame.Tests
             StringAssert.DoesNotContain("The moon has struck", late);
             StringAssert.Contains("The moon has struck", Narrative.Context(15, true));
             StringAssert.Contains("preserve", early);
+            StringAssert.DoesNotContain("factory", early.ToLowerInvariant());
+            StringAssert.Contains("factory", Narrative.Context(Campaign.SecondBurrow, false));
         }
 
         [Test]

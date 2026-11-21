@@ -4,7 +4,7 @@ Read `ARCHITECTURE.md` first for how the code fits together, and `README.md` for
 
 ## Commands
 
-Every script is listed in `README.md`. The ones used while changing the game:
+The development commands are listed in `ARCHITECTURE.md`. The ones used while changing the game:
 
 | Command | Use |
 |---|---|
@@ -16,7 +16,7 @@ New tooling goes in `script/`, following [scripts to rule them all](https://gith
 
 ## Rules of the project
 
-- **Everything is made by code.** Terrain, models, textures, materials, shaders, the interface, sound effects and the fallback music are all generated. Do not add downloaded art, fonts, models or Asset Store content. Official packages may always be added. The owner has also approved the bundled Festival/Flite/HTS speech engine and SLT voice in `ThirdParty/Festival`. Music may be supplied by the owner in `Assets/Infinigame/Resources/Music`.
+- **Ship finished art and sound.** Repeated models, surfaces, visor sprites and effects belong in the build as assets. Edit their original sources and use `script/bake-assets` to refresh them. Terrain and placement follow the seed, the robot speaks live and music uses the supplied tracks. Keep art original. Official packages and the bundled Festival/Flite/HTS engine and SLT voice are approved.
 - **The core stays pure.** `Assets/Infinigame/Core` has no scene dependencies. Game rules and numbers go there, with an EditMode test. The runtime asks the core and draws the answer.
 - **The ground is a function.** `BodyDescriptor.GroundRadius` is the terrain for walking, flying, meshing and tests alike. It is called a great deal: keep it cheap, and never add a second source of truth such as a collider.
 - **Nothing drawn may flicker.** Anything with a level of detail appears once it is big enough to see and stays until it is off screen, over the horizon or too small. No popping in and out, no z-fighting, no shimmering lines.

@@ -94,7 +94,6 @@ namespace Infinigame
         // every fire that has been kindled, with its light and how bright that was made
         static readonly List<(Transform fire, Light lamp, float bright)> fires = new List<(Transform, Light, float)>();
         // painted once: every puff there will ever be is cut from it
-        static Texture2D billows;
 
         readonly Puff[] puffs = new Puff[Most];
         readonly Spark[] sparks = new Spark[Most];
@@ -118,10 +117,10 @@ namespace Infinigame
 
         void Awake()
         {
-            card = new Mesh { vertices = new[] { new Vector3(-0.5f, -0.5f), new Vector3(0.5f, -0.5f), new Vector3(-0.5f, 0.5f), new Vector3(0.5f, 0.5f) }, triangles = new[] { 0, 2, 1, 1, 2, 3 } };
+            card = Models.Parts("Effect card")[0];
             shard = Shapes.Rock(2);
             smoke = new Material(Resources.Load<Shader>("Puff")) { enableInstancing = true };
-            smoke.SetTexture("_Billows", Billows());
+            smoke.SetTexture("_Billows", Resources.Load<Texture2D>("Surfaces/Billows"));
             glare = new Material(Resources.Load<Shader>("Spark")) { enableInstancing = true };
             iron = Shapes.Hull(new Color(0.3f, 0.26f, 0.24f), 0.7f);
             flesh = Shapes.Solid(Surface.Chitin, new Color(0.38f, 0.035f, 0.6f), true);
@@ -210,6 +209,28 @@ namespace Infinigame
                     chunks[chunkCount - 1].damage = 0;
                 }
             }
+        }
+
+        public void Impact(float3 position, float3 up, float size, bool beam)
+        {
+            float3 centre = position + up * (0.10f * size);
+            for (int i = 0; i < (beam ? 2 : 4); i++)
+            {
+                float3 outward = Walker.Project(rnd.NextFloat3Direction(), up);
+                bool ember = i == 0;
+                float3 plume = math.normalizesafe(up + outward * (ember ? 0.4f : 2.6f));
+                Add(new Puff { position = centre + outward * (size * (ember ? 0.04f : 0.34f)), axis = plume,
+                    velocity = plume * (size * (ember ? 1 : 4)), lift = 1, drag = 3,
+                    from = (ember ? 0.19f : 0.16f) * size, to = (ember ? 0.58f : 1.2f) * size, stretch = ember ? 1.2f : 1.9f,
+                    roll = rnd.NextFloat(6.28f), spin = rnd.NextFloat(-1.8f, 1.8f), seed = rnd.NextFloat(),
+                    heat = ember ? 0.61f : 0.04f, cooling = ember ? 4 : 2, glow = ember ? 0.32f : 0.04f, shade = 0.85f, thin = 0.22f,
+                    colour = ember ? new float3(0.31f, 0.11f, 0.041f) : i % 2 == 0 ? new float3(0.16f, 0.1f, 0.06f) : new float3(0.22f, 0.24f, 0.25f),
+                    life = ember ? 0.34f : rnd.NextFloat(0.44f, 0.73f), opacity = ember ? 0.64f : 0.48f });
+            }
+            for (int i = 0; i < (beam ? 4 : 8); i++)
+                Add(new Spark { position = centre, velocity = math.normalizesafe(up + rnd.NextFloat3Direction() * 1.3f) * rnd.NextFloat(2, 8) * math.sqrt(size),
+                    colour = beam && i % 2 == 0 ? new float3(0.2f, 0.76f, 0.91f) : i % 3 == 0 ? new float3(1, 0.82f, 0.53f) : new float3(1, 0.39f, 0.1f),
+                    life = rnd.NextFloat(0.18f, 0.46f), width = 0.028f, streak = 0.026f, fall = 1 });
         }
 
         public void Crackle(float3 position)
@@ -332,6 +353,8 @@ namespace Infinigame
 
         void Add(in Spark spark)
         {
+            // Impact glare can cover both eyes at arm’s length. Keep the moving sparks.
+            if (Shapes.MatteCombat && spark.streak == 0 && spark.width >= 0.25f) return;
             if (sparkCount < Most) sparks[sparkCount++] = spark;
         }
 
@@ -349,6 +372,7 @@ namespace Infinigame
         // Lights everything round a blast for a moment, with the lamp that is doing least.
         void Flash(float3 position, float3 velocity, float power, float range, float life)
         {
+            if (Shapes.MatteCombat) return;
             int dimmest = 0;
             float Left(in Glint glint) => glint.age < glint.life ? glint.power * (1f - glint.age / glint.life) : 0f;
             for (int i = 1; i < glints.Length; i++)
@@ -520,7 +544,7 @@ namespace Infinigame
                 // so that they run together, though never more than twenty a second, and only while
                 // there are puffs to spare.
                 float burning = 1f - chunk.age / (0.6f * chunk.life), puffed = 0.3f + 1.5f * chunk.scale.x;
-                if ((chunk.trail += dt * math.min(math.length(chunk.velocity) / (0.8f * puffed), 20f)) < 1f || burning < 0f || puffCount > Most * 2 / 3) continue;
+                if (chunk.organic || (chunk.trail += dt * math.min(math.length(chunk.velocity) / (0.8f * puffed), 20f)) < 1f || burning < 0f || puffCount > Most * 2 / 3) continue;
                 chunk.trail = 0f;
                 Add(new Puff
                 {
@@ -622,65 +646,5 @@ namespace Infinigame
             tissue.Draw(shard, flesh, true, bounds);
         }
 
-        static Texture2D Billows()
-        {
-            if (billows != null) return billows;
-            const int size = 512;
-            billows = new Texture2D(size, size, TextureFormat.RGBA32, true, true) { filterMode = FilterMode.Trilinear };
-            // straight into the texture's own memory, which begins with the full-size picture
-            new BillowJob { size = size, pixels = billows.GetRawTextureData<Color32>() }.Schedule(size, 8).Complete();
-            billows.Apply(true, true);
-            return billows;
-        }
-
-        // Paints what every puff is cut from, which repeats: round heads crowding each other at
-        // three sizes, as the tops of smoke and cloud do, with which way they slope beside them
-        // and a finer field of wisps for a thinning puff to be eaten away by.
-        // compiled before it first runs, even in the editor: it runs once, and slowly otherwise
-        [BurstCompile(CompileSynchronously = true)]
-        struct BillowJob : IJobParallelFor
-        {
-            public int size;
-            [NativeDisableParallelForRestriction] public NativeArray<Color32> pixels;
-
-            public void Execute(int y)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    float2 p = new float2(x + 0.5f, y + 0.5f) / size;
-                    float height = Heads(p);
-                    // a slope of sixteen heights in the width of the painting is as steep as a byte holds
-                    float2 slope = (new float2(Heads(p + new float2(1f / size, 0f)), Heads(p + new float2(0f, 1f / size))) - height) * (size / 32f) + 0.5f;
-                    // wisps are soft and of every size
-                    float wisps = 0.5f + 0.55f * noise.pnoise(p * 4f, new float2(4f)) + 0.3f * noise.pnoise(p * 9f + 3.7f, new float2(9f)) + 0.15f * noise.pnoise(p * 19f + 1.3f, new float2(19f));
-                    float4 packed = math.saturate(new float4(height, slope, wisps)) * 255f;
-                    pixels[y * size + x] = new Color32((byte)packed.x, (byte)packed.y, (byte)packed.z, (byte)packed.w);
-                }
-            }
-
-            // Bigger and smaller in broad patches, so that no two puffs are lumpy alike, and pushed
-            // about before they are placed: nothing in smoke runs straight.
-            static float Heads(float2 p)
-            {
-                p += 0.02f * new float2(noise.pnoise(p * 5f, new float2(5f)), noise.pnoise(p * 5f + 31.7f, new float2(5f)));
-                return (0.55f * Cells(p, 5, 1) + 0.3f * Cells(p, 11, 2) + 0.15f * Cells(p, 23, 3)) * (0.775f + 0.225f * noise.pnoise(p * 3f, new float2(3f)));
-            }
-
-            // Round bumps packed edge to edge, one somewhere in each cell of a grid that repeats:
-            // 1 at the top of a bump, falling to 0 in the creases between them, which are rounded off.
-            static float Cells(float2 p, int cells, int seed)
-            {
-                p *= cells;
-                int2 cell = (int2)math.floor(p);
-                float crowd = 0f;
-                for (int j = -1; j <= 1; j++)
-                for (int i = -1; i <= 1; i++)
-                {
-                    int2 other = cell + new int2(i, j), wrapped = (other % cells + cells) % cells;
-                    crowd += math.exp(-14f * math.distancesq(p, other + Random.CreateFromIndex((uint)(wrapped.x + cells * (wrapped.y + cells * seed))).NextFloat2()));
-                }
-                return 1f - math.saturate(1.8f * -math.log(crowd) / 14f);
-            }
-        }
     }
 }

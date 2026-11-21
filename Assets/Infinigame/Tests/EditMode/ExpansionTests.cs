@@ -70,6 +70,16 @@ namespace Infinigame.Tests
         }
 
         [Test]
+        public void CitadelMantleStopsShipsOutsideThePassages()
+        {
+            var citadel = Interior.Citadel();
+            var at = citadel.Move(new float3(130, 240, 280), new float3(0, -200, 0), 4, 1, false, out bool hit);
+            Assert.IsTrue(hit);
+            Assert.Greater(at.y, 115);
+            Assert.IsTrue(citadel.Visible(new float3(0, 0, -400), citadel.entrance, false));
+        }
+
+        [Test]
         public void RoomsStopFastMoversButAnOpenDoorLetsThemThrough()
         {
             var rooms = Interior.Outpost();
@@ -102,6 +112,11 @@ namespace Infinigame.Tests
             var rooms = Interior.Citadel();
             Assert.IsFalse(rooms.Visible(new float3(160, 0, 400), rooms.core, true));
             Assert.IsFalse(rooms.Visible(rooms.entrance, rooms.core, true));
+            float3 scar = rooms.walls[rooms.escapeWall].centre;
+            Assert.IsFalse(rooms.Breach(scar, 1000));
+            rooms.coreDestroyed = true;
+            Assert.IsTrue(rooms.Breach(scar, 12));
+            Assert.IsTrue(rooms.Visible(rooms.core, rooms.core + new float3(0, 0, 150), false));
             var route = rooms.route;
             Assert.GreaterOrEqual(route.Length - 2, 6);
             for (int i = 1; i < route.Length; i++)

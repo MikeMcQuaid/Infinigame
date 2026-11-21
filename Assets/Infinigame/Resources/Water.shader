@@ -67,9 +67,10 @@ Shader "Infinigame/Water"
             }
 
             // A texture in the plane of two axes, with its pattern turned a quarter round when asked.
-            half4 Flat(TEXTURE2D(map), float2 uv, float2 dx, float2 dy, bool turned)
+            half4 Flat(TEXTURE2D(map), float2 uv, float2 dx, float2 dy, bool turned, bool slopes)
             {
                 half4 texel = SAMPLE_TEXTURE2D_GRAD(map, sampler_Waves, turned ? uv.yx : uv, turned ? dx.yx : dx, turned ? dy.yx : dy);
+                if (slopes) texel.rg = UnpackNormal(texel).xy * 0.5 + 0.5;
                 return turned ? texel.grba : texel;
             }
 
@@ -81,17 +82,17 @@ Shader "Infinigame/Water"
                 float3 sum = 0.0, dx = dpdx * scale, dy = dpdy * scale;
                 if (weights.x > 0.01)
                 {
-                    half3 texel = Flat(map, position.zy, dx.zy, dy.zy, turned).rgb;
+                    half3 texel = Flat(map, position.zy, dx.zy, dy.zy, turned, slopes).rgb;
                     sum += weights.x * (slopes ? float3(0.0, texel.g, texel.r) * 2.0 - float3(0.0, 1.0, 1.0) : texel);
                 }
                 if (weights.y > 0.01)
                 {
-                    half3 texel = Flat(map, position.xz, dx.xz, dy.xz, turned).rgb;
+                    half3 texel = Flat(map, position.xz, dx.xz, dy.xz, turned, slopes).rgb;
                     sum += weights.y * (slopes ? float3(texel.r, 0.0, texel.g) * 2.0 - float3(1.0, 0.0, 1.0) : texel);
                 }
                 if (weights.z > 0.01)
                 {
-                    half3 texel = Flat(map, position.xy, dx.xy, dy.xy, turned).rgb;
+                    half3 texel = Flat(map, position.xy, dx.xy, dy.xy, turned, slopes).rgb;
                     sum += weights.z * (slopes ? float3(texel.r, texel.g, 0.0) * 2.0 - float3(1.0, 1.0, 0.0) : texel);
                 }
                 return sum;

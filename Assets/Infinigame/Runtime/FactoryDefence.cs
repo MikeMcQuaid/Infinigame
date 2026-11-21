@@ -27,7 +27,7 @@ namespace Infinigame
             beam.enabled = Time.time < glow;
             if (Time.deltaTime <= 0) return;
             float3 from = (float3)mount.TransformPoint(new Vector3(0, 2.6f, 2.8f)) + game.System.Anchor;
-            var target = game.Battle.Foes.Where(foe => !foe.friendly && foe.health > 0 && math.distance(foe.position, from) < 400).OrderBy(foe => math.distancesq(foe.position, from)).FirstOrDefault();
+            var target = game.Battle.Foes.Where(foe => !foe.friendly && foe.kind != FoeKind.Mind && foe.health > 0 && math.distance(foe.position, from) < 400).OrderBy(foe => math.distancesq(foe.position, from)).FirstOrDefault();
             if (target.health <= 0) return;
             Vector3 direction = transform.InverseTransformDirection(target.position - from);
             mount.localRotation = Quaternion.RotateTowards(mount.localRotation, Quaternion.LookRotation(new Vector3(direction.x, 0, direction.z)), 110 * Time.deltaTime);

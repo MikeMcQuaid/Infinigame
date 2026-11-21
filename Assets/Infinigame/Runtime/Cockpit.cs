@@ -18,7 +18,7 @@ namespace Infinigame
         public Vector3 thrust;          // what the pilot is asking for: x strafe, y lift, z forward, each -1 to 1
         public Vector3 turn;            // pitch, yaw and roll being asked for, each -1 to 1
         public float pitch, bank;       // the ship's attitude against the local horizon, radians
-        public bool boost, assist, landing, landed, autopilot, irradiated, firing, warp;   // warp: a warp drive is aboard and could be used
+        public bool boost, assist, landing, landed, shield, autopilot, irradiated, firing, warp;   // warp: a warp drive is aboard and could be used
         public int weapon;              // index into Combat.Guns: cannons, missiles, lance, railgun, torpedoes
         public int weapons;             // bit i set when Combat.Guns[i] has been won
     }
@@ -35,10 +35,11 @@ namespace Infinigame
         public static readonly string[] Racks = { "1 CANNON", "2 MISSILE", "3 BEAM", "4 RAIL", "5 NUKE" };
 
         // What the instruments are lettered in, and a lamp that is not lit.
-        internal static readonly Color Ink = new Color(0.55f, 0.95f, 1f), Dark = new Color(0.015f, 0.02f, 0.025f);
+        public static readonly Color Ink = new Color(0.55f, 0.95f, 1f), Dark = new Color(0.015f, 0.02f, 0.025f);
         static readonly Color Faint = Ink * 0.45f, Alarm = new Color(1f, 0.35f, 0.25f);
         static readonly Color Fine = new Color(0.3f, 1.6f, 2.2f), Safe = new Color(0.3f, 2f, 0.6f), Caution = new Color(1.8f, 0.7f, 0.08f), Danger = new Color(2.6f, 0.25f, 0.15f);
 
+        static readonly string[] FlightLabels = { "BOOST", "AUTO", "LAND" };
         sealed class Part
         {
             public Transform transform;
@@ -48,46 +49,31 @@ namespace Infinigame
         }
 
         readonly Dictionary<string, Part> parts = new Dictionary<string, Part>();
-        static readonly string[] controls = { "1 CANNON", "2 MISSILE", "3 BEAM", "4 RAIL", "5 NUKE", "ASSIST", "AUTO", "LAND", "Selector", "Stick/Trigger", "RangeScreen" };
+        public Transform RadarSocket => At("Radar socket").transform;
 
-        public int ScreenControl(Vector2 point, Camera camera)
+        void Awake()
         {
-            int chosen = -1; float nearest = Mathf.Pow(Mathf.Max(12, Screen.height * 0.022f), 2);
-            for (int i = 0; i < controls.Length; i++)
+            foreach (var label in GetComponentsInChildren<TextMesh>(true))
             {
-                Vector3 at = camera.WorldToScreenPoint(At(controls[i]).transform.position);
-                float distance = ((Vector2)at - point).sqrMagnitude;
-                if (at.z > 0 && distance < nearest) { nearest = distance; chosen = i; }
+                label.font = Shapes.Type;
+                label.GetComponent<MeshRenderer>().sharedMaterial = label.font.material;
             }
-            return chosen;
         }
-        public int TouchControl(Vector3 finger)
-        {
-            int chosen = -1; float nearest = 0.04f;
-            for (int i = 0; i < controls.Length; i++)
-            {
-                float distance = Vector3.Distance(finger, At(controls[i]).transform.position);
-                if (distance < nearest) { nearest = distance; chosen = i; }
-            }
-            return chosen;
-        }
-        public static void Activate(int control, ref Controls input)
-        {
-            if (control >= 0 && control < 5) input.select = control + 1;
-            if (control == 5) input.toggleAssist = true;
-            if (control == 6) input.travel = true;
-            if (control == 7) input.interact = true;
-            if (control == 8) input.cycle = 1;
-            if (control == 9) input.fire = true;
-            if (control == 10) input.systemView = true;
-        }
-
         public void Show(in Readings readings)
         {
             var r = readings;
             // the three screens: speed, the gap to the surface that matters and the heat outside
             bool near = r.range < 2000f;
             float load = r.heat / Mathf.Max(r.heatLimit, 1f), hot = math.smoothstep(0.7f, 0.9f, load);
+            At("BOOST").caption.text = "BOOST\n" + DeviceControls.Key("SHIFT", "L3", "STICK ↑", "LT");
+            At("AUTO").caption.text = "AUTO\n" + DeviceControls.Key("T", "D→", "RECALL", "R3");
+            At("LAND").caption.text = "LAND\n" + DeviceControls.Use;
+            foreach (string key in FlightLabels)
+            {
+                TextMesh text = At(key).caption;
+                text.characterSize = 0.00068f * Mathf.Min(1, 5f / (text.text.Length - key.Length - 1));
+            }
+            Light("SHIELD", r.shield ? 1 : 0, Safe);
             At("SpeedScreen").caption.text = r.speed.ToString("0");
             At("RangeScreen").caption.text = near ? r.range.ToString("0") : (r.range / 1000f).ToString("0.0");
             At("RangeScreen/Legend").caption.text = $"{r.ahead?.ToUpperInvariant()}  {(near ? "M" : "KM")}";

@@ -2,6 +2,10 @@
 
 Run `script/play`, spend several minutes walking, fighting, expanding a factory and flying between worlds, then quit. Run `script/performance`. The script reads the latest real player session from `Logs/frames.log`, excluding title, pause and map samples. Logs remain local and ignored by Git.
 
+## Ship beam collision, 21 November 2026
+
+The ship beam used to sample terrain every half metre along its entire 3 km range, even when firing away from a planet. On the M5 Max a ray fired tangentially at 1,300 m above Earth fell from 52–54 ms to under 0.001 ms. Firing 29° below horizontal from 90 m up fell from 6.5 ms to 2.4 ms and struck the same point 214.5 m away. These are CPU timings for one call to `Combat.Ray` on seed 91, using Unity’s Mono runtime without Burst. Each measurement took the median of nine batches of 32 rays after warm-up. Repeating in reverse order gave the same results to the precision shown.
+
 ## Mac session, 18 November 2026 at 09:10
 
 The M5 Max ran at 2992 × 1874 with Burst active, HDR off and a 60 FPS target. These are medians across five-second sample windows in the session recorded before the changes below.

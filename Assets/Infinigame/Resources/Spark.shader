@@ -40,6 +40,7 @@ Shader "Infinigame/Spark"
 
             struct Varyings
             {
+                UNITY_VERTEX_OUTPUT_STEREO
                 float4 positionCS : SV_POSITION;
                 // across and along it from -1 to 1, how many times longer than wide it is, and how many metres of it sink softly into the ground
                 float4 uv : TEXCOORD0;
@@ -50,6 +51,7 @@ Shader "Infinigame/Spark"
             {
                 Varyings output;
                 UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
                 float4 tail = UNITY_ACCESS_INSTANCED_PROP(Sparks, _Tail), glare = UNITY_ACCESS_INSTANCED_PROP(Sparks, _Glare);
                 float3 head = TransformWorldToView(float3(UNITY_MATRIX_M._m03, UNITY_MATRIX_M._m13, UNITY_MATRIX_M._m23));
                 float3 back = TransformWorldToViewDir(tail.xyz);
@@ -64,6 +66,7 @@ Shader "Infinigame/Spark"
 
             half4 Fragment(Varyings input) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
                 // round at both ends, however long
                 float2 from = float2(input.uv.x, max(abs(input.uv.y) * input.uv.z - (input.uv.z - 1.0), 0.0));
                 float behind = LinearEyeDepth(SampleSceneDepth(GetNormalizedScreenSpaceUV(input.positionCS)), _ZBufferParams) - input.positionCS.w;

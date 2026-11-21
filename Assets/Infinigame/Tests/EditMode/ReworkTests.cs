@@ -6,6 +6,28 @@ namespace Infinigame.Tests
 {
     public class ReworkTests
     {
+        [Test] public void LaterBurrowsMakeTheTravellerTurnInside()
+        {
+            for (int variant = 1; variant <= 2; variant++)
+            {
+                var rooms = Interior.Burrow(variant);
+                Assert.GreaterOrEqual(rooms.route.Length, 5);
+                Assert.IsFalse(rooms.Visible(rooms.entrance, rooms.core, false));
+                for (int i = 1; i < rooms.route.Length; i++)
+                    Assert.IsTrue(rooms.Visible(rooms.route[i - 1], rooms.route[i], false), $"Walkable turn {i}");
+            }
+        }
+
+        [Test] public void EarthHasFrequentStormsAndConsumptionEndsTenSecondsAfterImpact()
+        {
+            var rnd = new Unity.Mathematics.Random(17);
+            int wet = 0;
+            for (int i = 0; i < 1500; i++)
+                if (Weather.Rain(World.Planet, rnd.NextFloat3Direction(), i * 13) > 0.1f) wet++;
+            Assert.That(wet, Is.InRange(190, 225));
+            Assert.LessOrEqual(Moonfall.Consumption, 10);
+        }
+
         [Test] public void BuriedTravellerAlreadyOwnsTheSuitButNeedsPower()
         {
             Assert.IsTrue(Campaign.Has(Campaign.Kit(0), Gear.Suit));
@@ -76,7 +98,7 @@ namespace Infinigame.Tests
         {
             var body = SolarSystemDescriptor.Generate(1).bodies[SolarSystemDescriptor.Home];
             var origin = new float3(0, body.SeaRadius - 2, 0);
-            body.burrows.Add(new Burrow { origin = origin, rotation = quaternion.identity });
+            body.burrows = new[] { new Burrow { origin = origin, rotation = quaternion.identity } };
             Assert.IsTrue(body.Dry(origin + new float3(0, -10, 30)));
             Assert.IsFalse(body.Dry(origin + new float3(20, -10, 30)));
             var walker = Walker.Spawn(body, new float3(0, 1, 0), new float3(0, 0, 1));

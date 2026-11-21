@@ -15,6 +15,8 @@ namespace Infinigame
 
         SolarSystem system;
         Mesh streak;
+        LineRenderer lightning;
+        long lastStrike = -1;
         Material material;
         readonly Matrix4x4[] matrices = new Matrix4x4[Drops];
         readonly float3[] seeds = new float3[Drops];
@@ -31,9 +33,30 @@ namespace Infinigame
         void Update()
         {
             int count = (int)(Drops * system.Rain);
+            long interval = (long)(system.Clock / 17);
+            if (lightning != null) lightning.enabled = count > 0 && interval == lastStrike && system.Clock % 17 < 0.23;
             if (count == 0) return;
-            float3 eye = Camera.main.transform.position, up = math.normalize(eye);
+            float3 eye = Camera.main.transform.position, up = math.normalizesafe(eye + system.Anchor, new float3(0, 1, 0));
             float3 east = math.normalize(math.cross(up, math.abs(up.y) < 0.9f ? new float3(0, 1, 0) : new float3(1, 0, 0))), north = math.cross(up, east);
+            if (system.Rain > 0.48f && interval != lastStrike && system.Clock % 17 < 0.23 && !system.ReferenceBody.Dry(system.Focus))
+            {
+                lastStrike = interval;
+                var rnd = new Random(math.hash(new uint2((uint)interval, system.Descriptor.seed)) | 1u);
+                float angle = rnd.NextFloat(0, 2 * math.PI);
+                float3 ground = math.normalizesafe(system.Focus + (east * math.cos(angle) + north * math.sin(angle)) * rnd.NextFloat(120, 360));
+                ground *= system.ReferenceBody.GroundRadius(ground);
+                if (lightning == null)
+                {
+                    lightning = new GameObject("Distant lightning").AddComponent<LineRenderer>();
+                    lightning.sharedMaterial = Shapes.Beam(new Color(0.59f, 0.72f, 0.98f));
+                    lightning.startWidth = 0.65f; lightning.endWidth = 0.12f;
+                    lightning.positionCount = 10; lightning.useWorldSpace = false;
+                }
+                lightning.transform.SetParent(system.Bodies[system.Reference].transform, false);
+                lightning.enabled = true;
+                for (int i = 0; i < lightning.positionCount; i++)
+                    lightning.SetPosition(i, ground + up * (9 - i) * 15 + (east * rnd.NextFloat(-1, 1) + north * rnd.NextFloat(-1, 1)) * (9 - i));
+            }
             float fallen = (float)(system.Clock % 1000.0) * Speed;
             // the wind leans the rain a little
             Quaternion lean = Quaternion.FromToRotation(Vector3.up, up + east * 0.12f);

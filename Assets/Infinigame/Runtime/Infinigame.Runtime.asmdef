@@ -6,6 +6,16 @@
         "Unity.Burst",
         "Unity.InputSystem",
         "Unity.Mathematics",
-        "UnityEngine.UI"
+        "UnityEngine.UI",
+        "Unity.XR.Hands",
+        "Unity.XR.OpenXR",
+        "Unity.XR.Management"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.xr.hands",
+            "expression": "1.10.0",
+            "define": "INFINIGAME_HANDS"
+        }
     ]
 }

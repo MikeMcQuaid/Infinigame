@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -34,14 +35,9 @@ namespace Infinigame
         public static readonly string[] Voices = { "Claude", "ChatGPT" };
         // Each maker's models, quickest and cheapest first: an entry is a few sentences, and the
         // player is waiting. The prices are dollars for a million tokens in and out, where published.
-        public static readonly (string id, string name, double input, double output)[][] Models =
-        {
-            new[] { ("claude-haiku-5-5", "Haiku 5.5", 0.1, 0.5), ("claude-sonnet-5-5", "Sonnet 5.5", 2.0, 10.0), ("claude-opus-5-5", "Opus 5.5", 4.0, 20.0) },
-            new[] { ("gpt-6-luna", "GPT-6 Luna", 0.0, 0.0), ("gpt-6.1-terra", "GPT-6.1 Terra", 0.0, 0.0), ("gpt-6.1-sol", "GPT-6.1 Sol", 0.0, 0.0), ("gpt-6-astra", "GPT-6 Astra", 0.0, 0.0) },
-        };
-
-        // How hard a model is asked to think before it answers: the less, the sooner.
-        public static readonly string[] Efforts = { "low", "medium", "high" };
+        public static (string id, string name, double input, double output) Model(int voice) => voice == 0
+            ? ("claude-haiku-5-5", "Haiku 5.5", 0.1, 0.5) : ("gpt-6-luna", "GPT-6 Luna", 0.1, 0.5);
+        public static string Effort(int voice) => voice == 0 ? "low" : "none";
 
         // Tests point these at stand-ins: Claude Code, Codex, the
         // servers to ask (Anthropic's API, OpenAI's API and OpenAI's sign-in), how a page is opened
@@ -70,7 +66,7 @@ namespace Infinigame
         class Account
         {
             public int voice;
-            public int[] model = new int[2], effort = new int[2];
+            public bool enabled;
             public string[] key = { "", "" };
             // the ChatGPT sign-in: this device's name for itself, the client OpenAI made of it, and its passes
             public string host = "", client = "", refresh = "", access = "";
@@ -190,30 +186,19 @@ namespace Infinigame
 #endif
 
         // Which voice writes, with which of its models and how much thought.
+        public static bool Enabled => held.enabled;
         public static int Voice
         {
             get => held.voice;
             set
             {
+                if (value < 0 || value >= Voices.Length) throw new ArgumentOutOfRangeException(nameof(value));
+                held.key[1 - value] = "";
+                if (value == 0) held.refresh = held.access = "";
+                held.enabled = true;
                 held.voice = value;
                 Keep();
             }
-        }
-
-        public static (string id, string name, double input, double output) Model(int voice) => Models[voice][held.model[voice] % Models[voice].Length];
-
-        public static void NextModel(int voice)
-        {
-            held.model[voice] = (held.model[voice] + 1) % Models[voice].Length;
-            Keep();
-        }
-
-        public static string Effort(int voice) => Efforts[held.effort[voice] % Efforts.Length];
-
-        public static void NextEffort(int voice)
-        {
-            held.effort[voice] = (held.effort[voice] + 1) % Efforts.Length;
-            Keep();
         }
 
         static string Key(int voice) => new[] { Environment.GetEnvironmentVariable(Keys[voice]), held.key[voice] }.FirstOrDefault(key => !string.IsNullOrEmpty(key)) ?? "";
@@ -224,13 +209,14 @@ namespace Infinigame
             key = (key ?? "").Trim();
             if (!key.StartsWith("sk-") || key.StartsWith("sk-ant-") != (voice == 0) || key.Length < 20 || key.Any(char.IsWhiteSpace)) return false;
             held.key[voice] = key;
-            Keep();
+            Voice = voice;
             return true;
         }
 
         // Drops the key and the sign-in the game holds for a voice. A command-line client's own sign-in is its own business.
         public static void Forget(int voice)
         {
+            if (voice == Voice) held.enabled = false;
             held.key[voice] = "";
             if (voice == 1) held.refresh = held.access = "";
             Keep();
@@ -243,16 +229,20 @@ namespace Infinigame
 
         public static async Task<string> Run(string persona, string prompt)
         {
+            if (!Enabled) throw new InvalidOperationException("Language model is disconnected.");
             int voice = Voice;
             var model = Model(voice);
             string who = Voices[voice], key = Key(voice), effort = Effort(voice);
             Answer answer;
             if (key.Length > 0) answer = voice == 0 ? await Claude(key, model.id, effort, persona, prompt) : await ChatGpt(key, model.id, effort, persona, prompt);
             else if (voice == 1 && held.refresh.Length > 0) answer = await ChatGpt(await Pass(), model.id, effort, persona, prompt);
-            else answer = await Task.Run(() => voice == 0 ? ClaudeCode(model.id, effort, persona, prompt) : Codex(model.id, effort, persona, prompt));
+            else answer = await Task.Run(() => voice == 0 ? ClaudeCode(model.id, effort, persona, prompt) : Codex(model.id, "low", persona, prompt));
 
             if (answer.refused)
+            {
+                if (voice == Voice) { held.enabled = false; Keep(); }
                 throw new InvalidOperationException($"Not signed in to {who}. Open Claude or ChatGPT on the menu to sign in or give a key, or to have the other write.");
+            }
             if (!string.IsNullOrEmpty(answer.error)) throw new InvalidOperationException($"{who} could not answer. {answer.error}");
             if (string.IsNullOrWhiteSpace(answer.text)) throw new InvalidOperationException($"{who} had nothing to say.");
             held.asked[voice]++;
@@ -268,6 +258,7 @@ namespace Infinigame
         {
             if (Key(voice).Length > 0) return "YOUR OWN KEY";
             if (voice == 1 && held.refresh.Length > 0) return "SIGNED IN WITH CHATGPT";
+            if (Application.isMobilePlatform) return "NOT SIGNED IN";
             return await Task.Run(() => Reach[voice].Where(SignedIn).Select(tool => $"SIGNED IN WITH {ToolNames[tool]}").FirstOrDefault() ?? "NOT SIGNED IN");
         }
 
@@ -281,14 +272,35 @@ namespace Infinigame
             catch (Exception) { return false; }
         }
 
-        public static string[] Roads(int voice) => voice == 0 ? new[] { "Sign in with Claude Code" } : new[] { "Sign in with Codex", "Continue with ChatGPT" };
+        public static string[] Roads(int voice) => Application.isMobilePlatform ? voice == 0 ? Array.Empty<string>() : new[] { "Continue with ChatGPT" } : voice == 0 ? new[] { "Sign in with Claude Code" } : new[] { "Sign in with Codex", "Continue with ChatGPT" };
 
         public static async Task<string> SignIn(int voice, int road)
         {
             try
             {
                 if (voice == 1 && road == 1) await Continue();
-                else await Task.Run(() => voice == 1 ? Start(1, SignInPatience, "login") : Start(0, SignInPatience, "auth", "login"));
+                else if (voice == 1) await Task.Run(() => Start(1, SignInPatience, "login"));
+                else
+                {
+                    var main = SynchronizationContext.Current;
+                    int opened = 0;
+                    void OpenLogin(string line)
+                    {
+                        var match = Regex.Match(line, @"https://(?:claude\.com/cai|claude\.ai|platform\.claude\.com|console\.anthropic\.com)/oauth/authorize\?[^\s\x1b<>""']+");
+                        if (match.Success && Interlocked.Exchange(ref opened, 1) == 0)
+                            main.Post(_ => Browse(match.Value), null);
+                    }
+                    try
+                    {
+                        var result = await Task.Run(() => Execute(0, SignInPatience, OpenLogin, new[] { "auth", "login", "--claudeai" }));
+                        if (result.code != 0) return "SIGN-IN DID NOT FINISH · TRY AGAIN";
+                    }
+                    catch (FileNotFoundException)
+                    {
+                        Browse("https://code.claude.com/docs/en/setup");
+                        return "INSTALL CLAUDE CODE, THEN SELECT SIGN IN AGAIN";
+                    }
+                }
             }
             catch (Exception) { }
             return await Status(voice);
@@ -370,13 +382,14 @@ namespace Infinigame
             {
                 var step = Read<Step>(line);
                 if (step.type == "response.output_text.delta") text.Append(step.delta);
+                if (step.type == "response.output_text.done" && text.Length == 0) text.Append(Read<Block>(line).text);
                 if (step.type == "response.completed")
                 {
                     finished = true;
-                    (answer.input, answer.output) = (step.response.usage.input_tokens, step.response.usage.output_tokens);
+                    (answer.input, answer.output) = (step.response?.usage?.input_tokens ?? 0, step.response?.usage?.output_tokens ?? 0);
                 }
                 // a failure names itself in the event or the refusal it comes in
-                answer.error ??= new[] { step.response.error.message, step.response.error.code, step.error.message, step.error.code }.FirstOrDefault(word => word.Length > 0);
+                answer.error ??= new[] { step.response?.error?.message, step.response?.error?.code, step.error?.message, step.error?.code }.FirstOrDefault(word => !string.IsNullOrEmpty(word));
             }
             if (code != 200) answer.error ??= $"{body.Split('\n')[0]} ({code})";
             else if (!finished) answer.error ??= "The answer broke off part way.";
@@ -559,10 +572,11 @@ namespace Infinigame
         }
 
         // Runs one of the makers' tools and waits for it: its exit code and what it printed.
-        static (int code, string output, string errors) Start(int tool, int patience, params string[] arguments)
+        static (int code, string output, string errors) Start(int tool, int patience, params string[] arguments) => Execute(tool, patience, null, arguments);
+        static (int code, string output, string errors) Execute(int tool, int patience, Action<string> onLine, string[] arguments)
         {
             int voice = tool == 1 ? 1 : 0;
-#if UNITY_IOS || UNITY_ANDROID
+#if (UNITY_IOS || UNITY_ANDROID) && !UNITY_EDITOR
             throw new InvalidOperationException($"No way to reach {Voices[voice]} on this device without a key or a sign-in from the menu.");
 #else
             string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -583,7 +597,7 @@ namespace Infinigame
                     .Select(place => Path.Combine(place, "node.exe")).FirstOrDefault(File.Exists);
             }
             if (found == null)
-                throw new InvalidOperationException($"No way to reach {Voices[voice]}. Give the game a key or sign in from the menu, or install {Makers[voice]}'s {Tools[tool]} (script/bootstrap does).");
+                throw new FileNotFoundException($"No way to reach {Voices[voice]}. Give the game a key or sign in from the menu, or install {Makers[voice]}'s {Tools[tool]} (script/bootstrap does).");
             // an agent looks about the folder it is started in: it gets an empty one
             string folder = Path.Combine(Path.GetTempPath(), "oracle");
             Directory.CreateDirectory(folder);
@@ -600,8 +614,16 @@ namespace Infinigame
             // nothing is fed to it, and it must not wait for anything
             process.StandardInput.Close();
             // read both pipes as they fill so neither can block the tool
-            var output = process.StandardOutput.ReadToEndAsync();
-            var errors = process.StandardError.ReadToEndAsync();
+            async Task<string> ReadLines(StreamReader reader)
+            {
+                if (onLine == null) return await reader.ReadToEndAsync().ConfigureAwait(false);
+                var lines = new StringBuilder();
+                string line;
+                while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null) { onLine(line); lines.AppendLine(line); }
+                return lines.ToString();
+            }
+            var output = ReadLines(process.StandardOutput);
+            var errors = ReadLines(process.StandardError);
             if (!process.WaitForExit(patience))
             {
                 process.Kill();

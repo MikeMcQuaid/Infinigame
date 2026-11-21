@@ -22,8 +22,8 @@ namespace Infinigame.Tests
             yield return Press(new Controls { confirm = true });
             Assert.IsFalse(game.Title);
             Assert.IsFalse(game.Paused);
-            Assert.IsTrue(game.Frontier.Local.shipyard);
-            Assert.Less(math.distance(Player.Position, game.Colonies.First(colony => colony.world == Solar.Reference).site), 30);
+            Assert.IsTrue(game.Fall.active);
+            Assert.IsTrue(Player.flying);
         }
         [UnityTest] public IEnumerator FlightRevisionMenusFreezeSimulationAndDeletionAsksFirst()
         {
