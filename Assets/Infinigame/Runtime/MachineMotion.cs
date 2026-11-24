@@ -9,7 +9,7 @@ namespace Infinigame
     public class MachineMotion : MonoBehaviour
     {
         public bool quadruped, seated, working;
-        public float speed, strike, recoil, aimPitch;
+        public float speed, strike, recoil, aimPitch, turn, waistYaw;
         public int weapon;
         public Transform look, planet;
         public bool LandedFoot { get; private set; }
@@ -74,7 +74,8 @@ namespace Infinigame
                     continue;
                 }
                 float beat = Mathf.Sin(phase + i * Mathf.PI);
-                legs[i].localRotation = Quaternion.Euler(seated ? i < 2 ? -70 : 70 : beat * 28 * stride, 0, 0);
+                float swing = Mathf.Lerp(beat, Mathf.Abs(beat) * (i == 0 ? turn : -turn), Mathf.Abs(turn));
+                legs[i].localRotation = Quaternion.Euler(seated ? i < 2 ? -70 : 70 : swing * 28 * stride, turn * beat * 13, 0);
                 knees[i].localRotation = Quaternion.Euler(seated ? 100 : -Mathf.Max(0, -beat) * 42 * stride, 0, 0);
             }
             if (quadruped && !seated)
@@ -84,27 +85,28 @@ namespace Infinigame
                 if (look == null) head.localRotation = Quaternion.Euler(-3 * recoil - Mathf.Cos(phase * 2) * stride, 0, -2 * Mathf.Sin(phase) * stride);
             }
             if (arms != null)
+            {
                 for (int i = 0; i < arms.Length; i++)
                 {
-                    arms[i].localRotation = Quaternion.Euler(-Mathf.Sin(phase + i * Mathf.PI) * 18 * stride, 0, i == 0 ? -7 : 7);
-                    elbows[i].localRotation = Quaternion.Euler(-12 - 15 * stride, 0, 0);
-                }
-            if (!quadruped && arms != null)
-            {
-                if (!seated && look == null)
-                {
-                    for (int i = 0; i < arms.Length; i++)
+                    float side = i == 0 ? -1 : 1;
+                    Quaternion shoulder = Quaternion.Euler(-Mathf.Sin(phase + i * Mathf.PI) * 18 * stride, 0, side * 7);
+                    Quaternion elbow = Quaternion.Euler(-12 - 15 * stride, 0, 0);
+                    if (!seated && look == null && !(i == 0 && (weapon == 1 || weapon == 3)))
                     {
-                        // A beam or rail gauntlet fires from the right wrist.
-                        if (i == 0 && (weapon == 1 || weapon == 3)) continue;
-                        float side = i == 0 ? -1 : 1;
-                        arms[i].localRotation = Quaternion.Euler((weapon == 1 ? -75 : weapon == 3 ? -82 : weapon == 4 ? -35 : weapon == 0 ? -56 : 25) - aimPitch, weapon == 4 ? side * 55 : weapon == 3 ? -12 : 0, side * (weapon == 4 ? 65 : weapon == 3 ? -5 : 10));
-                        elbows[i].localRotation = Quaternion.Euler(weapon == 1 ? -15 : weapon == 3 ? -5 : weapon == 0 ? -53 : -45, 0, 0);
+                        shoulder = Quaternion.Euler((weapon == 1 ? -75 : weapon == 3 ? -82 : weapon == 4 ? -35 : weapon == 0 ? -56 : 25) - aimPitch,
+                            weapon == 4 ? side * 55 : weapon == 3 ? -12 : 0, side * (weapon == 4 ? 65 : weapon == 3 ? -5 : 10));
+                        elbow = Quaternion.Euler(weapon == 1 ? -15 : weapon == 3 ? -5 : weapon == 0 ? -53 : -45, 0, 0);
                     }
+                    if (i == 1)
+                    {
+                        shoulder *= Quaternion.Euler(-strike * 40, 0, -strike * 12);
+                        elbow *= Quaternion.Euler(strike * 48, 0, 0);
+                    }
+                    float blend = 1 - Mathf.Exp(-16 * Time.deltaTime);
+                    arms[i].localRotation = Quaternion.Slerp(arms[i].localRotation, shoulder, blend);
+                    elbows[i].localRotation = Quaternion.Slerp(elbows[i].localRotation, elbow, blend);
                 }
-                torso.localRotation = Quaternion.Euler(recoil * 16, strike * 18, recoil * 9);
-                arms[1].localRotation *= Quaternion.Euler(-strike * 40, 0, -strike * 12);
-                elbows[1].localRotation *= Quaternion.Euler(strike * 48, 0, 0);
+                torso.localRotation = Quaternion.AngleAxis(waistYaw, Vector3.up) * Quaternion.Euler(recoil * 16, strike * 18, recoil * 9);
             }
             if (look != null)
             {

@@ -1,6 +1,6 @@
 # Written by Unity or by the screenshot tour, not by hand: GitHub folds their diffs away and
 # leaves them out of the language count.
-*.meta linguist-generated=true
+*.meta linguist-generated=true whitespace=-blank-at-eol
 /ProjectSettings/** linguist-generated=true
 /Packages/packages-lock.json linguist-generated=true
 /Assets/Settings/** linguist-generated=true
@@ -10,3 +10,9 @@
 /docs/*.jpg linguist-generated=true
 
 /Assets/Infinigame/Resources/*.txt linguist-generated=true
+/Assets/Infinigame/Resources/Models/** linguist-generated=true whitespace=-blank-at-eol
+/Assets/Infinigame/Resources/Models/**/*.asset binary
+/Assets/Infinigame/Resources/Surfaces/** linguist-generated=true
+/Assets/Infinigame/Resources/Effects/** linguist-generated=true
+/Assets/Infinigame/Resources/Visor/** linguist-generated=true
+/Assets/XR/Settings/*.asset whitespace=-blank-at-eol

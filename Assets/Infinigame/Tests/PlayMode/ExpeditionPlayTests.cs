@@ -35,11 +35,14 @@ namespace Infinigame.Tests
             yield return Press(new Controls { confirm = true });
             yield return Press(new Controls { confirm = true });
             Assert.IsTrue(game.Levelling, "Activating the same attribute twice must not spend XP");
-            Assert.AreEqual(0, game.Progression.level);
+            Assert.AreEqual(1, game.Progression.level);
+            Player.hull = Player.health = 10;
             yield return Press(new Controls { up = true });
             yield return Press(new Controls { confirm = true });
             Assert.IsFalse(game.Paused);
-            Assert.AreEqual(1, game.Progression.level);
+            Assert.AreEqual(2, game.Progression.level);
+            Assert.AreEqual(Player.MaxHealth, Player.health);
+            Assert.AreEqual(Player.MaxHull, Player.hull);
         }
         [UnityTest] public IEnumerator ExpeditionZoomRevealsTheLocalPlanetAfterShipRecovery()
         {
@@ -160,7 +163,7 @@ namespace Infinigame.Tests
             yield return Press(new Controls { jump = true });
             Assert.Greater(Player.Altitude, 150);
         }
-        [UnityTest] public IEnumerator ExpeditionDeathReturnsToCurrentBurrow()
+        [UnityTest] public IEnumerator ExpeditionDeathReturnsToThePrerequisiteFactory()
         {
             game.Jump(Campaign.SecondBurrow);
             game.Progression.experience = 0;
@@ -170,7 +173,8 @@ namespace Infinigame.Tests
             yield return Press(new Controls { confirm = true });
             Assert.IsFalse(game.Dead); Assert.IsFalse(Player.flying);
             Assert.AreEqual(Campaign.SecondBurrow, game.Stage);
-            Assert.Less(Unity.Mathematics.math.distance(Player.Position, game.Outpost.Place(game.Outpost.Rooms.entrance)), 45);
+            Assert.IsFalse(game.Buried);
+            Assert.Less(Unity.Mathematics.math.distance(Player.Position, game.Colonies.Single().site), 4);
         }
         [UnityTest] public IEnumerator ExpeditionRepeatedRobotAssaultTriggersDefence()
         {

@@ -13,6 +13,7 @@ namespace Infinigame
         Transform hands;
         float crackle, nextPunch;
         int stains;
+        bool aligning;
         Transform Fist(int side) => DeviceControls.VR || game.Buried ? gauntlets[side] : game.Player.fists[side];
 
         public void Stain(Material material)
@@ -28,9 +29,11 @@ namespace Infinigame
         int punchFrame = -1;
         public float3 PunchOrigin { get; private set; }
         public float3 PunchDirection { get; private set; }
+        public int PunchHands { get; private set; }
         public bool MotionPunch => punchFrame == Time.frameCount;
         void Update()
         {
+            PunchHands = 0;
             if (!DeviceControls.VR || game == null) return;
             for (int i = 0; i < 2; i++)
             {
@@ -39,11 +42,13 @@ namespace Infinigame
                 bool valid = device.TryGetFeatureValue(CommonUsages.devicePosition, out Vector3 local);
                 Vector3 delta = local - previous[i];
                 if (valid && tracked[i] && !game.Paused && !game.ShowControls && !game.Player.SystemView && !game.Hermit.Talking
-                    && Time.time >= nextPunch && delta.magnitude > 0.025f && delta.magnitude / math.max(0.001f, Time.unscaledDeltaTime) > 2.2f
-                    && game.Player.Hand(node, out var position, out _))
+                    && (game.Buried || Time.time >= nextPunch) && delta.magnitude / math.max(0.001f, Time.unscaledDeltaTime) > (game.Buried ? 0.8f : 2.2f)
+                    && (!game.Buried || Vector3.Dot(game.Player.TrackingRotation * delta.normalized, math.normalizesafe(game.Player.Position)) > 0.2f)
+                    && game.Player.Hand(node, out var position, out var rotation))
                 {
-                    punchFrame = Time.frameCount; nextPunch = Time.time + math.max(0.35f, game.Player.Weapon.period);
-                    PunchOrigin = (float3)position + game.System.Anchor;
+                    PunchHands |= 1 << i;
+                    punchFrame = Time.frameCount; nextPunch = Time.time + (game.Buried ? 0.22f : math.max(0.35f, game.Player.Weapon.period));
+                    PunchOrigin = (float3)game.GlovePose(i, position, rotation).position + game.System.Anchor;
                     PunchDirection = game.Player.TrackingRotation * delta.normalized;
                 }
                 previous[i] = local; tracked[i] = valid;
@@ -56,6 +61,7 @@ namespace Infinigame
                 : weapon.homing > 0 ? new Vector3(0, 0.14f, -0.22f) : new Vector3(0, 0, 0.22f);
             return (float3)Fist(1).TransformPoint(port) + game.System.Anchor;
         }
+        readonly GauntletFingers[] digits = new GauntletFingers[2];
         readonly Transform[] gauntlets = new Transform[2];
         void Start()
         {
@@ -65,6 +71,7 @@ namespace Infinigame
             {
                 int index = side < 0 ? 0 : 1;
                 gauntlets[index] = Models.Gauntlet();
+                digits[index] = gauntlets[index].gameObject.AddComponent<GauntletFingers>();
                 gauntlets[index].name = side < 0 ? "Left gauntlet" : "Right gauntlet";
                 gauntlets[index].SetParent(hands, false);
                 gauntlets[index].localPosition = new Vector3(side * 0.29f, -0.25f, 0.46f);
@@ -74,12 +81,26 @@ namespace Infinigame
         void LateUpdate()
         {
             if (hands == null) return;
-            hands.gameObject.SetActive((DeviceControls.VR || game.Buried) && (!game.Player.flying || DeviceControls.VR && game.Player.Seated) && !game.Player.ThirdPerson && !game.Player.SystemView && !game.Title && !game.Dead && !game.Frontier.Collapsing && game.Player.Has(Gear.Suit));
+            bool adjusting = DeviceControls.VR && game.FittingHands;
+            if (adjusting != aligning)
+            {
+                aligning = adjusting;
+                foreach (var part in hands.GetComponentsInChildren<Renderer>(true))
+                    part.gameObject.layer = aligning ? LayerMask.NameToLayer("UI") : hands.gameObject.layer;
+            }
+            hands.gameObject.SetActive(adjusting || (DeviceControls.VR || game.Buried) && !game.Player.flying && !game.Player.ThirdPerson && !game.Player.SystemView && !game.Title && !game.Dead && !game.Frontier.Collapsing && game.Player.Has(Gear.Suit));
             if (DeviceControls.VR)
             {
                 for (int i = 0; i < 2; i++)
-                    if (game.Player.Hand(i == 0 ? XRNode.LeftHand : XRNode.RightHand, out var position, out var rotation))
-                        gauntlets[i].SetPositionAndRotation(position, rotation * Quaternion.Euler(90, 0, 0));
+                {
+                    var node = i == 0 ? XRNode.LeftHand : XRNode.RightHand;
+                    if (game.Player.Hand(node, out var position, out var rotation))
+                    {
+                        var pose = game.GlovePose(i, position, rotation);
+                        gauntlets[i].SetPositionAndRotation(pose.position, pose.rotation);
+                        if (hands.gameObject.activeSelf) digits[i].Follow(node);
+                    }
+                }
                 return;
             }
             float punch = game.Player.Weapon.melee ? math.saturate(1 - (Time.time - game.Battle.Fired) / 0.25f) : 0;

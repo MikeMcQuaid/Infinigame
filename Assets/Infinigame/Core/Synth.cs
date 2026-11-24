@@ -1,12 +1,15 @@
+#if UNITY_EDITOR
 using System;
 using Unity.Mathematics;
 using static Infinigame.Core.Biquad;
 using Random = Unity.Mathematics.Random;
+#endif
 
 namespace Infinigame.Core
 {
-    public enum EncounterCue { Emitter, Threat, Collapse, ShellHit, Footfall }
+    public enum EncounterCue { Emitter, Threat, Collapse, ShellHit, Footfall, Breacher, Spitter }
 
+#if UNITY_EDITOR
     public enum Wave { Sine, Saw, Square }
 
     // One second-order filter, the audio cookbook's biquad, with its own memory.
@@ -465,6 +468,23 @@ namespace Infinigame.Core
                 Place(left, right, Scrape(0.27f, 1270 * pitch, rnd.NextUInt()), 0.55f, at: 0.045f);
                 Place(left, right, Clack(950 * pitch, rnd.NextUInt()), 0.28f, at: 0.23f);
             }
+            else if (cue == EncounterCue.Breacher)
+            {
+                // Two chest chambers answer one another before the heavy caste strikes.
+                for (int beat = 0; beat < 2; beat++)
+                {
+                    Place(left, right, Thump(0.2f, pitch * (150 - beat * 26), 48, 13), 0.83f, at: beat * 0.17f);
+                    Place(left, right, Scrape(0.16f, (410 + beat * 120) * pitch, rnd.NextUInt()), 0.38f, at: beat * 0.17f + 0.025f);
+                }
+            }
+            else if (cue == EncounterCue.Spitter)
+            {
+                // The wet valve chatters before the thinner air sac discharges.
+                for (int tick = 0; tick < 3; tick++)
+                    Place(left, right, Clack((860 + tick * 275) * pitch, rnd.NextUInt()), 0.34f, at: tick * 0.048f);
+                Place(left, right, Scrape(0.28f, 1830 * pitch, rnd.NextUInt()), 0.66f, at: 0.11f);
+                Place(left, right, Thump(0.14f, 380 * pitch, 140, 18), 0.47f, at: 0.17f);
+            }
             else if (cue == EncounterCue.Footfall)
             {
                 Place(left, right, Thump(0.13f, 110 * pitch, 60, 28), 0.65f);
@@ -853,9 +873,20 @@ namespace Infinigame.Core
         public static float[] Mind() => Loop(side =>
         {
             int n = Samples(8);
-            return Fm(n, _ => 83 + side * 0.25f, 0.5f, _ => 4).Lap(x => x.Filter(HighPass(75)).Filter(LowPass(550)))
-                .Add(Hiss(n, 719 + side, x => x.Pink().Filter(BandPass(330, 2))).Shape(Wander(n, 711, 2), 0.8f), 0.5f)
-                .Add(Tone(n, _ => 73 + side * 0.125f), 0.15f);
+            // Two valve closures under a slower, rasping breath. Both rhythms meet at the loop seam.
+            float Pulse(float t)
+            {
+                float beat = math.frac(t * 7 / 8 + 0.07f * math.sin(t * Tau / 4));
+                float Valve(float phase) => math.smoothstep(0, 0.028f, phase) * math.exp(-16 * phase);
+                return Valve(beat) + 0.58f * Valve(math.frac(beat - 0.19f));
+            }
+            float Breath(float t) => 0.12f + 0.88f * math.pow(0.5f - 0.5f * math.cos(t * Tau / 4 + 0.38f * math.sin(t * Tau / 8)), 1.6f);
+            var heart = Tone(n, _ => 82.5f).Add(Tone(n, _ => 54.5f), 0.36f).Add(Tone(n, _ => 118.75f + side * 0.125f), 0.19f)
+                .Add(Hiss(n, 719 + side, x => x.Brown().Filter(BandPass(125, 0.8f))), 0.16f).Shape(Pulse);
+            var throat = Hiss(n, 731 + side, x => x.Pink().Filter(BandPass(355, 0.9f)))
+                .Add(Hiss(n, 739 + side, x => x.Filter(BandPass(1050, 1.4f))), 0.23f)
+                .Shape(Wander(n, 711 + (uint)side, 14), 0.5f).Shape(Breath);
+            return heart.Add(throat, 0.23f);
         });
 
         public static float[] Engine() => Loop(side =>
@@ -950,6 +981,8 @@ namespace Infinigame.Core
         }
     }
 
+#endif
+
     // How loud the game plays each sound, as a share of full scale, and how many takes of it are kept.
     // Nothing limits the sum on its way out, so every level is set low enough that the busiest
     // fight still comes to less than full scale, which the tests mix and measure. Turning any of
@@ -957,8 +990,8 @@ namespace Infinigame.Core
     public static class Mix
     {
         public const float Music = 0.16f, Engine = 0.16f, Bike = 0.22f, Whine = 0.07f, Wind = 0.18f, Rain = 0.14f, Jetpack = 0.13f, Geiger = 0.12f, Beam = 0.14f;
-        public const float Chime = 0.21f, Warp = 0.25f, Alarm = 0.21f, Engage = 0.21f, Thud = 0.23f, Hurt = 0.37f, Step = 0.17f, Boom = 0.33f;
-        public const float Reload = 0.18f, DryFire = 0.16f, Dig = 0.24f, Nuke = 0.5f;
+        public const float Chime = 0.21f, Warp = 0.25f, Alarm = 0.21f, Engage = 0.21f, Thud = 0.23f, Hurt = 0.37f, Step = 0.17f, Boom = 0.28f;
+        public const float Reload = 0.18f, DryFire = 0.16f, Dig = 0.24f, Nuke = 0.35f;
         public const int Booms = 3, Thuds = 3, Steps = 8, Digs = 5;
 
         // The weapons: the fast ones lower, since they overlap themselves, and in several takes, so

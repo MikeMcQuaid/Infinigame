@@ -73,7 +73,7 @@ namespace Infinigame.Core
     [Serializable]
     public class Moonfall
     {
-        public const float Assembly = 1, Ignition = 1, Transit = 10, Consumption = 20, WhiteHole = 4;
+        public const float Assembly = 1, Ignition = 1, Transit = 10, Consumption = 10, Infall = 3, WhiteHole = 4;
         public int moon = -1, world = -1;
         public double began, duration = Assembly + Ignition + Transit;
         public bool active, destroyed;

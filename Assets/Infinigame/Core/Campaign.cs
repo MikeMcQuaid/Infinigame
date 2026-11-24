@@ -24,7 +24,7 @@ namespace Infinigame.Core
     // Stable gear bit positions keep equipment compatible with older saves.
     public static class Campaign
     {
-        public const int Buried = 0, Stranger = 1, FirstBurrow = 2, SecondBurrow = 3, ThirdBurrow = 4, Recovery = 5, Tower = 6, Citadel = 12, Won = 13;
+        public const int Buried = 0, Stranger = 1, FirstBurrow = 2, SecondBurrow = 3, ThirdBurrow = 4, Recovery = 5, Tower = 6, Citadel = 9, Won = 10;
 
         public static int Minds(int stage) => stage == SecondBurrow ? 2 : stage == ThirdBurrow || stage == Citadel ? 3 : 1;
 
@@ -33,7 +33,8 @@ namespace Infinigame.Core
         public static int MigrateStage(int stage, int version = 1)
         {
             if (version < 2) stage = new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 8, 8, 9, 9, 10, 11, 12 }[math.clamp(stage, 0, 15)];
-            return version < 3 ? stage == 4 ? Recovery : stage >= 5 ? stage + 1 : stage : stage;
+            if (version < 3) stage = stage == 4 ? Recovery : stage >= 5 ? stage + 1 : stage;
+            return version < 5 && stage >= Citadel ? math.max(Citadel, stage - 3) : stage;
         }
 
         public static Mission[] Missions { get; internal set; } = Array.Empty<Mission>();
@@ -72,7 +73,7 @@ namespace Infinigame.Core
             if (!system.generated) return Array.FindIndex(system.bodies, body => body.name == Missions[stage].world);
             if (stage < Tower) return SolarSystemDescriptor.Home;
             if (stage == Tower) return Array.FindIndex(system.bodies, body => body.orbit.parent == SolarSystemDescriptor.Home);
-            var worlds = Enumerable.Range(1, system.bodies.Length - 1).Where(i => system.bodies[i].kind == BodyKind.Rock && i != SolarSystemDescriptor.Home).ToArray();
+            var worlds = Enumerable.Range(1, system.bodies.Length - 1).Where(i => system.bodies[i].kind == BodyKind.Rock && i != SolarSystemDescriptor.Home && i != World(system, Tower)).ToArray();
             return worlds[(stage - Tower - 1) % worlds.Length];
         }
 

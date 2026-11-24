@@ -50,7 +50,7 @@ namespace Infinigame.Tests
             var body = new BodyDescriptor { radius = 100, kind = BodyKind.Rock, terrain = new TerrainParams { seaDepth = 1 } };
             float3 from = new float3(0, 83, 0), target = new float3(0, 83, 5);
             body.Tunnel(new float3(0, 80, 0), 15);
-            body.burrows.Add(new Burrow { origin = new float3(0, 100, 0), rotation = quaternion.identity });
+            body.burrows = new[] { new Burrow { origin = new float3(0, 100, 0), rotation = quaternion.identity } };
             var foes = new System.Collections.Generic.List<Foe> { Combat.Spawn(FoeKind.Mind, target, new float3(0, 0, -1), 1, 1) };
             Combat.Ray(foes, body, from, math.normalizesafe(target - from), 8, 200, false, default, null);
             Assert.LessOrEqual(foes[0].health, 0);
@@ -81,8 +81,9 @@ namespace Infinigame.Tests
         [Test] public void LevelsCarryExperienceAndRequireEarnedXP()
         {
             var progress = new Progression { experience = 140 };
+            Assert.AreEqual(1, progress.level);
             Assert.IsTrue(progress.Improve(Upgrade.Damage));
-            Assert.AreEqual(95, progress.experience); Assert.AreEqual(1, progress.level);
+            Assert.AreEqual(95, progress.experience); Assert.AreEqual(2, progress.level);
             Assert.IsTrue(progress.Improve(Upgrade.Energy));
             Assert.IsFalse(progress.Pending);
             Assert.IsFalse(progress.Improve(Upgrade.Toughness));

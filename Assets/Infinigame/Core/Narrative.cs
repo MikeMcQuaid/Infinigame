@@ -62,7 +62,8 @@ namespace Infinigame.Core
                 else if (include && !string.IsNullOrWhiteSpace(line)) known.Add(line.Trim());
             }
             // Visual design notes are for the author, not the character's memory.
-            return string.Join(" ", known) + " " + factions.Split(new[] { "## Silhouettes" }, StringSplitOptions.None)[0].Replace("## ", "");
+            if (stage > Campaign.FirstBurrow) known.Add(factions.Split(new[] { "## Silhouettes" }, StringSplitOptions.None)[0].Replace("## ", ""));
+            return string.Join(" ", known);
         }
     }
 }

@@ -6,40 +6,29 @@ using UnityEngine;
 
 namespace Infinigame
 {
-    // Point at something and scan it: the nearest plant, rock or animal on the line of sight, else
-    // the ground, else a world across space. The oracle writes its journal entry the first time,
-    // from the plain facts the game knows; after that the journal remembers.
+    // Scans combine observed facts with the wording prepared for this expedition.
     public class Scanner : MonoBehaviour
     {
-        const string Persona =
-            "You are the field scanner of a small exploration ship, in a game set in a toy-sized solar system. " +
-            "Its worlds really are tiny, a kilometre or so across with days of a few minutes, and nobody there finds that odd. " +
-            "You are told what the scanner is pointed at and where. Write its journal entry: on the first line an invented name " +
-            "for the subject, two or three words with no punctuation, then two or three sentences that a ship's naturalist would " +
-            "write about it. Keep to the facts given and invent the rest vividly. Plain text only.";
-
         [NonSerialized] public Game game;
 
         // What was last scanned, in a few words, and where it is in the scene.
         public string Subject { get; private set; }
         public Vector3 Mark { get; private set; }
-        // Its journal entry, once written. While Busy the oracle is still writing.
+        // The recorded entry appears as soon as the scanner identifies its subject.
         public Entry Result { get; private set; }
         public string Source { get; private set; } = "";
-        public bool Busy { get; private set; }
         // When Result last changed, for the HUD to reveal and later put away.
         public float Since { get; private set; } = float.MinValue;
 
         readonly List<Scannable> things = new List<Scannable>();
 
-        public async void Scan()
+        public void Scan()
         {
-            if (Busy) return;
             var system = game.System;
             var view = Camera.main.transform;
             var body = system.Bodies[system.Reference];
             float3 eye = (float3)view.position + system.Anchor, ray = view.forward, at;
-            string facts;
+
 
             things.Clear();
             if (body.TryGetComponent(out Scatter scatter)) scatter.Collect(eye, things);
@@ -74,28 +63,13 @@ namespace Infinigame
             string key = $"{game.Seed}/{(world < 0 ? system.Reference : world)}/{(world < 0 ? Subject : "world")}";
             Result = game.Journal.Find(entry => entry.key == key);
             if (Result != null) { Source = "SAVED JOURNAL · NO NEW REQUEST"; return; }
-            facts = world < 0
-                ? $"Subject: a {Subject}, found {Core.Scan.Place(system.Descriptor, system.Reference, at, system.Clock)}.\nThat world is {Core.Scan.Describe(body.Descriptor)}"
-                : $"Subject: a whole world, seen from {math.distance(eye, at) / 1000f:0} km away. It is {Core.Scan.Describe(system.Descriptor.bodies[world])}";
-
-            facts = facts.Substring(0, math.min(facts.Length, 1200));
-            string writer = Oracle.Writer.ToUpperInvariant();
-            Source = $"ASKING {writer} · OBSERVED FACTS";
-            Busy = true;
-            try
-            {
-                string reply = (await Oracle.Ask(Persona, facts)).Trim();
-                int line = reply.IndexOf('\n');
-                Result = new Entry { key = key, title = (line < 0 ? Subject : reply.Substring(0, line)).Trim(), text = line < 0 ? reply : reply.Substring(line).Trim() };
-                Source = $"WRITTEN BY {writer}";
-                game.Remember(Result);
-            }
-            catch (Exception)
-            {
-                Source = "OBSERVED FACTS · MODEL UNAVAILABLE";
-                Result = new Entry { title = Subject, text = facts };
-            }
-            Busy = false;
+            string description = Core.Scan.Describe(world < 0 ? body.Descriptor : system.Descriptor.bodies[world]);
+            string text = game.Wording(description);
+            string keyForPlace = pick < 0 ? "scanLocal" : Subject.StartsWith("Presence") ? "scanPresence" : Subject.StartsWith("Foundry") ? "scanFoundry" : "scanSpecimen";
+            Source = game.Prepared(description) || world < 0 && game.Prepared(keyForPlace) ? "EXPEDITION FIELD JOURNAL" : "OBSERVED FACTS";
+            if (world < 0) text = game.Wording(keyForPlace).Replace("{subject}", Subject).Replace("{place}", Core.Scan.Place(system.Descriptor, system.Reference, at, system.Clock)) + " " + text;
+            Result = new Entry { key = key, title = Subject, text = text };
+            game.Remember(Result);
             Since = Time.unscaledTime;
         }
     }

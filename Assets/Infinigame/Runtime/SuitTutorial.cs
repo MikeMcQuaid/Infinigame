@@ -11,17 +11,18 @@ namespace Infinigame
         int phase;
         float elapsed, looked;
         float3 start;
-        public string Hint => game.Buried ? game.Boot < Game.BootDuration ? "SUIT RECOVERY · MOTOR LOCK" : $"{DeviceControls.Fire} · PUNCH THROUGH THE RUBBLE  {game.Dug}/{Game.Digs}"
-            : game.Outpost.Demolition > 0 ? "DEMOLITION ARMED · LEAVE THE BURROW · GET 35 m FROM THE MIND"
+        public string Hint => game.Buried ? game.Boot < Game.BootDuration ? game.Wording("motorLock") : $"{(DeviceControls.VR ? "PUNCH UP ONCE WITH EACH HAND" : DeviceControls.Fire)} · {game.Wording("digOverhead")}  {game.Dug}/{Game.Digs}"
+            : game.Outpost.Demolition > 0 ? game.Wording("blastRadius")
+            : game.Outpost.EquipmentReady ? DeviceControls.Use + " · " + game.Wording("collect")
             : game.Outpost.SiteCleared ? DeviceControls.Key("B", "LT + D-PAD DOWN", "… / BUILD", "WRIST BUILD") + " · " + game.Outpost.FactoryOrder.ToUpperInvariant()
-            : game.Stage == 2 ? game.Outpost.Fallen ? $"{DeviceControls.Use} · TAKE THE SHIELDED BATTERY" : !game.Outpost.Rooms.walls.Last().broken ? $"{DeviceControls.Fire} · PUNCH THE MARKED ENTRANCE" : $"{DeviceControls.Fire} · PUNCH THE MIND AND ITS GUARDS"
-            : game.Stage == Campaign.SecondBurrow ? "BEAM CUTS TERRAIN · DIG A FLANKING ROUTE · RECOVER SURFACE THRUSTERS"
-            : game.Stage == Campaign.ThirdBurrow ? "SURFACE FLIGHT LIMIT 65 m · RECOVER THE ORBITAL BOOSTER"
-            : game.Stage == Campaign.Recovery ? $"{DeviceControls.Key("SPACE", "RB", "LIFT", "LEFT A")} · CLIMB TO THE SHIP{(game.Player.InSpace ? " · " + DeviceControls.Key("T", "D-PAD RIGHT", "RECALL", "WRIST RECALL") + " · CALL IT TO YOU" : "")}"
+            : game.Stage == 2 ? game.Outpost.Fallen ? $"{DeviceControls.Use} · {game.Wording("armCoreHint")}" : !game.Outpost.Rooms.walls.Last().broken ? $"{DeviceControls.Fire} · {game.Wording("punchDoor")}" : $"{DeviceControls.Fire} · {game.Wording("punchMind")}"
+            : game.Stage == Campaign.SecondBurrow ? game.Wording("branchHint")
+            : game.Stage == Campaign.ThirdBurrow ? game.Wording("orbitHint")
+            : game.Stage == Campaign.Recovery ? $"{DeviceControls.Key("SPACE", "RB", "LIFT", "L TRIGGER")} · {game.Wording("climbShip")}{(game.Player.InSpace ? " · " + DeviceControls.Key("T", "D-PAD RIGHT", "RECALL", "WRIST RECALL") + " · " + game.Wording("recallHint") : "")}"
             : game.Stage > Campaign.Recovery ? game.Stage < Campaign.Citadel && game.Outpost.World == game.System.Reference && !game.Outpost.Fallen ? game.Outpost.Instruction : ""
-            : phase < 3 ? "COMPANION LINK · LISTEN · OPTICS AND LEGS REPAIRING"
-            : phase == 3 ? $"{DeviceControls.Look} · LOOK UP · FIND YOUR SHIP"
-            : phase == 4 ? $"{DeviceControls.Move} · WALK A FEW STEPS" : $"{DeviceControls.Fire} · PUNCH THE GROUND FIGHTER";
+            : phase < 3 ? game.Wording("repairHint")
+            : phase == 3 ? $"{DeviceControls.Look} · {game.Wording("lookShip")}"
+            : phase == 4 ? $"{DeviceControls.Move} · {game.Wording("walk")}" : $"{DeviceControls.Fire} · {game.Wording("punchFighter")}";
         public bool PointingAtShip => game.Stage == Campaign.Stranger && phase == 3;
         public bool Repairing => game.Stage == Campaign.Stranger && phase == 2;
         public float RepairProgress => math.saturate(elapsed / 4.5f);
@@ -33,28 +34,28 @@ namespace Infinigame
             if (game.Stage != Campaign.Stranger) return;
             if (phase == 0)
             {
+                if (game.PreparingOpening) { c = default; return; }
                 game.Hermit.Rescue();
-                game.Hermit.Remark("You are alive. I am your recovery robot. The living minds are consuming Earth. We build robots to stop them. Your suit is damaged. I’m restoring power.");
+                game.Hermit.Remark(game.Wording("rescue"));
                 phase = 1; elapsed = 0;
             }
             elapsed += Time.deltaTime;
             if (phase == 1 && elapsed > 12 && !game.Speech.Speaking)
             {
                 phase = 2; elapsed = 0;
-
             }
             if (phase == 2 && elapsed > 4.5f)
             {
                 phase = 3; elapsed = 0;
-                game.Hermit.Remark("Optics restored. Look up along my light. That ship above the crater is yours. We need the thrusters and orbital booster from the Earth burrows to get you back aboard.");
+                game.Hermit.Remark(game.Wording("optics"));
             }
             if (phase == 3)
             {
                 looked += c.look.magnitude;
-                if (elapsed > 5 && (looked > 45 || DeviceControls.VR))
+                if (elapsed > 5 && !game.Speech.Speaking && (looked > 45 || DeviceControls.VR))
                 {
                     phase = 4; start = game.Player.Position;
-                    game.Hermit.Remark("Leg power restored. Walk a few steps. Only your emergency fists work until we recover a power cell.");
+                    game.Hermit.Remark(game.Wording("legs"));
                 }
             }
             if (phase == 4 && math.distance(start, game.Player.Position) > 3 && !game.Speech.Speaking)
@@ -63,7 +64,7 @@ namespace Infinigame
                 float3 point = game.Player.Position + game.Player.walker.forward * 18 + math.normalizesafe(math.cross(math.normalizesafe(game.Player.Position), game.Player.walker.forward)) * 12;
                 float3 up = math.normalize(point);
                 game.Battle.Add(FoeKind.Sentry, up * (game.System.ReferenceBody.GroundRadius(up) + 0.9f));
-                game.Hermit.Remark("One ground fighter approaches from the side. Get close and punch it. I will guide you to the burrow when it is down.");
+                game.Hermit.Remark(game.Wording("fighter"));
             }
             if (phase < 4) { c.move = Vector2.zero; c.jump = false; }
             if (phase < 3) c.look = Vector2.zero;

@@ -3,6 +3,21 @@ using Unity.Mathematics;
 
 namespace Infinigame.Core
 {
+    public struct StickNavigation
+    {
+        int direction;
+        float repeat;
+        public int Read(float left, float right, float now)
+        {
+            float axis = math.abs(left) > math.abs(right) ? left : right;
+            int next = axis > 0.7f ? 1 : axis < -0.7f ? -1 : math.abs(axis) < 0.4f ? 0 : direction;
+            bool step = next != 0 && (next != direction || now >= repeat);
+            if (step) repeat = now + (next == direction ? 0.16f : 0.4f);
+            direction = next;
+            return step ? next : 0;
+        }
+    }
+
     public static class Suit
     {
         public const int Slots = 8, Budget = 24;

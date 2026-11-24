@@ -27,5 +27,5 @@ if ! wait "$build_pid"; then
   exit 1
 fi
 if [ ! -r /Volumes ]; then
-  echo 'Built without Burst in this sandbox. Rebuild from your normal Mac account for optimised terrain and texture generation before performance testing.'
+  echo 'Built without Burst in this sandbox. Rebuild from your normal Mac account for optimised terrain generation before performance testing.'
 fi

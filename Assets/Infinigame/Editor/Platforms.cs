@@ -63,7 +63,7 @@ namespace Infinigame.Editor
                 AssetDatabase.DeleteAsset(plugins);
             }
         }
-        public static void CIWindows() => BuildCI(() => { Windows(); SteamDeck(); });
+        public static void CIWindows() => BuildCI(Windows);
         public static void CIIOS() => BuildCI(IOS);
         public static void Windows()
         {
@@ -87,40 +87,21 @@ namespace Infinigame.Editor
             FeatureHelpers.RefreshFeatures(BuildTargetGroup.Standalone);
             var xr = OpenXRSettings.GetSettingsForBuildTargetGroup(BuildTargetGroup.Standalone);
             xr.GetFeature<ValveIndexControllerProfile>().enabled = true;
+            foreach (string feature in new[] { "handtrackingsubsystem", "handtrackingdatasource", "handjointsmotionrange" })
+                FeatureHelpers.GetFeatureWithIdForBuildTarget(BuildTargetGroup.Standalone, "com.unity.openxr.feature.input." + feature).enabled = true;
             xr.renderMode = OpenXRSettings.RenderMode.MultiPass;
-            settings.SettingsForBuildTarget(BuildTargetGroup.Standalone).InitManagerOnStart = true;
+            settings.SettingsForBuildTarget(BuildTargetGroup.Standalone).InitManagerOnStart = false;
             EditorUtility.SetDirty(settings);
             EditorUtility.SetDirty(xr);
             AssetDatabase.SaveAssets();
             PlayerSettings.SetScriptingBackend(UnityEditor.Build.NamedBuildTarget.Standalone, ScriptingImplementation.Mono2x);
+            bool single = PlayerSettings.forceSingleInstance;
+            PlayerSettings.forceSingleInstance = true;
             try { Build("Build/Windows/Infinigame.exe", BuildTarget.StandaloneWindows64); }
-            finally { settings.SettingsForBuildTarget(BuildTargetGroup.Standalone).InitManagerOnStart = false; EditorUtility.SetDirty(settings); AssetDatabase.SaveAssets(); }
+            finally { PlayerSettings.forceSingleInstance = single; }
 #else
             throw new InvalidOperationException("Resolve the official OpenXR packages before building Windows.");
 #endif
-        }
-        public static void SteamDeck()
-        {
-            int width = PlayerSettings.defaultScreenWidth, height = PlayerSettings.defaultScreenHeight;
-            bool native = PlayerSettings.defaultIsNativeResolution;
-            var mode = PlayerSettings.fullScreenMode;
-            PlayerSettings.defaultScreenWidth = 1280; PlayerSettings.defaultScreenHeight = 800;
-            PlayerSettings.defaultIsNativeResolution = true; PlayerSettings.fullScreenMode = FullScreenMode.FullScreenWindow;
-            PlayerSettings.SetScriptingBackend(UnityEditor.Build.NamedBuildTarget.Standalone, ScriptingImplementation.Mono2x);
-#if INFINIGAME_XR
-            var settings = XRGeneralSettingsPerBuildTarget.XRGeneralSettingsForBuildTarget(BuildTargetGroup.Standalone);
-            bool automatic = settings != null && settings.InitManagerOnStart;
-            if (settings != null) settings.InitManagerOnStart = false;
-#endif
-            try { Build("Build/SteamDeck/Infinigame.exe", BuildTarget.StandaloneWindows64, true); }
-            finally
-            {
-                PlayerSettings.defaultScreenWidth = width; PlayerSettings.defaultScreenHeight = height;
-                PlayerSettings.defaultIsNativeResolution = native; PlayerSettings.fullScreenMode = mode;
-#if INFINIGAME_XR
-                if (settings != null) settings.InitManagerOnStart = automatic;
-#endif
-            }
         }
         public static void IOS()
         {
@@ -130,12 +111,22 @@ namespace Infinigame.Editor
             string team = Environment.GetEnvironmentVariable("INFINIGAME_APPLE_TEAM");
             if (!string.IsNullOrEmpty(team)) PlayerSettings.iOS.appleDeveloperTeamID = team;
             PlayerSettings.iOS.appleEnableAutomaticSigning = true;
-            try { Build("Build/iOS", BuildTarget.iOS); }
-            finally { PlayerSettings.iOS.appleDeveloperTeamID = previousTeam; }
+            bool displayHDR = PlayerSettings.useHDRDisplay;
+            // The mobile camera renders SDR, including the title and visor.
+            try
+            {
+                PlayerSettings.useHDRDisplay = false;
+                Build("Build/iOS", BuildTarget.iOS);
+            }
+            finally
+            {
+                PlayerSettings.useHDRDisplay = displayHDR;
+                PlayerSettings.iOS.appleDeveloperTeamID = previousTeam;
+            }
         }
-        static void Build(string path, BuildTarget target, bool deck = false)
+        static void Build(string path, BuildTarget target)
         {
-            var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions { scenes = new[] { "Assets/Scenes/Main.unity" }, locationPathName = path, target = target, options = target == BuildTarget.iOS ? BuildOptions.StrictMode : BuildOptions.None, extraScriptingDefines = deck ? new[] { "INFINIGAME_DECK" } : Array.Empty<string>() });
+            var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions { scenes = new[] { "Assets/Scenes/Main.unity" }, locationPathName = path, target = target, options = target == BuildTarget.iOS ? BuildOptions.StrictMode : BuildOptions.None });
             if (report.summary.result != BuildResult.Succeeded) throw new InvalidOperationException($"{target} build failed: {report.summary.result}");
         }
     }

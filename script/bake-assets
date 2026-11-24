@@ -1,0 +1,12 @@
+#!/bin/bash
+# Rebuild the shipped art and audio, or just the surface artwork for a look review.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+case "${1:-}" in
+  "") method=Bake ;;
+  models) method=BakeModels ;;
+  surfaces) method=BakeSurfaces ;;
+  *) echo 'Usage: script/bake-assets [models|surfaces]' >&2; exit 1 ;;
+esac
+mkdir -p Logs
+script/unity -batchmode -quit -buildTarget StandaloneOSX -executeMethod "Infinigame.Editor.AssetWorkshop.$method" -logFile Logs/bake-assets.log

@@ -10,6 +10,14 @@ namespace Infinigame.Tests
     public class CampaignTests
     {
         [Test]
+        public void ThreeExpeditionsSupplyAllEquipmentBeforeTheCitadel()
+        {
+            CollectionAssert.AreEqual(new[] { "Luna", "Mars", "Venus" }, Campaign.Missions.Skip(Campaign.Tower).Take(Campaign.Citadel - Campaign.Tower).Select(m => m.world));
+            Assert.IsTrue(Combat.Guns.All(gun => gun.energy > 0));
+            Assert.Greater(Combat.Arms.Single(arm => arm.sweep).period, 8);
+        }
+
+        [Test]
         public void EveryPieceOfGearIsWonOnceAndTheCitadelComesLast()
         {
             var won = Campaign.Missions.SelectMany(mission => mission.wins).Prepend(Gear.Suit).ToArray();
@@ -75,7 +83,7 @@ namespace Infinigame.Tests
         public void TheLaterMissionsAreOnTheOtherWorldsInTurn()
         {
             var system = World.Solar;
-            string[] worlds = { "Luna", "Mars", "Venus", "Mercury", "Titan", "Triton" };
+            string[] worlds = { "Luna", "Mars", "Venus" };
             for (int i = 0; i < worlds.Length; i++)
             {
                 int stage = Campaign.Tower + i, world = Campaign.World(system, stage);

@@ -44,18 +44,21 @@ namespace Infinigame.Tests
             Oracle.Store = "test-accounts.json";
             Game.Prefs = "infinigame-test";
             // most tests want the whole game open to them: every mission but the last done, and all that those win
+            uint nextSeed = 91;
+            Game.NewSeed = () => nextSeed++;
             Game.Start = Campaign.Citadel;
-            foreach (string kept in new[] { "detail", "muted", "silent", "voice", "robot", "subtitles", "robotStrength", "automaticQuality" }) PlayerPrefs.DeleteKey($"{Game.Prefs}.{kept}");
+            foreach (string kept in new[] { "detail", "muted", "silent", "voice", "robot", "subtitles", "robotStrength", "automaticQuality", "invertShipPitch", "fistPitch", "fistYaw", "fistRoll", "palmSetback", "wristAlong", "wristHeight", "wristAround", "wristRotation" }) PlayerPrefs.DeleteKey($"{Game.Prefs}.{kept}");
             foreach (string kept in new[] { "test-save.json", "test-save2.json", "test-save3.json", Oracle.Store }) File.Delete(Path.Combine(Application.persistentDataPath, kept));
             // no test may spend a real player's plan: the oracle answers from a script, and until a
             // test supplies stand-ins there are no tools for it to run
             Oracle.Tools[0] = Oracle.Tools[1] = "not-installed";
             // nor is anything said aloud unless a test listens for it
             Speech.Render = (words, directory) => null;
-            VoiceInput.Capture = capture => capture.Submit("What should I do now?");
+            VoiceInput.Capture = capture => capture.Submit("How much power do I have?");
             asked = 0;
             Oracle.Ask = (persona, prompt) =>
             {
+                if (prompt.StartsWith("{\"lines\":")) return Task.FromResult(prompt);
                 asked++;
                 lastPersona = persona;
                 lastPrompt = prompt;
@@ -87,7 +90,15 @@ namespace Infinigame.Tests
         {
             Time.timeScale = 1f;
             QualitySettings.SetQualityLevel(quality);
+            if (Camera.main != null && Camera.main.targetTexture != null)
+            {
+                var target = Camera.main.targetTexture;
+                Camera.main.targetTexture = null;
+                Object.Destroy(target);
+            }
+            Game.NewSeed = null;
             Game.SaveFile = "save.json";
+            Oracle.Forget(Oracle.Voice);
             Oracle.Ask = Oracle.Run;
             Oracle.Tools[1] = "codex";
             Oracle.Tools[0] = "claude";
@@ -200,6 +211,10 @@ namespace Infinigame.Tests
             Assert.IsFalse(game.ShowControls);
             yield return Press(new Controls { help = true });
             Assert.IsTrue(game.ShowControls);
+            Canvas.ForceUpdateCanvases();
+            var help = Object.FindObjectsByType<UnityEngine.UI.Text>().Single(label => label.text == "ON FOOT").transform.parent;
+            foreach (var label in help.GetComponentsInChildren<UnityEngine.UI.Text>().Where(item => item.rectTransform.rect.height >= 40))
+                Assert.LessOrEqual(label.preferredHeight, label.rectTransform.rect.height - 6, $"The control '{label.text}' must clear its row divider");
             // escape closes them, and that is all it does
             yield return Press(new Controls { menu = true });
             Assert.IsFalse(game.ShowControls);
@@ -293,7 +308,85 @@ namespace Infinigame.Tests
             Assert.IsFalse(Player.landing);
             yield return Seconds(1.5f);
             Assert.IsFalse(Player.ship.landed);
-            Assert.Greater(Solar.Bodies[giant].PatchCount, 5);
+            var giants = Solar.Bodies.Where(body => body.Descriptor.kind == BodyKind.Gas).ToArray();
+            CollectionAssert.AreEquivalent(new[] { "Jupiter", "Saturn", "Uranus", "Neptune" }, giants.Select(body => body.name));
+            var surfaces = giants.Select(body => body.transform.Find("Cloud tops").GetComponent<MeshFilter>().sharedMesh).ToArray();
+            yield return Seconds(0.5f);
+            for (int i = 0; i < giants.Length; i++)
+            {
+                var planet = giants[i];
+                Assert.AreSame(surfaces[i], planet.transform.Find("Cloud tops").GetComponent<MeshFilter>().sharedMesh, planet.name);
+                Assert.AreEqual(planet.Descriptor.radius * 2, surfaces[i].bounds.size.x, 0.1f, planet.name);
+                Assert.AreEqual(0, planet.PatchCount, planet.name);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator StarsShowThroughEarthsNightSkyAndFadeInDaylight()
+        {
+            var camera = new GameObject("Sky observer").AddComponent<Camera>();
+            camera.enabled = false;
+            camera.clearFlags = CameraClearFlags.Skybox;
+            camera.farClipPlane = Camera.main.farClipPlane;
+            var target = RenderTexture.GetTemporary(512, 320, 24);
+            var picture = new Texture2D(target.width, target.height, TextureFormat.RGB24, false);
+            var previous = RenderTexture.active;
+            try
+            {
+                camera.targetTexture = target;
+                int VisibleStarPixels()
+                {
+                    var stars = RenderSettings.skybox;
+                    float brightness = stars.GetFloat("_Brightness");
+                    Color32[] Pixels()
+                    {
+                        camera.Render();
+                        RenderTexture.active = target;
+                        picture.ReadPixels(new Rect(0, 0, target.width, target.height), 0, 0);
+                        return picture.GetPixels32();
+                    }
+                    var sky = Pixels();
+                    if (Solar.Reference == Home && math.dot(math.normalize(Player.Position), Sunward) < -0.9f)
+                    {
+                        Directory.CreateDirectory("Logs/Screenshots");
+                        File.WriteAllBytes("Logs/Screenshots/earth-night-sky.png", picture.EncodeToPNG());
+                    }
+                    stars.SetFloat("_Brightness", 0);
+                    var dark = Pixels();
+                    stars.SetFloat("_Brightness", brightness);
+                    return sky.Where((pixel, i) => pixel.b - dark[i].b > 50).Count();
+                }
+                foreach (int sign in new[] { -1, 1 })
+                {
+                    float3 up = sign * Sunward;
+                    HoverAt(up * (math.max(Body.GroundRadius(up), Body.radius) + 35));
+                    yield return null;
+                    yield return null;
+                    camera.transform.SetPositionAndRotation(Player.Position + up * 5 - Solar.Anchor, Quaternion.LookRotation(up, World(up)));
+                    int visible = VisibleStarPixels();
+                    if (sign < 0) Assert.Greater(visible, 320, "A phone-sized view shows distinct stars through the night atmosphere");
+                    else Assert.Less(visible, 12, "Sunlit air washes the stars out at noon");
+                }
+                foreach (string name in new[] { "Luna", "Venus", "Titan" })
+                {
+                    yield return HoverOver(System.Array.FindIndex(Solar.Bodies, body => body.name == name), 100);
+                    Assert.AreEqual(name, Body.name);
+                    float3 up = -Sunward;
+                    HoverAt(up * (Body.GroundRadius(up) + 12));
+                    yield return null;
+                    yield return null;
+                    camera.transform.SetPositionAndRotation(Player.Position + up * 5 - Solar.Anchor, Quaternion.LookRotation(up, World(up)));
+                    Assert.Greater(VisibleStarPixels(), 80, $"Bright stars remain visible at night on {name}");
+                }
+            }
+            finally
+            {
+                camera.targetTexture = null;
+                RenderTexture.active = previous;
+                RenderTexture.ReleaseTemporary(target);
+                Object.Destroy(picture);
+                Object.Destroy(camera.gameObject);
+            }
         }
 
         // Opens the pause menu and chooses an item by name.
@@ -336,9 +429,10 @@ namespace Infinigame.Tests
             Assert.IsTrue(game.Buried);
             StringAssert.Contains("PUNCH", game.Objective);
             var ground = Solar.Bodies[Home].Descriptor;
-            int holes = ground.craters.Length;
+            int holes = ground.blasts.Count(blast => blast.scar != Scar.Pad);
             Assert.Greater(holes, 0, "there is a hole in the ground, and the player is at the bottom of it");
             float3 woke = Player.walker.position;
+            float floor = ground.GroundRadius(math.normalize(woke));
             Assert.Less(math.length(woke), ground.radius + ground.terrain.MaxHeight);
             // there is nothing to do down there but dig: no walking off, and nothing in hand to fire
             input.move = Vector2.up;
@@ -359,7 +453,8 @@ namespace Infinigame.Tests
                 Assert.AreEqual(click + 1 == Game.Digs ? 0 : click + 1, game.Dug % Game.Digs);
             }
             Assert.AreEqual(Campaign.Stranger, game.Stage, "daylight");
-            Assert.AreEqual(holes + Game.Digs, ground.craters.Length, "the earth really was dug away");
+            Assert.AreEqual(holes, ground.blasts.Count(blast => blast.scar != Scar.Pad));
+            Assert.AreEqual(floor, ground.GroundRadius(math.normalize(woke)), 0.02f, "Punching through the roof preserves the ground under your feet");
             StringAssert.Contains("RESTORE YOUR SUIT", game.Objective);
             // The robot restores locomotion after the briefing.
             float3 emerged = Player.walker.position;
@@ -469,7 +564,10 @@ namespace Infinigame.Tests
             var outpost = game.Outpost;
             var hud = GameObject.Find("HUD").GetComponent<RectTransform>();
             UnityEngine.UI.Text Shown(string words) => hud.GetComponentsInChildren<UnityEngine.UI.Text>().FirstOrDefault(text => text.enabled && text.text == words);
-            float3 up = math.normalize(Player.walker.position), towards = math.normalize(Walker.Project(outpost.Place(outpost.Rooms.entrance) - Player.walker.position, up));
+            var entrance = math.normalize(outpost.Waypoint);
+            float3 up = math.normalize(entrance + World(entrance) * 0.65f);
+            float3 towards = math.normalize(Walker.Project(outpost.Waypoint, up));
+            Stand(up, towards);
             // the outpost is over the horizon of so small a world from where the player wakes
             Assert.Greater(math.distance(Player.walker.position, outpost.Position), 100f);
             Assert.Less(math.dot(math.normalize(outpost.Position), up) * Body.GroundRadius(math.normalize(outpost.Position)), math.length(Player.walker.position) - 5f);
@@ -478,7 +576,7 @@ namespace Infinigame.Tests
             Player.walker.forward = towards;
             yield return null;
             yield return null;
-            var mark = Shown("BURROW ENTRANCE");
+            var mark = Shown("MISSION · BURROW ENTRANCE");
             Assert.IsNotNull(mark, "marked, though the ground is in the way");
             Vector2 middle = hud.rect.size / 2f, at = ((RectTransform)mark.transform.parent).anchoredPosition;
             Assert.Less(Mathf.Abs(at.x - middle.x), 60f, "dead ahead");
@@ -487,15 +585,16 @@ namespace Infinigame.Tests
             Player.walker.forward = math.cross(up, towards);
             yield return null;
             yield return null;
-            at = ((RectTransform)Shown("BURROW ENTRANCE").transform.parent).anchoredPosition;
+            at = ((RectTransform)Shown("MISSION · BURROW ENTRANCE").transform.parent).anchoredPosition;
             Assert.Less(at.x, 80f, "it is to the left, and so is its mark");
             Player.walker.forward = -towards;
             yield return null;
             yield return null;
-            at = ((RectTransform)Shown("BURROW ENTRANCE").transform.parent).anchoredPosition;
+            at = ((RectTransform)Shown("MISSION · BURROW ENTRANCE").transform.parent).anchoredPosition;
             Assert.IsTrue(Mathf.Abs(at.x - middle.x) > middle.x - 80f || Mathf.Abs(at.y - middle.y) > middle.y - 80f, "behind: still at an edge");
             // and the radar carries a mark of its own for it
-            Assert.AreEqual(outpost.Place(outpost.Rooms.entrance), game.Goal);
+            Assert.AreEqual(outpost.Waypoint, game.Goal);
+            Assert.AreEqual(Body.GroundRadius(math.normalize(outpost.Waypoint)) + 0.12f, math.length(outpost.Waypoint), 0.04f);
 
             // and the map, until there is a ship to cross the system in, is of the world underfoot with both ends of the way on it
             yield return Press(new Controls { systemView = true });
@@ -505,7 +604,7 @@ namespace Infinigame.Tests
             Assert.IsFalse(Solar.Bodies[Home].transform.Find("Clouds").gameObject.activeSelf, "and with the cloud out of the way");
             Assert.IsNotNull(Shown("YOU"));
             Assert.IsTrue(hud.GetComponentsInChildren<UnityEngine.UI.Text>().Any(text => text.enabled &&
-                (text.text == "BURROW ENTRANCE" || text.text.StartsWith("REGION 1 ·"))), "the map labels the first burrow's region");
+                (text.text == "MISSION · BURROW ENTRANCE" || text.text.StartsWith("REGION 1 ·"))), "the map labels the first burrow's region");
             yield return Press(new Controls { toggleView = true });
             Assert.IsNotNull(Shown(game.Mission.name));
             Assert.IsTrue(hud.GetComponentsInChildren<UnityEngine.UI.Text>().Any(text => text.text.IndexOf("beam", System.StringComparison.OrdinalIgnoreCase) >= 0 && text.text.Contains(Campaign.Missions[Campaign.SecondBurrow].name)), "the mission summary shows its reward and what comes next");
@@ -542,7 +641,9 @@ namespace Infinigame.Tests
             game.Award(FoeKind.Mind);
             Assert.IsTrue(game.Outpost.Fallen);
             Assert.Greater(game.Outpost.Escape, 0);
-            HoverAt(new float3(0, 0, -400));
+            yield return null;
+            while (game.Levelling) yield return ConfirmLevel();
+            HoverAt(game.Outpost.Place(game.Outpost.Rooms.entrance - new float3(0, 0, 40)));
             yield return null;
             yield return null;
             Assert.AreEqual(Campaign.Won, game.Stage);
@@ -558,6 +659,8 @@ namespace Infinigame.Tests
             yield return null;
             Assert.AreEqual(depth + 1, game.Depth);
             Assert.IsTrue(Solar.Descriptor.generated);
+            yield return Until(() => game.Hermit.Line.Contains(Solar.Descriptor.bodies[0].name));
+            StringAssert.Contains(Solar.Descriptor.bodies[Campaign.World(Solar.Descriptor, Campaign.Tower)].name, game.Hermit.Line);
             Assert.IsFalse(game.GatePowered);
             Assert.AreEqual(-1, Solar.Gate);
         }
@@ -574,13 +677,17 @@ namespace Infinigame.Tests
                     yield return Seconds(1f);
                 }
             }
+            QualitySettings.SetQualityLevel(QualitySettings.names.Length - 1);
             yield return Settle();
-            int high = Solar.Bodies[Home].PatchCount;
+            int Vertices() => Solar.Bodies[Home].GetComponentsInChildren<MeshFilter>().Where(part => part.name == "Patch" && part.sharedMesh != null).Sum(part => part.sharedMesh.vertexCount);
+            int high = Vertices();
             yield return Press(new Controls { tierDown = true });
             yield return Press(new Controls { tierDown = true });
             Assert.AreEqual(0, QualitySettings.GetQualityLevel());
             yield return Settle();
-            Assert.That(Solar.Bodies[Home].PatchCount, Is.InRange(6, high - 1));
+            Assert.GreaterOrEqual(Solar.Bodies[Home].PatchCount, 6);
+            if (QualitySettings.names.Length > 1) Assert.That(Vertices(), Is.InRange(1, high - 1), "Mobile uses less terrain geometry");
+            else Assert.AreEqual("Mobile", QualitySettings.names[0], "The iOS build has a single terrain profile");
         }
 
         [UnityTest]
@@ -614,25 +721,46 @@ namespace Infinigame.Tests
         }
 
         [UnityTest]
-        public IEnumerator ScanningAsksTheOracleOnceAndTheJournalRemembers()
+        public IEnumerator ScannerUsesTheExpeditionsPregeneratedJournal()
         {
+            int batches = 0;
+            Oracle.Ask = (persona, prompt) =>
+            {
+                batches++;
+                StringAssert.Contains("Foundry", persona);
+                return Task.FromResult(prompt.Replace("Radius ", "Survey radius "));
+            };
+            Oracle.Voice = 1;
+            yield return null;
+            Assert.Greater(batches, 0);
+            int prepared = batches;
             // from high above, aim the ship at the moon
             HoverAt(math.normalize(Solar.ToReference(Moon)) * (Body.radius * 2.5f));
             Player.ship.rotation = quaternion.LookRotationSafe(Solar.ToReference(Moon) - Player.ship.position, new float3(0, 1, 0));
             yield return null;
             yield return Press(new Controls { scan = true });
-            Assert.IsFalse(game.Scanner.Busy);
             Assert.AreEqual(Solar.Descriptor.bodies[Moon].name, game.Scanner.Subject);
-            Assert.AreEqual(1, asked);
-            StringAssert.Contains(Solar.Descriptor.bodies[Moon].summary, lastPrompt, "the oracle is told the facts");
+            Assert.AreEqual(prepared, batches);
             Assert.AreEqual(1, game.Journal.Count);
-            Assert.AreEqual("Lantern Fir", game.Journal[0].title);
-            StringAssert.StartsWith("A resinous conifer", game.Scanner.Result.text);
-
+            Assert.AreEqual(game.Scanner.Subject, game.Journal[0].title);
+            StringAssert.Contains("Survey radius ", game.Scanner.Result.text);
+            StringAssert.Contains(Solar.Descriptor.bodies[Moon].summary, game.Scanner.Result.text);
             yield return Press(new Controls { scan = true });
-            Assert.AreEqual(1, asked, "a second look comes from the journal");
+            Assert.AreEqual(prepared, batches);
             Assert.AreEqual(1, game.Journal.Count);
-            StringAssert.Contains("Lantern Fir", File.ReadAllText(Path.Combine(Application.persistentDataPath, Game.SaveFile)));
+            string description = Core.Scan.Describe(Solar.Descriptor.bodies[Moon]);
+            Assert.IsTrue(game.Prepared(description));
+            yield return SceneManager.LoadSceneAsync("Main");
+            game = Object.FindAnyObjectByType<Game>();
+            while (!game.Ready) yield return null;
+            Player.controls = () => input;
+            yield return Press(new Controls { confirm = true });
+            Assert.AreEqual(prepared, batches, "Resuming the same expedition reuses its saved wording");
+            StringAssert.Contains("Survey radius ", game.Wording(description));
+            Oracle.Forget(1);
+            yield return null;
+            Assert.AreEqual(description, game.Wording(description));
+            Assert.AreEqual(prepared, batches);
         }
 
         [UnityTest]
@@ -643,13 +771,15 @@ namespace Infinigame.Tests
             yield return Press(new Controls { look = new Vector2(0f, -80f) });
             yield return Press(new Controls { scan = true });
             Assert.AreEqual(1, game.Journal.Count);
-            StringAssert.Contains($"on {Body.name} at", lastPrompt);
-            StringAssert.Contains("above the sea", lastPrompt);
+            StringAssert.Contains($"on {Body.name} at", game.Scanner.Result.text);
+            StringAssert.Contains("above the sea", game.Scanner.Result.text);
+            Assert.AreEqual(0, asked);
         }
 
         [UnityTest]
         public IEnumerator TheHermitTalksAndRemembers()
         {
+            Oracle.Voice = 0;
             // early on, while he still keeps to his fire
             game.Jump(2);
             yield return null;
@@ -679,19 +809,24 @@ namespace Infinigame.Tests
             StringAssert.Contains("Traveller: where are the rings", lastPrompt);
             StringAssert.Contains(hermit.Name, lastPersona);
             StringAssert.Contains(game.Mission.brief, lastPersona, "the model is told what he wants of the traveller");
+            yield return Until(() => hermit.Line.StartsWith("Well now"), 30);
             StringAssert.StartsWith("Well now, a visitor", hermit.Line);
             Assert.AreEqual(2, game.Talk.Count);
             Assert.AreEqual("", hermit.Draft);
             // a number asks one of the questions he always has an answer to, and with no model to ask he answers it himself
             yield return Press(new Controls { typed = "1" });
-            StringAssert.Contains("Traveller: Who are you?", lastPrompt);
+            Assert.AreEqual(1, asked, "The fixed question uses its prepared reply");
+            yield return Until(() => hermit.Line.Contains("recovery machine"), 30);
+            StringAssert.Contains(hermit.Name, hermit.Line);
             Oracle.Ask = (persona, prompt) => Task.FromException<string>(new System.InvalidOperationException("Not signed in to Claude."));
             yield return Press(new Controls { typed = "2" });
             yield return null;
+            yield return Until(() => hermit.Line.Contains("after the crash"), 30);
             StringAssert.Contains("recovered you after the crash", hermit.Line);
             yield return Press(new Controls { typed = "what now?" });
             yield return Press(new Controls { confirm = true });
             yield return null;
+            yield return Until(() => hermit.Line == game.Mission.brief, 30);
             Assert.AreEqual(game.Mission.brief, hermit.Line);
             Assert.Less(math.distance(stood, Player.walker.position), 0.5f, "the player stands still to talk");
 
@@ -711,6 +846,7 @@ namespace Infinigame.Tests
             Assert.IsFalse(hermit.Near);
             Assert.AreNotEqual($"Talk to {hermit.Name}", game.Prompt);
 
+            Oracle.Voice = 1;
             // he is talked to from the pilot's seat instead, and knows what the instruments say
             HoverAt(math.normalize(Player.ship.position) * (Body.radius + 400f));
             yield return null;
@@ -722,7 +858,7 @@ namespace Infinigame.Tests
             StringAssert.Contains("copilot", lastPersona);
             StringAssert.Contains("\"location\":\"" + Body.name + "\"", lastPrompt);
             StringAssert.Contains("\"hull\":100", lastPrompt);
-            StringAssert.Contains("DESTROY THE SHIELD CORE", lastPrompt);
+            StringAssert.Contains(game.Mission.task, lastPrompt);
             Assert.IsTrue(Player.flying && !Player.ship.landed, "and the ship flies on while they talk");
             yield return Press(new Controls { menu = true });
             Assert.IsFalse(hermit.Talking);
@@ -733,9 +869,12 @@ namespace Infinigame.Tests
             Player.hull = 0.2f * Player.MaxHull;
             yield return null;
             yield return null;
+            yield return Until(() => hermit.Remarking, 30);
+            yield return Until(() => hermit.Line.Contains("coming apart"), 30);
             Assert.IsTrue(hermit.Remarking);
             StringAssert.Contains("coming apart", hermit.Line);
-            var caption = Object.FindObjectsByType<UnityEngine.UI.Text>().Single(text => text.text.Contains("coming apart"));
+            yield return null;
+            var caption = Object.FindObjectsByType<UnityEngine.UI.Text>().First(text => text.text.Contains("coming apart") && text.GetComponentInParent<CanvasGroup>().alpha > 0);
             Assert.Greater(caption.GetComponentInParent<CanvasGroup>().alpha, 0f, "written under the view as he says it");
         }
 
@@ -769,7 +908,7 @@ namespace Infinigame.Tests
             }
             Assert.IsTrue(Ship.Rough(Body, steep));
             yield return Land(steep);
-            Assert.AreEqual(existing + 1, Pads(), "a charge went down first");
+            Assert.AreEqual(math.min(existing + 1, BodyDescriptor.MaxPads), Pads(), "the charge leaves a level pad");
             var pad = Body.blasts.Last(blast => blast.scar == Scar.Pad);
             Assert.Less(math.distance(pad.crater.xyz, math.normalize(Player.ship.position)) * Body.radius, 3f, "and the ship is on the pad it made");
             Assert.Greater(math.dot(math.rotate(Player.ship.rotation, new float3(0, 1, 0)), math.normalize(Player.ship.position)), 0.98f, "sitting level");
@@ -823,7 +962,7 @@ namespace Infinigame.Tests
         {
             string spoken = "";
             Speech.Render = (words, directory) => { spoken = words; return Enumerable.Repeat(0.5f, 3200).ToArray(); };
-            AudioSource Voice() => game.GetComponents<AudioSource>().FirstOrDefault(source => source.clip != null && source.clip.name == "Speech");
+            AudioSource Voice() => game.GetComponentsInChildren<AudioSource>().FirstOrDefault(source => source.clip != null && source.clip.name == "Speech");
 
             game.Jump(2);
             yield return null;
@@ -840,7 +979,8 @@ namespace Infinigame.Tests
             Assert.IsTrue(Voice().ignoreListenerPause);
             // and so is whatever the model answers for him
             yield return Press(new Controls { typed = "1" });
-            yield return Until(() => spoken.StartsWith("Well now"));
+            yield return Until(() => spoken.Contains("autonomous recovery machine"), 30);
+            StringAssert.Contains("autonomous recovery machine", spoken);
 
             // unless the player would rather read
             Speech.Muted = true;
@@ -958,9 +1098,9 @@ namespace Infinigame.Tests
             encoded.Split('&').Select(pair => pair.Split('=')).ToDictionary(pair => pair[0], pair => System.Uri.UnescapeDataString(pair[1].Replace('+', ' ')));
 
         // Waits, without the game's clock, until something is so or ten seconds have gone.
-        static IEnumerator Until(System.Func<bool> done)
+        static IEnumerator Until(System.Func<bool> done, float seconds = 10)
         {
-            for (float t = 0; t < 10f && !done(); t += Time.unscaledDeltaTime) yield return null;
+            for (float t = 0; t < seconds && !done(); t += Time.unscaledDeltaTime) yield return null;
         }
 
         static IEnumerator Finish(Task task)
@@ -971,6 +1111,7 @@ namespace Infinigame.Tests
         [UnityTest]
         public IEnumerator TheOracleAsksClaudeThroughClaudeCode()
         {
+            Oracle.Voice = 0;
             Oracle.Tools[0] = StandIn("claude-signed-in", "if [ \"$1\" = auth ]; then echo '{ \"loggedIn\": true, \"authMethod\": \"claude.ai\" }'; else " +
                 "printf '%s\\n' '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"A fir, by plan.\",\"usage\":{\"input_tokens\":2,\"cache_creation_input_tokens\":650,\"output_tokens\":7}}'; fi");
             var status = Oracle.Status(0);
@@ -989,6 +1130,7 @@ namespace Infinigame.Tests
             var refused = Oracle.Run("", "Anything.");
             yield return Finish(refused);
             StringAssert.Contains("Not signed in to Claude. Open Claude or ChatGPT on the menu", refused.Exception.InnerException.Message);
+            Oracle.Voice = 0;
             Oracle.Tools[0] = StandIn("claude-spent", "echo '{\"type\":\"result\",\"is_error\":true,\"result\":\"You have reached your usage limit.\"}'\nexit 1");
             var spent = Oracle.Run("", "Anything.");
             yield return Finish(spent);
@@ -1017,12 +1159,6 @@ namespace Infinigame.Tests
             CollectionAssert.AreEqual(new[] { "Describe a fir.", "Briefly." }, asked.Skip(asked.Length - 2));
             Assert.AreEqual("ASKED 1 TIME   ·   11,052 TOKENS IN   ·   5 OUT", Oracle.Used(1));
 
-            Oracle.NextModel(1);
-            reply = Oracle.Run("Be a field guide.", "Describe a fir.");
-            yield return Finish(reply);
-            asked = File.ReadAllLines(Oracle.Tools[1] + ".args");
-            Assert.AreEqual("gpt-6.1-terra", asked[System.Array.IndexOf(asked, "-m") + 1]);
-
             // most of what a coding agent brings along is left at home, and a codex that has since forgotten one of those names is asked again without them
             CollectionAssert.Contains(asked, "apps");
             Oracle.Tools[1] = StandIn("codex-newer", "case \"$*\" in *apps*) echo 'Error: Unknown feature flag: apps' >&2; exit 1;; esac\n" +
@@ -1033,12 +1169,7 @@ namespace Infinigame.Tests
             asked = File.ReadAllLines(Oracle.Tools[1] + ".args");
             CollectionAssert.DoesNotContain(asked, "apps");
             Assert.AreEqual("shell_tool", asked[System.Array.IndexOf(asked, "--disable") + 1]);
-            // how hard it thinks is the player's to choose too
             CollectionAssert.Contains(asked, "model_reasoning_effort=\"low\"");
-            Oracle.NextEffort(1);
-            reply = Oracle.Run("Be a field guide.", "Describe a fir.");
-            yield return Finish(reply);
-            CollectionAssert.Contains(File.ReadAllLines(Oracle.Tools[1] + ".args"), "model_reasoning_effort=\"medium\"");
 
             Oracle.Tools[1] = StandIn("codex-signed-out", "printf '%s\\n' '{\"type\":\"error\",\"message\":\"Reconnecting... 5/5 (unexpected status 401 Unauthorized)\"}' " +
                 "'{\"type\":\"turn.failed\",\"error\":{\"message\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header\"}}'\nexit 1");
@@ -1046,6 +1177,7 @@ namespace Infinigame.Tests
             yield return Finish(refused);
             StringAssert.Contains("Not signed in to ChatGPT. Open Claude or ChatGPT on the menu", refused.Exception.InnerException.Message);
 
+            Oracle.Voice = 1;
             Oracle.Tools[1] = StandIn("codex-spent", "printf '%s\\n' '{\"type\":\"turn.failed\",\"error\":{\"message\":\"You have hit your usage limit. Try again at 3:11 PM.\"}}'\nexit 1");
             var spent = Oracle.Run("", "Room 401 is on the left.");
             yield return Finish(spent);
@@ -1156,6 +1288,7 @@ namespace Infinigame.Tests
             server.Lasts = 0;
             status = Oracle.SignIn(1, 1);
             yield return Finish(status);
+            Oracle.Voice = 1;
             server.Revoked = true;
             var refused = Oracle.Run("", "Anything.");
             yield return Finish(refused);
@@ -1166,148 +1299,73 @@ namespace Infinigame.Tests
         }
 
         [UnityTest]
-        public IEnumerator EachVoiceHasAPageOfTheMenuToSignInGiveAKeyAndChooseAModel()
+        public IEnumerator TheTitleConnectsOneWriterAtTheLowestEffort()
         {
             var opened = new List<Dictionary<string, string>>();
             using var server = StandInServers(opened);
-            // none of the makers' tools holds a sign-in until it has been told to sign in
-            Oracle.Tools[1] = StandIn("codex-login", "if [ \"$2\" = status ]; then [ -f \"$0.in\" ] || exit 1; echo 'Logged in using ChatGPT'; else touch \"$0.in\"; fi; exit 0");
-            Oracle.Tools[0] = StandIn("claude-login", "if [ \"$2\" = status ]; then [ -f \"$0.in\" ] && echo '{ \"loggedIn\": true }' || echo '{ \"loggedIn\": false }'; else touch \"$0.in\"; fi; exit 0");
-            foreach (string tool in Oracle.Tools) File.Delete(tool + ".in");
-
-            // the settings page says how the player stands with each, and which model it would use
-            yield return Choose(Game.Settings);
+            yield return Choose("Quit to title");
+            yield return Pick(Game.Writers);
             yield return Until(() => !game.Items.Any(item => item.Contains("CHECKING")));
-            CollectionAssert.AreEqual(new[] { "CLAUDE   ·   NOT SIGNED IN   ·   HAIKU 5.5   ·   IN USE", "CHATGPT   ·   NOT SIGNED IN   ·   GPT-6 LUNA", "Back" }, game.Items.Skip(7));
-
-            // ChatGPT's page: a model and how hard it thinks, then two ways to sign in, both in the player's own browser
-            for (int i = 0; i < 7; i++) yield return Press(new Controls { down = true });
-            yield return Press(new Controls { confirm = true });
-            Assert.AreEqual("ChatGPT", game.Page);
-            CollectionAssert.AreEqual(new[]
-            {
-                "Have ChatGPT write", "MODEL   ·   GPT-6 LUNA", "THINKING   ·   LOW", "Sign in with Codex", "Continue with ChatGPT", "Use the key on the clipboard", "Forget key and sign-in", "Back",
-            }, game.Items);
-            Assert.AreEqual("NOT SIGNED IN   ·   NOT ASKED ANYTHING YET", game.Standing);
-            yield return Press(new Controls { down = true });
-            yield return Press(new Controls { confirm = true });
-            Assert.AreEqual("MODEL   ·   GPT-6.1 TERRA", game.Items[1]);
-            yield return Press(new Controls { down = true });
-            yield return Press(new Controls { confirm = true });
-            yield return Press(new Controls { confirm = true });
-            Assert.AreEqual("THINKING   ·   HIGH", game.Items[2]);
-            // OpenAI's own page, opened by the game: whoever they sign in to writes from then on
-            yield return Press(new Controls { down = true });
-            StringAssert.Contains("CODEX USE", game.Hint);
-            yield return Press(new Controls { down = true });
-            StringAssert.Contains("CHATGPT PLUS OR PRO", game.Hint);
-            yield return Press(new Controls { confirm = true });
-            yield return Until(() => game.Standing.StartsWith("SIGNED IN"));
+            Assert.IsFalse(game.Items.Any(item => item.Contains("IN USE")));
+            yield return Pick("ChatGPT");
+            yield return Pick("Continue with ChatGPT");
+            yield return Until(() => game.Standing.Contains("IN USE"));
+            Assert.AreEqual(1, opened.Count);
             Assert.AreEqual("SIGNED IN WITH CHATGPT   ·   IN USE   ·   NOT ASKED ANYTHING YET", game.Standing);
-            Assert.AreEqual(1, opened.Count, "the page was opened");
-            Assert.AreEqual(1, Oracle.Voice);
-            Assert.IsTrue(game.Paused, "and the menu stays open to show it");
-
-            // a key from the clipboard, when what is there looks like one
-            yield return Press(new Controls { down = true });
-            Game.Clipboard = () => "a shopping list";
-            yield return Press(new Controls { confirm = true });
-            StringAssert.StartsWith("NO KEY ON THE CLIPBOARD", game.Standing);
-            Game.Clipboard = () => Server.OpenAiKey;
-            yield return Press(new Controls { confirm = true });
-            StringAssert.StartsWith("YOUR OWN KEY", game.Standing);
-            // forgetting drops the key and the sign-in alike
-            yield return Press(new Controls { down = true });
-            yield return Press(new Controls { confirm = true });
-            yield return Until(() => game.Standing.StartsWith("NOT SIGNED IN"));
-            // and codex's own sign-in is the other way in
-            for (int i = 0; i < 3; i++) yield return Press(new Controls { up = true });
-            Assert.AreEqual("Sign in with Codex", game.Items[game.Selected]);
-            yield return Press(new Controls { confirm = true });
-            yield return Until(() => game.Standing.StartsWith("SIGNED IN"));
-            StringAssert.StartsWith("SIGNED IN WITH CODEX", game.Standing);
-            Assert.IsTrue(File.Exists(Oracle.Tools[1] + ".in"), "codex was told to sign in");
-            CollectionAssert.AreEqual(new[] { "login" }, File.ReadAllLines(Oracle.Tools[1] + ".args").Take(1));
-
-            // back to the settings, and on to Claude's page, where Claude Code does the signing in
             yield return Press(new Controls { menu = true });
-            Assert.AreEqual(Game.Settings, game.Page);
-            Assert.AreEqual(7, game.Selected);
-            yield return Press(new Controls { up = true });
-            yield return Press(new Controls { confirm = true });
-            Assert.AreEqual("Claude", game.Page);
-            CollectionAssert.AreEqual(new[] { "Sign in with Claude Code" }, game.Items.Skip(3).Take(1));
-            for (int i = 0; i < 3; i++) yield return Press(new Controls { down = true });
-            StringAssert.Contains("CLAUDE PLAN", game.Hint);
-            yield return Press(new Controls { confirm = true });
-            yield return Until(() => game.Standing.StartsWith("SIGNED IN"));
-            StringAssert.StartsWith("SIGNED IN WITH CLAUDE CODE   ·   IN USE", game.Standing);
-            CollectionAssert.AreEqual(new[] { "auth", "status" }, File.ReadAllLines(Oracle.Tools[0] + ".args"), "it was told to sign in, then asked how that went");
-            Assert.IsTrue(File.Exists(Oracle.Tools[0] + ".in"));
-            Assert.AreEqual(0, Oracle.Voice);
-            yield return Press(new Controls { down = true });
-            Assert.AreEqual("Use the key on the clipboard", game.Items[game.Selected]);
-            Assert.IsFalse(game.Items.Any(item => item.Contains("with ant")));
-
-            // either can be had to write, signed in or not, and the choice outlasts the game
+            Assert.AreEqual(Game.Writers, game.Page);
+            Assert.IsFalse(game.Items.Any(item => item.StartsWith("Claude")));
+            yield return Pick("ChatGPT");
+            yield return Pick("Disconnect");
             yield return Press(new Controls { menu = true });
-            yield return Press(new Controls { down = true });
-            yield return Press(new Controls { confirm = true });
-            yield return Press(new Controls { confirm = true });
-            Assert.AreEqual(1, Oracle.Voice);
+            yield return Pick("Claude");
+            Game.Clipboard = () => Server.ClaudeKey;
+            yield return Pick("Use the key");
+            Assert.IsTrue(Oracle.Enabled);
             Oracle.Load();
-            Assert.AreEqual(1, Oracle.Voice);
-            Assert.AreEqual("GPT-6.1 Terra", Oracle.Model(1).name);
-            Assert.AreEqual("high", Oracle.Effort(1));
-            // and each escape goes back a page, to the item that led away from it
+            Assert.AreEqual(0, Oracle.Voice);
+            Assert.AreEqual("Haiku 5.5", Oracle.Model(0).name);
+            Assert.AreEqual("low", Oracle.Effort(0));
+            Assert.AreEqual("GPT-6 Luna", Oracle.Model(1).name);
+            Assert.AreEqual("none", Oracle.Effort(1));
+            var status = Oracle.Status(1);
+            yield return Finish(status);
+            Assert.AreEqual("NOT SIGNED IN", status.Result);
             yield return Press(new Controls { menu = true });
-            Assert.AreEqual(Game.Settings, game.Page);
-            StringAssert.StartsWith("CHATGPT", game.Items[game.Selected]);
             yield return Press(new Controls { menu = true });
-            Assert.IsNull(game.Page);
-            Assert.AreEqual(Game.Settings, game.Items[game.Selected]);
+            Assert.IsTrue(game.Title);
         }
 
-        [UnityTest] public IEnumerator FestivalSettingsPreviewAndRememberEffects()
+        IEnumerator Pick(string prefix)
         {
-            string spoken = "";
-            Speech.Render = (words, directory) => { spoken = words; return new float[3200]; };
-            IEnumerator Pick(string prefix)
-            {
-                int at = System.Array.FindIndex(game.Items, item => item.StartsWith(prefix));
-                Assert.GreaterOrEqual(at, 0, prefix + " is offered");
-                while (game.Selected != at) yield return Press(new Controls { down = true });
-                yield return Press(new Controls { confirm = true });
-            }
+            int at = System.Array.FindIndex(game.Items, item => item.StartsWith(prefix));
+            Assert.GreaterOrEqual(at, 0, prefix + " is offered");
+            while (game.Selected != at) yield return Press(new Controls { down = true });
+            yield return Press(new Controls { confirm = true });
+        }
+
+        [UnityTest] public IEnumerator LocalVoiceTogglesDirectlyAndRemembersItsState()
+        {
             yield return Choose(Game.Settings);
             yield return Pick("ROBOT VOICE");
-            Assert.AreEqual(5, game.Items.Length);
-            yield return Pick("FESTIVAL SLT");
-            yield return Until(() => spoken.Length > 0);
-            yield return Pick("ROBOT EFFECT");
-            Assert.AreEqual(1, PlayerPrefs.GetInt($"{Game.Prefs}.robot"));
-            yield return Pick("EFFECT STRENGTH");
-            Assert.AreEqual(0, Speech.RobotStrength);
-            yield return Pick("Voice off");
+            Assert.AreEqual(Game.Settings, game.Page);
             Assert.IsTrue(Speech.Muted);
             yield return SceneManager.LoadSceneAsync("Main");
             game = Object.FindAnyObjectByType<Game>();
             while (!game.Ready) yield return null;
             Player.controls = () => input;
             Assert.IsTrue(Speech.Muted);
-            Assert.IsTrue(Speech.Robot);
-            Assert.AreEqual(0, Speech.RobotStrength);
             Assert.AreEqual("cmu_us_slt_arctic_hts", Speech.Choice);
         }
 
-        [UnityTest] public IEnumerator FestivalDiscardsInterruptedSpeechAndPausesWithMenus()
+        [UnityTest] public IEnumerator SpeechResumesTheCurrentLineBeforeStartingTheNext()
         {
             using var started = new System.Threading.ManualResetEventSlim();
             using var finish = new System.Threading.ManualResetEventSlim();
             Speech.Render = (words, directory) =>
             {
                 if (words == "Old line") { started.Set(); finish.Wait(10000); }
-                return Enumerable.Repeat(words == "Old line" ? 0.1f : 0.5f, 320000).ToArray();
+                return Enumerable.Repeat(words == "Old line" ? 0.1f : 0.5f, 64000).ToArray();
             };
             try
             {
@@ -1315,13 +1373,21 @@ namespace Infinigame.Tests
                 yield return Until(() => started.IsSet);
                 game.Speech.Say("New line");
                 finish.Set();
-                AudioSource Voice() => game.GetComponents<AudioSource>().FirstOrDefault(source => source.clip != null && source.clip.name == "Speech");
+                AudioSource Voice() => game.GetComponentsInChildren<AudioSource>().FirstOrDefault(source => source.clip != null && source.clip.name == "Speech");
                 yield return Until(() => Voice() != null);
                 var samples = new float[1]; Voice().clip.GetData(samples, 0);
-                Assert.AreEqual(0.5f, samples[0], "Only the replacement line reaches the audio source");
+                Assert.AreEqual(0.065f, samples[0], 0.0001f, "The first line reaches the speaker first");
                 yield return Press(new Controls { menu = true });
                 Assert.IsTrue(game.Paused);
                 Assert.IsFalse(Voice().isPlaying);
+                yield return Seconds(0.4f);
+                Voice().clip.GetData(samples, 0);
+                Assert.AreEqual(0.065f, samples[0], 0.0001f, "Pausing retains the current line");
+                yield return Press(new Controls { menu = true });
+                yield return Until(() => { if (Voice() == null) return false; Voice().clip.GetData(samples, 0); return Mathf.Abs(samples[0] - 0.325f) < 0.0001f; });
+                Assert.AreEqual(0.325f, samples[0], 0.0001f);
+                Voice().clip.GetData(samples, 123);
+                Assert.Greater(samples[0], 0.49f, "The fixed robot modulation is audible on the live voice");
                 game.Speech.Silence();
                 Assert.IsFalse(game.Speech.Speaking);
                 Assert.IsNull(Voice());
@@ -1335,7 +1401,10 @@ namespace Infinigame.Tests
             int tiers = QualitySettings.names.Length, tier = QualitySettings.GetQualityLevel();
             float look = DesktopControls.Sensitivity;
             yield return Choose(Game.Settings);
-            Assert.AreEqual(10, game.Items.Length, "graphics, audio, controls, automatic quality, model providers and back");
+            Assert.AreEqual(9, game.Items.Length);
+            CollectionAssert.Contains(game.Items, "SHIP STICK PITCH   ·   NORMAL");
+            CollectionAssert.Contains(game.Items, Game.Writers);
+            Assert.AreEqual("Back", game.Items.Last());
             Assert.AreEqual($"DETAIL   ·   {QualitySettings.names[tier].ToUpperInvariant()}", game.Items[0]);
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual((tier + 1) % tiers, QualitySettings.GetQualityLevel());
@@ -1352,9 +1421,7 @@ namespace Infinigame.Tests
             yield return Press(new Controls { down = true });
             Assert.AreEqual("ROBOT VOICE   ·   ON", game.Items[4]);
             yield return Press(new Controls { confirm = true });
-            Assert.AreEqual("Voice", game.Page);
-            while (game.Items[game.Selected] != "Voice off") yield return Press(new Controls { down = true });
-            yield return Press(new Controls { confirm = true });
+            Assert.AreEqual(Game.Settings, game.Page);
             Assert.IsTrue(Speech.Muted);
             yield return Press(new Controls { menu = true });
 
@@ -1416,35 +1483,18 @@ namespace Infinigame.Tests
         }
 
         [UnityTest]
-        public IEnumerator AShortFallHurtsAndALongOneKillsButOnlyTheMissionIsLost()
+        public IEnumerator TheSuitAbsorbsShortAndLongFalls()
         {
             Player.fitted &= ~(1 << (int)Gear.Armour);
             yield return Seconds(0.5f);
-            float3 up = math.normalize(Player.walker.position);
-            Player.walker.position += up * 14f;
-            Player.walker.grounded = false;
-            yield return Seconds(3f);
-            Assert.That(Player.health, Is.InRange(20f, Player.MaxHealth - 5f));
-            Assert.IsFalse(game.Dead);
-
-            uint seed = game.Seed;
-            int kit = Player.kit;
-            Player.walker.position += up * 150f;
-            Player.walker.grounded = false;
-            for (float t = 0; t < 12f && !game.Dead; t += Time.unscaledDeltaTime) yield return null;
-            Assert.IsTrue(game.Dead);
-            StringAssert.Contains($"Fell to the ground on {Body.name}", game.Epitaph);
-            StringAssert.Contains("YOU KEEP ALL YOU HAVE WON", game.Tally);
-            Assert.AreEqual(0f, Time.timeScale, "the world stops");
-            CollectionAssert.AreEqual(Game.Over, game.Items);
-
-            yield return Press(new Controls { confirm = true });
-            Assert.IsFalse(game.Dead);
-            Assert.AreEqual(1f, Time.timeScale);
-            Assert.AreEqual(Player.MaxHealth, Player.health);
-            Assert.AreEqual(seed, game.Seed, "the same system");
-            Assert.AreEqual(Campaign.Citadel, game.Stage, "the same mission");
-            Assert.AreEqual(kit, Player.kit, "and everything that had been won");
+            foreach (float height in new[] { 14f, 150f })
+            {
+                Player.walker.position += math.normalize(Player.walker.position) * height;
+                Player.walker.grounded = false;
+                yield return Until(() => Player.walker.grounded || game.Dead, 14);
+                Assert.IsFalse(game.Dead);
+                Assert.AreEqual(Player.MaxHealth, Player.health);
+            }
         }
 
         [UnityTest]
@@ -1505,7 +1555,7 @@ namespace Infinigame.Tests
             Time.timeScale = 6f;
             for (float t = 0; t < 120f && !game.Dead; t += Time.unscaledDeltaTime) yield return null;
             Assert.IsTrue(game.Dead);
-            StringAssert.Contains("drones", game.Epitaph);
+            StringAssert.Contains("Skimmers", game.Epitaph);
         }
 
         [UnityTest]
@@ -1542,7 +1592,7 @@ namespace Infinigame.Tests
             Time.timeScale = 8f;
             for (float t = 0; t < 60f && !game.Battle.Foes.Any(foe => foe.kind == FoeKind.Raider); t += Time.unscaledDeltaTime) yield return null;
             Assert.IsTrue(game.Battle.Foes.Any(foe => foe.kind == FoeKind.Raider), "raiders jump a ship in flight");
-            Assert.AreEqual("RAIDERS INBOUND", game.Notice);
+            Assert.AreEqual("HARROWERS INBOUND", game.Notice);
         }
 
         [UnityTest]
@@ -1584,6 +1634,8 @@ namespace Infinigame.Tests
         [UnityTest]
         public IEnumerator RingsAreRocksYouCanFlyInto()
         {
+            QualitySettings.SetQualityLevel(QualitySettings.names.Length - 1);
+            Camera.main.targetTexture = new RenderTexture(1280, 720, 16);
             int giant = System.Array.FindIndex(Solar.Descriptor.bodies, body => body.ringDensity > 0.5f);
             yield return HoverOver(giant, Solar.Descriptor.bodies[giant].radius);
             float middle = (Body.ringInner + Body.ringOuter) / 2f;
@@ -1591,6 +1643,7 @@ namespace Infinigame.Tests
             Player.ship.rotation = quaternion.LookRotationSafe(new float3(0, -0.3f, 1), new float3(0, 1, 0));
             yield return Seconds(3f);
             var field = Solar.Bodies[giant].GetComponent<RingField>();
+            yield return Until(() => field.Drawn > 8);
             Assert.Greater(field.Drawn, 8, "cells of rock are drawn round the ship");
             Assert.Greater(Object.FindObjectsByType<MeshFilter>().Count(part => part.name == "Rocks" && part.sharedMesh.vertexCount > 100), 5);
 
@@ -1632,14 +1685,14 @@ namespace Infinigame.Tests
         [UnityTest]
         public IEnumerator FrameRateIsWrittenToALog()
         {
-            // however slowly the machine is running: until there are a few lines of it to read
-            yield return Until(() => File.Exists(FrameLog.File) && File.ReadAllLines(FrameLog.File).Length > 6);
+            // The late-game slot can log time in flight before the fixture puts the player on foot.
+            int firstOnFoot = File.ReadAllLines(FrameLog.File).Length;
+            yield return Until(() => File.ReadAllLines(FrameLog.File).Length >= firstOnFoot + 3);
             string[] lines = File.ReadAllLines(FrameLog.File);
             StringAssert.Contains("burst", lines[2]);
             StringAssert.StartsWith("time\tfps", lines[3]);
             Assert.Greater(lines.Length, 4, "a line every half second");
-            // the first of them may have been taken on the title page
-            StringAssert.IsMatch("\t(title|foot)\t", lines[4]);
+            foreach (var sample in lines.Skip(firstOnFoot)) StringAssert.Contains("\tfoot\t", sample);
             string[] fields = lines[lines.Length - 1].Split('\t');
             Assert.AreEqual(lines[3].Split('\t').Length, fields.Length);
             Assert.Greater(float.Parse(fields[1]), 1f);
@@ -1657,8 +1710,8 @@ namespace Infinigame.Tests
             yield return Choose("Quit to title");
             Assert.IsTrue(game.Title);
             Assert.IsTrue(game.Paused);
-            Assert.AreEqual(Game.Slots + 3, game.Items.Length, "three slots, one delete action, settings and the way out");
-            Assert.AreEqual("SLOT 1   ·   THE FIRST FACTORY", game.Items[0]);
+            Assert.AreEqual(Game.Slots + 4, game.Items.Length, "three slots, language model, delete, settings and quit");
+            Assert.AreEqual("SLOT 1   ·   " + Campaign.Missions[3].name.ToUpperInvariant(), game.Items[0]);
             Assert.AreEqual("SLOT 2   ·   NEW GAME", game.Items[1]);
             Assert.AreEqual(0, game.Selected, "the slot played last is the one offered");
             // escape is no way off the title page
@@ -1667,9 +1720,7 @@ namespace Infinigame.Tests
             Assert.IsTrue(game.Paused);
             yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
-            Assert.IsTrue(game.Confirming);
-            yield return Press(new Controls { down = true });
-            yield return Press(new Controls { confirm = true });
+            Assert.IsFalse(game.Confirming);
             Assert.AreEqual(1, game.Slot);
             Assert.IsFalse(game.Title);
             Assert.IsFalse(game.Paused, "choosing a slot starts playing it");
@@ -1679,21 +1730,19 @@ namespace Infinigame.Tests
 
             // the first is as it was left
             yield return Choose("Quit to title");
-            Assert.AreEqual("SLOT 1   ·   THE FIRST FACTORY", game.Items[0]);
+            Assert.AreEqual("SLOT 1   ·   " + Campaign.Missions[3].name.ToUpperInvariant(), game.Items[0]);
             Assert.AreEqual("SLOT 2   ·   BURIED", game.Items[1]);
             Assert.AreEqual(1, game.Selected);
             yield return Press(new Controls { up = true });
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual(0, game.Slot);
             Assert.AreEqual(3, game.Stage);
-            Assert.IsTrue(Player.Has(Gear.Thrusters) && !Player.Has(Gear.Stealth));
+            Assert.IsTrue(Player.Has(Gear.Beams) && !Player.Has(Gear.Thrusters));
             Assert.AreEqual(seed, game.Seed);
 
             // and the game opens on its title page, offering whichever was played last
             yield return Choose("Quit to title");
             yield return Press(new Controls { down = true });
-            yield return Press(new Controls { down = true });
-            yield return Press(new Controls { confirm = true });
             yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual(2, game.Slot);
@@ -1727,8 +1776,7 @@ namespace Infinigame.Tests
             yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual(Campaign.Won, game.Stage);
-            Assert.IsTrue(game.Frontier.Local.shipyard);
-            Assert.AreEqual(0, game.Frontier.Local.alienShips);
+            Assert.IsTrue(game.Fall.active);
         }
 
         [UnityTest]
@@ -1805,20 +1853,23 @@ namespace Infinigame.Tests
         [UnityTest]
         public IEnumerator TheAsteroidBeltIsRocksTooAndMoonsAreChartedWhereTheyCanBeSeen()
         {
+            QualitySettings.SetQualityLevel(QualitySettings.names.Length - 1);
+            Camera.main.targetTexture = new RenderTexture(1280, 720, 16);
             Assert.IsTrue(Solar.Charted(Moon), "the home world's moon, from the home world");
             int far = System.Array.FindIndex(Solar.Descriptor.bodies, body => body.summary.Contains("sulphur"));
             Assert.IsFalse(Solar.Charted(far), "not a far giant's moon");
             Assert.IsTrue(Solar.Charted(Solar.Descriptor.bodies[far].orbit.parent) && Solar.Charted(Solar.Station), "planets and the base, always");
             // out of the home world's own space, its moon still shows as more than a speck, and so the autopilot will fly there
             float3 past = Solar.ToReference(Moon);
-            HoverAt(past + math.normalize(past) * (2f * Body.soiRadius));
+            HoverAt(past + World(math.normalize(past)) * (1.3f * Body.soiRadius));
             yield return null;
             yield return null;
             Assert.AreEqual(0, Solar.Reference);
             Assert.IsTrue(Solar.Charted(Moon), $"the moon from {math.distance(Player.ship.position, Solar.ToReference(Moon)):0} m");
             Player.assist = false;
+            HoverAt(Player.Position);
             Player.ship.rotation = quaternion.LookRotationSafe(Solar.ToReference(Moon) - Player.ship.position, new float3(0, 1, 0));
-            yield return null;
+            yield return null; yield return null;
             StringAssert.Contains(Solar.Descriptor.bodies[Moon].name.ToUpperInvariant(), Player.Travel());
             Player.Travel();
             yield return HoverOver(Home, 300f);
@@ -1829,8 +1880,11 @@ namespace Infinigame.Tests
             yield return null;
             yield return null;
             Assert.AreEqual(0, Solar.Reference, "the belt is in the star's own space");
+            HoverAt(new float3(star.ringInner + 6000, 0, 0));
+            Player.assist = true;
             Assert.IsFalse(Solar.Charted(Moon), "from here the moon is a speck, and has no mark");
             yield return Seconds(3f);
+            yield return Until(() => Solar.Bodies[0].GetComponent<RingField>().Drawn > 5);
             Assert.Greater(Solar.Bodies[0].GetComponent<RingField>().Drawn, 5, "asteroids are drawn round the ship");
             Assert.Greater(Object.FindObjectsByType<MeshFilter>().Count(part => part.name == "Rocks" && part.sharedMesh.vertexCount > 100), 3);
         }
@@ -1846,7 +1900,13 @@ namespace Infinigame.Tests
             yield return null;
             var radar = Object.FindAnyObjectByType<Radar>();
             var contacts = radar.GetComponentsInChildren<Transform>().Where(part => part.name == "Contact" && part.gameObject.activeSelf).ToArray();
-            Assert.AreEqual(3, contacts.Length);
+            Assert.AreEqual(4, contacts.Length);
+            var front = contacts[0].GetComponent<MeshRenderer>().sharedMaterial;
+            var behind = contacts[1].GetComponent<MeshRenderer>().sharedMaterial;
+            Assert.Greater(front.GetColor("_Colour").r, front.GetColor("_Colour").g);
+            Assert.AreEqual(0, front.GetFloat("_Hollow"));
+            Assert.AreEqual(1, behind.GetFloat("_Hollow"));
+            Assert.Greater(contacts[3].localScale.x, contacts[0].localScale.x);
             Assert.IsTrue(contacts.Any(contact => contact.localPosition.z > 0));
             Assert.IsTrue(contacts.Any(contact => contact.localPosition.z < 0));
             Assert.That(Vector3.Dot(contacts[0].localPosition.normalized, Vector3.forward), Is.GreaterThan(0.99f));
@@ -1958,9 +2018,8 @@ namespace Infinigame.Tests
             Stand(peak, Outlook(peak));
             yield return Shot("07-mountain-top", 15f);
 
-            // dry land under whichever storm has the most daylight
-            float4 storm = Enumerable.Range(0, Weather.Storms).Select(i => Weather.Storm(planet, i, Solar.Clock)).OrderByDescending(s => math.dot(s.xyz, sun)).First();
-            float3 wet = Find((d, height) => height > 3f && height < 60f && math.dot(d, storm.xyz) > math.cos(0.4f * storm.w) && Level(d));
+            var storms = Enumerable.Range(0, Weather.Storms).Select(i => Weather.Storm(planet, i, Solar.Clock)).ToArray();
+            float3 wet = Find((d, height) => height > 0 && storms.Any(storm => math.dot(d, storm.xyz) > math.cos(0.65f * storm.w)) && Level(d));
             Stand(wet, Outlook(wet));
             yield return Shot("08-rain", -6f);
 
@@ -2176,21 +2235,17 @@ namespace Infinigame.Tests
             yield return Press(new Controls { menu = true });
             yield return Press(new Controls { down = true });
             yield return Shot("53-pause-menu", 0f, 1f);
-            yield return Press(new Controls { down = true });
             Oracle.Tools[0] = StandIn("claude-somebody", "echo '{\"loggedIn\":true}'");
             Oracle.Tools[1] = StandIn("codex-somebody", "echo 'Logged in using ChatGPT'");
-            yield return Press(new Controls { confirm = true });
+            yield return Pick(Game.Settings);
             yield return Shot("54-settings", 0f, 1.5f);
-            for (int i = 0; i < 5; i++) yield return Press(new Controls { down = true });
-            yield return Press(new Controls { confirm = true });
-            for (int i = 0; i < 3; i++) yield return Press(new Controls { down = true });
+            yield return Pick(Game.Writers);
+            yield return Pick("Claude");
             yield return Shot("55-claude", 0f, 1f);
             yield return Press(new Controls { menu = true });
-            yield return Press(new Controls { down = true });
-            yield return Press(new Controls { confirm = true });
-            yield return Press(new Controls { down = true });
+            yield return Pick("ChatGPT");
             yield return Shot("56-chatgpt", 0f, 1f);
-            for (int i = 0; i < 3; i++) yield return Press(new Controls { menu = true });
+            for (int i = 0; i < 4; i++) yield return Press(new Controls { menu = true });
             Assert.IsFalse(game.Paused);
             Player.Hurt(1000f, $"Shot down over {Body.name}");
             yield return null;
@@ -2259,8 +2314,8 @@ namespace Infinigame.Tests
             game.Battle.Bolts.Clear();
 
             yield return Press(new Controls { menu = true });
-            for (int i = 0; i < 3; i++) yield return Press(new Controls { down = true });
-            yield return Press(new Controls { confirm = true });
+            if (!game.CheatsUnlocked) yield return Press(new Controls { typed = "idgaf" });
+            yield return Pick(Game.Cheats);
             yield return Shot("61-cheats", 0f, 1f);
             Camera.main.targetTexture = null;
             target.Release();

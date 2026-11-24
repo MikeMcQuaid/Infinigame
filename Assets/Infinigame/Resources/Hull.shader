@@ -102,6 +102,7 @@ Shader "Infinigame/Hull"
 
             struct Varyings
             {
+                UNITY_VERTEX_OUTPUT_STEREO
                 float4 positionCS : SV_POSITION;
                 float3 positionWS : TEXCOORD0;
                 float3 normalWS : TEXCOORD1;
@@ -116,6 +117,7 @@ Shader "Infinigame/Hull"
             {
                 Varyings output;
                 UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
                 output.place = Place(input);
                 output.uv = input.uv;
                 output.colour = input.colour;
@@ -129,6 +131,7 @@ Shader "Infinigame/Hull"
 
             half4 Fragment(Varyings input, FRONT_FACE_TYPE face : FRONT_FACE_SEMANTIC) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
                 float breach = Breach(input.place), cover = Cover(breach), worn = frac(input.place.w);
                 bool outside = IS_FRONT_VFACE(face, true, false);
                 // scorched black for a way round each hole, and glowing at its very edge. From too far
@@ -179,6 +182,12 @@ Shader "Infinigame/Hull"
                     + (outside ? 0.0 : 1.0) * Fire(worn * (0.2 + 0.4 * ember)));
                 surface.smoothness = lerp(surface.smoothness, lerp(0.16, 0.42, saturate((grain - 0.24) * 2.5)), _Organic);
                 surface.specular = lerp(half3(0.04, 0.04, 0.04), half3(0.015, 0.01, 0.02), _Organic);
+                if (_Organic >= 1)
+                {
+                    Light sun = GetMainLight(inputData.shadowCoord);
+                    half lambert = saturate(dot(inputData.normalWS, sun.direction)) * sun.shadowAttenuation;
+                    return half4(MixFog(surface.albedo * (inputData.bakedGI + sun.color * lambert) + surface.emission, inputData.fogCoord), cover);
+                }
                 half4 colour = UniversalFragmentPBR(inputData, surface);
                 colour.rgb = lerp(colour.rgb, min(colour.rgb, half3(1.15, 0.95, 1.2)), _Organic);
                 return half4(MixFog(colour.rgb, inputData.fogCoord), cover);
@@ -202,6 +211,7 @@ Shader "Infinigame/Hull"
 
             struct Varyings
             {
+                UNITY_VERTEX_OUTPUT_STEREO
                 float4 positionCS : SV_POSITION;
                 float4 place : TEXCOORD0;
             };
@@ -210,6 +220,7 @@ Shader "Infinigame/Hull"
             {
                 Varyings output;
                 UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
                 output.place = Place(input);
                 output.positionCS = ApplyShadowClamping(TransformWorldToHClip(ApplyShadowBias(TransformObjectToWorld(input.positionOS.xyz), TransformObjectToWorldNormal(input.normalOS), _LightDirection)));
                 return output;
@@ -236,6 +247,7 @@ Shader "Infinigame/Hull"
 
             struct Varyings
             {
+                UNITY_VERTEX_OUTPUT_STEREO
                 float4 positionCS : SV_POSITION;
                 float4 place : TEXCOORD0;
             };
@@ -244,6 +256,7 @@ Shader "Infinigame/Hull"
             {
                 Varyings output;
                 UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
                 output.place = Place(input);
                 output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
                 return output;
@@ -269,6 +282,7 @@ Shader "Infinigame/Hull"
 
             struct Varyings
             {
+                UNITY_VERTEX_OUTPUT_STEREO
                 float4 positionCS : SV_POSITION;
                 float3 normalWS : TEXCOORD0;
                 float4 place : TEXCOORD1;
@@ -278,6 +292,7 @@ Shader "Infinigame/Hull"
             {
                 Varyings output;
                 UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
                 output.place = Place(input);
                 output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
                 output.normalWS = TransformObjectToWorldNormal(input.normalOS);

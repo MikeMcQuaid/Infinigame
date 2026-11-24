@@ -84,9 +84,11 @@ assembly() {
   compile library "$name.dll" "$editor" -r:$out/Unity.Mathematics.dll -r:$out/Unity.Burst.dll "$@" "@$out/$name.rsp"
 }
 assembly Infinigame.Core $sources/Core
+# Check the player view too: the studio audio tools are excluded from every shipped core.
+compile library Infinigame.Core.Player.dll "$player" -r:$out/Unity.Mathematics.dll -r:$out/Unity.Burst.dll "@$out/Infinigame.Core.rsp"
 # like Unity in the editor, runtime code may use UnityEditor inside #if UNITY_EDITOR
 assembly Infinigame.Runtime $sources/Runtime @$out/editor.rsp -r:$out/Infinigame.Core.dll -r:$out/Unity.InputSystem.dll -r:$out/UnityEngine.UI.dll
-assembly Infinigame.Editor $sources/Editor @$out/editor.rsp
+assembly Infinigame.Editor $sources/Editor @$out/editor.rsp -r:$out/Infinigame.Runtime.dll -r:$out/Infinigame.Core.dll
 assembly Infinigame.Tests.EditMode $sources/Tests/EditMode -r:$out/Infinigame.Core.dll -r:"$nunit"
 assembly Infinigame.Tests.PlayMode $sources/Tests/PlayMode -r:$out/Infinigame.Core.dll -r:$out/Infinigame.Runtime.dll -r:"$nunit" -r:$out/UnityEngine.TestRunner.dll -r:$out/UnityEngine.UI.dll -r:$out/Unity.InputSystem.dll
 

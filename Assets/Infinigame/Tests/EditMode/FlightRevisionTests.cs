@@ -9,13 +9,47 @@ namespace Infinigame.Tests
     {
         [Test] public void OldCampaignSavesKeepTheirProgress()
         {
-            Assert.AreEqual(13, Campaign.Won);
+            Assert.AreEqual(10, Campaign.Won);
             Assert.AreEqual(Campaign.Citadel, Campaign.MigrateStage(11, 2));
             Assert.AreEqual(Campaign.Recovery, Campaign.MigrateStage(4, 2));
             Assert.AreEqual(Campaign.Citadel, Campaign.MigrateStage(14));
             Assert.AreEqual(Campaign.Won, Campaign.MigrateStage(15));
-            Assert.AreEqual(10, Campaign.MigrateStage(11));
+            Assert.AreEqual(Campaign.Citadel, Campaign.MigrateStage(11));
         }
+        [TestCase(1.6f)]
+        [TestCase(20f)]
+        public void SurfacePackAcceleratesAlongHeadsetGazeAgainstLocalGravity(float gravity)
+        {
+            var body = new BodyDescriptor { kind = BodyKind.Rock, radius = 5000, surfaceGravity = gravity };
+            var walker = new WalkerState { position = new float3(0, 5020, 0), height = 20, forward = new float3(0, 0, -1), fuel = 1 };
+            Walker.Step(ref walker, new WalkerInput { jump = true, gaze = new float3(0, 0, 1) }, body, 0.05f);
+            Assert.Greater(walker.velocity.z, 0.5f);
+            Assert.AreEqual(0, walker.velocity.y, 0.02f);
+            Assert.Less(walker.fuel, 1);
+        }
+        [Test] public void ContactWithMoltenGroundHurtsUntilItCools()
+        {
+            var up = new float3(0, 1, 0);
+            var body = new BodyDescriptor { radius = 100, kind = BodyKind.Rock,
+                blasts = new[] { new Blast { scar = Scar.Lava, crater = new float4(up, 10), pool = 0.5f, level = -3, born = 10 } } };
+            float3 ground = up * body.GroundRadius(up);
+            Assert.Greater(body.LavaDamage(ground, 0, 11), 0);
+            Assert.AreEqual(0, body.LavaDamage(ground + up * 3, 0, 11));
+            Assert.AreEqual(0, body.LavaDamage(ground, 0, 86));
+        }
+
+        [Test] public void ASubmergedBeamCanReachAnimalsInAFloodedCrater()
+        {
+            var up = new float3(0, 1, 0);
+            var body = new BodyDescriptor { radius = 1000, kind = BodyKind.Rock, terrain = new TerrainParams { seaDepth = 4, plains = 1, seaBias = 1 } };
+            Assert.Greater(body.GroundRadius(up), body.SeaRadius);
+            body.Dig(up, 20);
+            float3 eye = up * (body.SeaRadius - 2);
+            Assert.Less(body.GroundRadius(up), math.length(eye));
+            var end = Combat.Ray(new List<Foe>(), body, eye, new float3(1, 0, 0), 4, 1, false, default, null);
+            Assert.AreEqual(4, math.distance(eye, end), 0.02f);
+        }
+
         [Test] public void SpaceSuitBrakesWithoutInput()
         {
             var body = new BodyDescriptor { kind = BodyKind.Rock, radius = 100, surfaceGravity = 2 };
@@ -60,11 +94,11 @@ namespace Infinigame.Tests
             var station = new BodyDescriptor { kind = BodyKind.Station, radius = 280, soiRadius = 0 };
             Assert.Greater(Autopilot.Standoff(station), 500);
         }
-        [Test] public void ShipFactoryWaitsForGroundVictory()
+        [Test] public void ShipyardFitsAnExistingFactoryOnce()
         {
-            var front = War.Create(3, 1, 0); front.factory = true;
+            var front = War.Create(3, 1, 0);
             Assert.IsFalse(War.Build(front, true));
-            front.mindDead = true; front.dogs = 24; front.aliens = 4;
+            front.factory = true;
             Assert.IsTrue(War.Build(front, true));
             Assert.AreEqual(1, front.ships, "The first escort is ready without waiting for replication");
             Assert.IsFalse(War.Build(front, true));

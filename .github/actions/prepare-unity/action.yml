@@ -44,7 +44,7 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: Build/Speech
-        key: speech-${{ runner.os }}-${{ runner.arch }}-${{ inputs.target }}-${{ hashFiles('ThirdParty/Festival/**', 'script/build-speech') }}
+        key: speech-${{ runner.os }}-${{ runner.arch }}-${{ inputs.target }}-${{ hashFiles('ThirdParty/Festival/**', 'script/build-speech', 'script/lib/windows-cc') }}
     - name: Build and test the Apple speech libraries
       if: inputs.target == 'Apple'
       shell: bash

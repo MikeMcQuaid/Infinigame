@@ -25,7 +25,7 @@ namespace Infinigame
         public string Line { get; private set; } = "";
         public float Spoke { get; private set; }
         // His latest words were said unasked, and are shown as a caption while they last.
-        public bool Remarking => unasked && !Talking && Time.unscaledTime - Spoke < 2.5f + Line.Length / 14f;
+        public bool Remarking => unasked && !Talking && (game.Speech.Speaking || Time.unscaledTime - Spoke < 2.5f + Line.Length / 14f);
 
         // He flies with the player once there is a ship to fly in.
         public bool Aboard => game.Player.Has(Gear.Ship);
@@ -41,12 +41,12 @@ namespace Infinigame
         bool seated, unasked;
         LineRenderer repair;
         readonly LineRenderer[] repairRays = new LineRenderer[6];
-        int punches;
+        int punches, generation;
         public bool Provoked => punches >= 5;
         public void Punched()
         {
             punches++;
-            Remark(punches >= 5 ? "Repeated attack confirmed. Defensive weapons engaged." : punches >= 3 ? "Stop attacking friendly robots. The next attacks will trigger lethal defence." : "Do not punch the robodogs. We are on your side.");
+            Remark(punches >= 5 ? game.Wording("defence") : punches >= 3 ? game.Wording("warning") : game.Wording("friendly"));
         }
 
         // Pitches the camp on the freshly built home world, a short walk from the landing site.
@@ -66,7 +66,8 @@ namespace Infinigame
             camp = new GameObject("Recovery companion").transform;
             var robot = Models.Robot(); robot.name = "Hermit"; robot.SetParent(camp, false);
             camp.SetParent(game.System.Bodies[SolarSystemDescriptor.Home].transform, false);
-            camp.localPosition = Position - spot * 0.05f;
+            Position = spot * (body.GroundRadius(spot) + 0.04f);
+            camp.localPosition = Position;
             // facing the landing site, to watch the traveller arrive
             float3 facing = Walker.Project(landing - spot, spot);
             camp.localRotation = math.lengthsq(facing) > 1e-8f ? Quaternion.LookRotation(facing, spot) : Quaternion.FromToRotation(Vector3.up, spot);
@@ -75,7 +76,9 @@ namespace Infinigame
             movement.quadruped = true;
             movement.look = Camera.main.transform;
 
-            Talking = Thinking = false;
+            generation++;
+            game.Speech?.Silence();
+            Talking = Thinking = unasked = false;
             Line = Draft = ""; punches = 0;
             Spoke = float.MinValue;
         }
@@ -141,53 +144,67 @@ namespace Infinigame
 
         public void Rescue()
         {
-            float3 up = math.normalize(game.Player.Position + game.Player.walker.forward * 5);
-            Position = up * game.System.ReferenceBody.GroundRadius(up);
+            float3 facing = DeviceControls.VR ? math.normalizesafe(Walker.Project(Camera.main.transform.forward, math.normalizesafe(game.Player.Position)), game.Player.walker.forward) : game.Player.walker.forward;
+            var body = game.System.ReferenceBody;
+            float3 up = math.normalize(game.Player.Position + facing * (game.Buried ? 12 : 4));
+            float3 site = up * body.GroundRadius(up);
+            game.System.Bodies[game.System.Reference].Level(site, 2.2f);
+            Position = up * (body.GroundRadius(up) + 0.04f);
             camp.localPosition = Position;
-            camp.localRotation = Quaternion.LookRotation(-game.Player.walker.forward, up);
+            camp.localRotation = Quaternion.LookRotation(-facing, up);
         }
 
-        public void Greet()
+        public void Greet(bool briefing = true)
         {
             Talking = true;
-            Source = "MISSION BRIEFING · NO MODEL";
+            Source = "COMPANION BRIEFING";
             unasked = false;
             Draft = "";
             // what he makes of the mission in hand comes first, aloud if he has not said it already
-            if (Line != Briefing) game.Speech.Say(Briefing);
-            Line = Briefing;
-            Spoke = Time.unscaledTime;
-
+            string words = Briefing;
+            if (briefing && Line != words) Speak(words, Source);
         }
 
         // Something he says without being asked, from the seat beside the pilot.
         public void Remark(string words)
         {
             if (!game.Player.Has(Gear.Suit) || Talking) return;
-            unasked = true;
-            Source = "COMPANION GUIDANCE · NO MODEL";
-            Line = words;
-            Spoke = Time.unscaledTime;
-            game.Speech.Say(words);
+            game.Speech.Say(words, caption: game.Subtitles, start: () =>
+            {
+                unasked = true;
+                Source = "COMPANION GUIDANCE";
+                Line = words;
+                Spoke = Time.unscaledTime;
+            });
         }
 
-        public string Briefing => game.Stage >= Campaign.Won ? game.Fall.destroyed ? "The mind has collapsed. Stay with me while the system falls into it." : "The core is gone, but the final mind is buried too deep for torpedoes. Our colonies must build engines on a moon." : game.Stage == Campaign.Tower || game.Stage == Campaign.Tower + 1 ? "Break this world’s mind, then recover its equipment. " + game.Frontier.FactoryHint(0) : game.Mission.brief;
+        public string Briefing => (game.Outpost.SiteCleared ? game.Outpost.Errand : game.Wording(game.Stage >= Campaign.Won ? game.Fall.destroyed ? "finalFall" : "finalEngines" : game.Mission.brief))
+            + (DeviceControls.VR && game.Outpost.SiteCleared && game.Outpost.RegionalFactory == null && game.Stage <= Campaign.ThirdBurrow ? " Turn your left wrist towards you. Choose Build, then Robodog Factory." : "");
 
         // Authored replies keep the early story playable without an account.
-        string Canned(string asked) => asked.IndexOf("factory", StringComparison.OrdinalIgnoreCase) >= 0 || asked.IndexOf("build", StringComparison.OrdinalIgnoreCase) >= 0
-            ? game.Frontier.FactoryHint(game.Frontier.Local.shipyard ? 2 : game.Frontier.Local.factory && game.Frontier.Local.mindDead ? 1 : 0)
+        string Canned(string asked) => !game.FactoryUnlocked && (asked.IndexOf("factor", StringComparison.OrdinalIgnoreCase) >= 0 || asked.IndexOf("build", StringComparison.OrdinalIgnoreCase) >= 0 || asked.IndexOf("dog", StringComparison.OrdinalIgnoreCase) >= 0)
+            ? Briefing : asked.IndexOf("dog", StringComparison.OrdinalIgnoreCase) >= 0 && asked.IndexOf("factory", StringComparison.OrdinalIgnoreCase) < 0
+            ? game.Wording(game.Stage < Campaign.ThirdBurrow ? "escortLocked" : "escortCall")
+            : asked.IndexOf("factory", StringComparison.OrdinalIgnoreCase) >= 0 || asked.IndexOf("build", StringComparison.OrdinalIgnoreCase) >= 0
+            ? game.Frontier.FactoryHint(game.Frontier.VisibleBuild(2) ? 2 : game.Frontier.VisibleBuild(1) ? 1 : 0)
             : asked.IndexOf("foundry", StringComparison.OrdinalIgnoreCase) >= 0
-            ? "I can still play you the frogs our first surveyor heard. Years later a furnace crew recognised the call and moved the furnace nine metres. We send that recording out with every new factory."
+            ? game.Wording("frogs")
             : asked.IndexOf("presence", StringComparison.OrdinalIgnoreCase) >= 0
-            ? "A Harrower learns its way home by tasting the ridges in a mind’s palate. We found a memory of rain in one. The star it fell under was already gone when our Sun first shone."
+            ? game.Wording("rain")
             : asked.IndexOf("world", StringComparison.OrdinalIgnoreCase) >= 0
-            ? "We are the Foundry, independent machines protecting what still lives. The presence grows bodies from a shared mind and consumes everything beyond itself. We must sever those minds and rebuild safe settlements."
-            : asked.IndexOf("who", StringComparison.OrdinalIgnoreCase) >= 0 ? $"{Name}. An autonomous recovery machine. I can keep this channel open wherever you go."
+            ? game.Wording("foundry")
+            : asked.IndexOf("who", StringComparison.OrdinalIgnoreCase) >= 0 ? game.Wording("who").Replace("{name}", Name)
             : asked.IndexOf("happen", StringComparison.OrdinalIgnoreCase) >= 0 || asked.IndexOf("remember", StringComparison.OrdinalIgnoreCase) >= 0
-                ? game.Stage < 8 ? "I recovered you after the crash. Some records are damaged. Let us restore your equipment first."
-                : game.Stage < Campaign.Citadel ? "I recognise the work beneath that armour. I helped make it, and you. I am still afraid of what that means."
-                : "I helped create you to silence the presence. The last mind lies beneath the crust. A moon impact will collapse it, and the system with it."
+                ? game.Stage < 8 ? game.Wording("crash")
+                : game.Stage < Campaign.Citadel ? game.Wording("maker")
+                : game.Wording("creator")
             : Briefing;
+
+        public void Dictate(string words)
+        {
+            if (!Talking) Greet(false);
+            Draft = words ?? "";
+        }
 
         // One frame of conversation: typing, sending with confirm, leaving with the menu key.
         public void Converse(Controls c)
@@ -221,12 +238,18 @@ namespace Infinigame
             string command = words.Trim().ToLowerInvariant();
             if (command.Contains("recall ship") || command.Contains("pick me up") || command.Contains("come get me") || command.Contains("land near me"))
             {
-                Source = "LOCAL SHIP COMMAND"; Line = game.Player.Travel();
-                Spoke = Time.unscaledTime; game.Speech.Say(Line); return;
+                Speak(game.Player.Travel(), "LOCAL SHIP COMMAND"); return;
             }
+            if (!Oracle.Enabled || Questions.Contains(words))
+            {
+                Speak(Canned(words), Oracle.Enabled ? "EXPEDITION BRIEFING" : "COMPANION GUIDANCE");
+                return;
+            }
+            int turn = generation;
+            int provider = Oracle.Voice;
             var system = game.System;
             string persona = $"You are {Name}, the traveller's Foundry recovery robot and copilot. " +
-                "Speak in one to three short sentences. Use only the known story; do not invent later revelations. Explain XP level choices and regional population control when asked. Powered fist kills restore energy; rail kills repair armour. Three damage ranks make beams chain. " +
+                "Speak in one to three short sentences. Use only the known story; do not invent later revelations. Explain XP level choices and regional population control when asked. Powered fist hits restore health and energy; rail kills repair armour. Three damage ranks make beams chain. " +
                 $"Current mission: {Briefing} The following story addresses the traveller as 'you', not the companion. " + Narrative.Context(game.Stage, game.Fall.destroyed);
             words = words.Substring(0, math.min(words.Length, 400));
             var states = game.Presence.fronts.OrderBy(front => front.world == system.Reference ? 0 : 1).Take(24)
@@ -235,6 +258,7 @@ namespace Infinigame
             string snapshot = JsonUtility.ToJson(new State { stage = game.Stage, depth = game.Depth, location = system.ReferenceBody.name, level = game.Progression.level, experience = game.Progression.experience,
                 objective = game.Objective, power = (int)game.Player.energy, health = (int)game.Player.health, hull = (int)(100 * game.Player.hull / game.Player.MaxHull), altitude = (int)game.Player.Altitude, worlds = states });
             System.IO.File.WriteAllText(System.IO.Path.Combine(Application.persistentDataPath, "companion-state.json"), snapshot);
+            if (!game.FactoryUnlocked) persona = "The traveller has not escaped the first burrow. Keep construction, factories and escorts undisclosed, even when asked. Focus on the current objective. " + persona;
             persona = persona.Substring(0, math.min(persona.Length, 4000));
             string prompt = "System state (JSON, facts only): " + snapshot + "\n"
                 + string.Join("\n", game.Talk.Skip(math.max(0, game.Talk.Count - 6)).Select((line, i) => (i % 2 == 0 ? "Traveller: " : "Robot: ") + line.Substring(0, math.min(line.Length, 240))))
@@ -245,20 +269,23 @@ namespace Infinigame
             Thinking = true;
             try
             {
-                Line = (await Oracle.Ask(persona, prompt)).Trim();
-                Source = $"REPLY BY {writer}";
+                var answer = (await Oracle.Ask(persona, prompt)).Trim();
+                if (this == null || turn != generation || !Oracle.Enabled || Oracle.Voice != provider) return;
+                Speak(answer, $"REPLY BY {writer}");
                 game.Talk.Add(words);
-                game.Talk.Add(Line);
+                game.Talk.Add(answer);
                 game.Write();
             }
             catch (Exception)
             {
-                Line = Canned(words);
-                Source = "AUTHORED REPLY · MODEL UNAVAILABLE";
+                if (this != null && turn == generation) Speak(Canned(words), "COMPANION GUIDANCE");
             }
-            Thinking = false;
-            Spoke = Time.unscaledTime;
-            game.Speech.Say(Line);
+            finally { if (this != null && turn == generation) Thinking = false; }
+        }
+
+        void Speak(string words, string source)
+        {
+            game.Speech.Say(words, interrupt: Talking, caption: true, start: () => { Line = words; Source = source; Spoke = Time.unscaledTime; });
         }
     }
 }

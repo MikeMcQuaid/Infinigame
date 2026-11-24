@@ -45,25 +45,13 @@ jobs:
           unity-email: ${{ secrets.UNITY_EMAIL }}
           unity-password: ${{ secrets.UNITY_PASSWORD }}
       - name: Package Windows and Steam Deck
-        run: |
-          script/package Windows
-          script/package SteamDeck
+        run: script/package Windows
       - name: Upload the Windows build
         if: env.PUBLISH == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Infinigame-Windows
           path: Build/Infinigame-Windows.zip
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 0
-          overwrite: true
-      - name: Upload the Steam Deck build
-        if: env.PUBLISH == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: Infinigame-SteamDeck
-          path: Build/Infinigame-SteamDeck.zip
           if-no-files-found: error
           retention-days: 1
           compression-level: 0

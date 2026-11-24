@@ -1,16 +1,16 @@
 # Architecture
 
-Infinigame is a Unity 6.6 (URP) project in which almost nothing is authored in the editor. There is one scene holding one object, `Game`. A staged loading coroutine shows progress before constructing the runtime. Gameplay components stay disabled until `Game.Ready`. Everything else is built from code when the game starts: worlds, models, textures, the interface, sound and music. This file says how the pieces fit. `README.md` says what the game is and how to play it, `AGENTS.md` says how to work on it, and `IDEAS.md` holds what may be built later, with notes on where each idea would fit.
+Infinigame is a Unity 6.6 (URP) project in which almost nothing is authored in the editor. There is one scene holding one object, `Game`. A staged loading coroutine shows progress before constructing the runtime. Gameplay components stay disabled until `Game.Ready`. The runtime builds seeded worlds and lays out the interface. It loads finished meshes, textures and audio from Resources. This file says how the pieces fit. `README.md` says what the game is and how to play it, `AGENTS.md` says how to work on it, and `IDEAS.md` holds what may be built later, with notes on where each idea would fit.
 
 ## The two halves
 
 | Assembly | Folder | What it is |
 |---|---|---|
 | `Infinigame.Core` | `Assets/Infinigame/Core` | The simulation as plain C# over `Unity.Mathematics`. No scene, no `MonoBehaviour`, no `UnityEngine` objects. Everything here can be compiled and tested without a Unity licence. |
-| `Infinigame.Runtime` | `Assets/Infinigame/Runtime` | Unity components that read input, call the core, draw what it describes and play what it synthesises. |
-| `Infinigame.Editor` | `Assets/Infinigame/Editor` | Project set-up and the build, run from `script/`. |
+| `Infinigame.Runtime` | `Assets/Infinigame/Runtime` | Unity components that read input, apply the core’s rules, draw the world and mix shipped audio with live speech. |
+| `Infinigame.Editor` | `Assets/Infinigame/Editor` | Asset authoring, project set-up and platform builds, run from `script/`. |
 | Tests | `Assets/Infinigame/Tests` | EditMode tests for the core, including the lap times the design promises, and PlayMode tests that drive the real scene. |
-| | `Assets/Infinigame/Resources` | A few base materials and every shader: ground, plants, sea, air, cloud, giants, rings, aurora, rain, fire, smoke and hulls. |
+| | `Assets/Infinigame/Resources` | Finished models and wrecks, surface maps, visor sprites, shaders, recorded music, sound effects and story text. |
 
 The rule that keeps this useful: a question the game has to answer ("where is the ground here?", "does this bolt hit?", "what does this mission win?") is answered in the core as a pure function or a small state step, and the runtime only asks it. If a feature needs a number, the number lives in the core with a test.
 
@@ -26,24 +26,24 @@ The scene is always the frame of the body the player is nearest (`SolarSystem.Re
 
 ### Drawing a world
 
-`CelestialBody` draws one body as a cube-sphere quadtree (`CubeSphere`, `QuadtreeLod`). Patches are meshed off the main thread by `PatchMeshJob` (Burst) from the height function and shaded by `Resources/Terrain.shader` with textures painted in code by `Textures.cs`. `Scatter` places plants and rocks, `Creatures` and `Wildlife` the animals, `RingField` and `Rings` the rocks of rings and the belt, `Rainfall` and `Weather` the storms. Sea, air, cloud, giants, aurora and stars are shaders in `Resources`.
+`CelestialBody` draws one body as a cube-sphere quadtree (`CubeSphere`, `QuadtreeLod`). Patches are meshed off the main thread by `PatchMeshJob` (Burst) from the height function and shaded by `Resources/Terrain.shader` with imported material maps loaded by `Textures.cs`. `Scatter` places plants and rocks, `Creatures` and `Wildlife` the animals, `RingField` and `Rings` the rocks of rings and the belt, `Rainfall` and `Weather` the storms. Sea, air, cloud, giants, aurora and stars are shaders in `Resources`.
 
 Detail tiers are Unity quality levels (Mobile, VR, PC), with per-platform defaults in Project Settings > Quality and budgets in `LodSettings.cs`. Every level-of-detail system decides what to draw by how big a thing looks on screen, and lets it linger past that before letting go, which is how the rule against flicker in `AGENTS.md` is kept.
 
-`Climate` works out how hot it is anywhere, from the star, a giant's depths or a furnace world's air, and `Combat.Scorch` turns heat into damage. The scanner (`Scanner.cs`, with `Core/Scan.cs` choosing what is being looked at and describing it) asks the oracle for a journal entry once per kind of thing per world.
+`Climate` works out how hot it is anywhere, from the star, a giant's depths or a furnace world's air, and `Combat.Scorch` turns heat into damage. The scanner (`Scanner.cs`, with `Core/Scan.cs` choosing what is being looked at and describing it) records the local facts once per kind of subject per world, using the expedition’s prepared wording when available.
 
 ## Expedition progression
 
 `Progression` owns XP thresholds and the five upgrade ranks. `Game` awards combat, objective and discovery XP, pauses for a compulsory five-attribute level screen with confirmation and checkpoints progression at mission completion. `Campaign` separates the three Earth burrows, surface flight and orbital recovery. Version-three saves migrate earlier mission numbers without changing equipment bit positions.
 
-Earth fronts and colonies have regional identifiers. `Frontier` assigns surface positions to the nearest of three brood sites, simulates each population and requires all regions to be controlled before upgrading a factory to a shipyard. New slots choose a fresh seed; the same stored seed still generates the same system. Changing a mission does not rebuild unchanged factory models. Newly assembled units clone a prepared model and become the patrol itself.
+Earth fronts and colonies have regional identifiers. `Frontier` assigns surface positions to the nearest of three brood sites, simulates each population and builds a shipyard with the third Earth factory and every factory on later worlds. New slots choose a fresh seed; the same stored seed still generates the same system. Changing a mission does not rebuild unchanged factory models. Newly assembled units clone a prepared model and become the patrol itself.
 
 ## A frame
 
 `Game.Update` decides who the controls belong to and then drives everything in a fixed order:
 
 1. `Player.controls()` returns a `Controls` struct (`PlayerInput.cs`). Keyboard, mouse and gamepad fill it; tests fill it directly. Menus, conversation and death take the controls away by replacing the struct with an empty one.
-2. `Player.Tick` steps the simulation in slices of at most 1/60 s: `Walker.Step` on foot, `Ship.Step` or `Autopilot.Step` in flight. It applies damage from falls, crashes, heat and radiation, then places the camera and the ship model.
+2. `Player.Tick` steps the simulation in slices of at most 1/60 s: `Walker.Step` on foot, `Ship.Step` or `Autopilot.Step` in flight. The suit absorbs landing impacts. Ship crashes, heat and radiation can cause damage. The player then places the camera and the ship model.
 3. `Outpost.Tick` and `Battle.Tick` run the mission's guards and the fighting: `Combat.Hunt` moves foes, `Combat.Step` moves bolts and reports strikes, and the runtime turns strikes into craters, effects and sound.
 4. `SolarSystem.Update` (which runs first, by execution order) advances the clock, picks the reference body and places every body, the sun's light, ambient light and fog.
 5. `Hud.LateUpdate` lays out the interface from the state of everything above.
@@ -52,13 +52,13 @@ Earth fronts and colonies have regional identifiers. `Frontier` assigns surface 
 
 `MISSIONS.md` is the mission table, loaded by `Core/Narrative.cs` into `Campaign`. `STORY.md`, `FACTIONS.md` and `COLONIES.md` supply the plot, faction context and building costs. `Editor/ContentImport.cs` packages copies as Resources text assets. Mission locations are fixed before terrain is changed. Ownership is the stable `Player.kit` bit set; `Player.fitted` holds the powered modules, all enabled when recovered. `Suit` validates owned modules; the three Earth broods progressively restore beam power, surface thrusters and orbital flight. `Game` owns progression and saves it.
 
-`Outpost` cuts descending terrain pads and draws enclosing rock shells. Ground movement and terrain meshing share the same pad heights; the shells supply side and ceiling collision. Dry burrow volumes exclude sea rendering and underwater movement without adding another terrain collision source. It spawns the region’s linked minds and their guards, then exposes the power core when every mind dies. The citadel is a ship-sized tunnel with a timed escape after its core is destroyed. The factory phase moves a moon onto the final mind, starts a singularity cinematic and moves the traveller into a pre-generated harder system.
+`Outpost` cuts descending terrain pads and draws enclosing rock shells. Ground movement and terrain meshing share the same pad heights; the shells supply side and ceiling collision. Dry burrow volumes exclude sea rendering and underwater movement without adding another terrain collision source. It spawns the region’s linked minds and their guards, then exposes the demolition charge when every mind dies. After demolition an equipment case appears beside the region’s factory. The citadel is a ship-sized tunnel with a timed escape after its core is destroyed. The factory phase moves a moon onto the final mind, starts black hole system consumption and moves the traveller into a pre-generated harder system.
 
 The recovery robot (`Hermit.cs`) briefs each mission from the table, so the story needs no language model. After the first meeting it speaks over the radio; once the ship is recovered it joins the cockpit.
 
 ## Language models
 
-`Oracle.cs` turns a persona and a prompt into a reply, for the scanner's journal and the robot's free talk. It never holds a key of its own. For each of its two voices, Claude and ChatGPT, it tries in order:
+`Oracle.cs` turns a persona and a prompt into a reply, for expedition wording and free-form questions. `ExpeditionText.cs` batches stage-appropriate dialogue, mission guidance and field descriptions, then caches validated lines in the active save. It never holds a key of its own. For each of its two voices, Claude and ChatGPT, it tries in order:
 
 1. a key the player has given it (environment or clipboard), sent straight to the maker's API with `UnityWebRequest`;
 2. for ChatGPT, OpenAI's Sign in with ChatGPT, done by the game in the player's browser;
@@ -68,22 +68,22 @@ The game can start each tool's own sign-in from the settings page. It never show
 
 ## Effects
 
-`Effects.cs` draws everything that burns, bursts, smokes or steams: explosions, hits on a hull, steam off water, mushroom clouds and factory lights. It is built from three kinds of thing, each drawn in one instanced call: puffs (`Resources/Puff.shader`), sparks (`Spark.shader`) and tumbling wreckage. `Battle` decides which effect a strike calls for. Harrowers and Skimmers are drawn with `Hull.shader`, which takes damage through `Instances.Add`. Organic wounds reveal violet tissue without the white-hot emission used for metal. `IchorPool` spreads and settles a small surface mesh against the terrain height function.
+`Effects.cs` draws everything that burns, bursts, smokes or steams: explosions, hits on a hull, steam off water, mushroom clouds and factory lights. It is built from three kinds of thing, each drawn in one instanced call: puffs (`Resources/Puff.shader`), sparks (`Spark.shader`) and tumbling wreckage. `Battle` chooses the effect for a strike. Small weapon impacts use the billow shader for a cooling core, translucent dust and drifting embers. Harrowers and Skimmers use matte URP surfaces on Windows and in headsets. On other platforms `Hull.shader` reveals violet tissue as they take damage. Close combat in VR also omits blast lamps, additive hit flashes and bloom. `IchorPool` spreads and settles a small surface mesh against the terrain height function.
 
-`Corpses.cs` caches mesh sections and retains a bounded number of articulated remains. `Core/Ragdoll.cs` steps their joints against the same ground function as living bodies; runtime interior collision keeps them inside tunnels. Further hits separate sections, including spacecraft wreckage.
+`Corpses.cs` uses the pre-cut mesh sections and retains a bounded number of articulated remains. `Core/Ragdoll.cs` steps their joints against the same ground function as living bodies; runtime interior collision keeps them inside tunnels. The sections settle on terrain or tunnel floors and wake when their support is destroyed. Further hits separate sections, including spacecraft wreckage.
 
 ## Interface, sound and speech
 
 - `Hud.cs` builds one uGUI canvas in front of the camera, from code. It reads state and never changes it. Markers for worlds, foes and mission goals are placed each frame by `Mark`, which hides what a world is in the way of, keeps names from overlapping and holds a guide mark at the edge of the screen when its place is out of view.
-- `Core/Synth.cs` computes every sound effect as samples, and `Core/Riffs.cs` writes a song for each system. `Sounds.cs` and `Music.cs` play them. Audio files dropped into `Resources/Music` replace the synthesised song. `Playlist` schedules complete tracks with equal-power crossfades; `Music` uses two streaming decks per mood.
-- `Speech.cs` renders every spoken line with the bundled Festival SLT model and native Flite+HTS engine, off the main thread. Unity plays the returned 32 kHz PCM and applies the same robot effect on every platform. `script/build-speech` compiles the library, and `VoiceBuild` bundles it and its model. `VoiceInput` handles held microphone input and partial transcripts. Tests substitute both speech and dictation.
-- `Models*.cs`, `MeshKit.cs` and `Shapes.cs` build every mesh and material: the ship and its cockpit, the robot and its factories, Harrowers, Skimmers and the citadel. `Arms.cs` builds the powered gauntlets.
+- `AudioWorkshop` renders the effects in `Core/Synth.cs` to 48 kHz stereo files. `Sounds` places and mixes those takes in play. `Music` plays the exploration and combat recordings in `Resources/Music`. `Playlist` schedules complete tracks with equal-power crossfades; `Music` uses two streaming decks per mood.
+- `Speech.cs` renders every spoken line with the bundled Festival SLT model and native Flite+HTS engine, off the main thread. Unity queues the returned 32 kHz speech, pauses it with the menu and plays the recovery robot’s nearby voice from its position. `script/build-speech` compiles the library, and `VoiceBuild` bundles it and its model. `VoiceInput` handles held microphone input and partial transcripts. Tests substitute both speech and dictation.
+- `Editor/ModelWorkshop*.cs` and `MeshKit.cs` describe the original geometry. `script/bake-assets` saves articulated prefabs, their materials, shared mesh sets, damaged trees and wreck sections. `Runtime/Models.cs` loads the appropriate level of detail. `Arms` drives the first-person gauntlets. Gauntlets and the wrist console share the calibrated grip pose. The suit plants its feet until the player moves and lets the torso follow their gaze.
 - `DeviceControls.cs` merges touch, gamepad, keyboard and tracked controllers. Cockpit hit areas dispatch the same `Controls` intents as buttons. `ForearmConsole.cs` attaches a touchable construction and suit menu to the left tracked hand; interface contact suppresses motion punches.
 - `Cockpit.cs` drives the ship's instruments. `Models.Ship` names every part that moves or lights, `Player.Tick` fills a `Readings` struct with what the ship is doing, and `Cockpit.Show` eases each needle, lamp, switch and the stick to match. Nothing on the dash is decoration.
 
 ## Saving
 
-A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, the mission stage, the gear bit set, fitted modules, colony resources, presence clock, moonfall, gate state, journal, talk breached outpost walls and armed/destroyed burrow demolition state. Worlds are never saved, since the seed remakes them. Save version 3 migrates earlier campaigns into the regional Earth progression without moving equipment bit positions. Saves also retain XP, upgrade ranks and the current mission checkpoint. War fronts also retain weapon exposure and whether their controlling mind is dead. Settings that belong to the device (detail, music, speech) are `PlayerPrefs`. Oracle credentials are separate from saves: Keychain on iOS and a local account file on desktop. [PRIVACY.md](PRIVACY.md) describes local storage, optional provider requests, on-device iOS speech recognition and TestFlight diagnostics; [TESTFLIGHT.md](TESTFLIGHT.md) holds public beta submission copy.
+A save slot is one small JSON file (`Game.Save`): the system's seed, the depth, the mission stage, the gear bit set, fitted modules, colony resources, presence clock, moonfall, gate state, journal, talk breached outpost walls and armed/destroyed burrow demolition state. Worlds are never saved, since the seed remakes them. Save version 3 migrates earlier campaigns into the regional Earth progression without moving equipment bit positions. Save version 4 numbers levels from one, preserves earned ranks and keeps the wording prepared for that expedition. Saves also retain XP and the current mission checkpoint. War fronts also retain weapon exposure and whether their controlling mind is dead. Settings that belong to the device (detail, music, speech) are `PlayerPrefs`. Oracle credentials are separate from saves: Keychain on iOS and a local account file on desktop. [PRIVACY.md](PRIVACY.md) describes local storage, optional provider requests, on-device iOS speech recognition and TestFlight diagnostics; [TESTFLIGHT.md](TESTFLIGHT.md) holds public beta submission copy.
 
 ## Tests and tooling
 
@@ -102,8 +102,8 @@ The Apple job signs and validates both platform archives on one Mac. A Linux job
 | To add | Start in |
 |---|---|
 | A mission, or something it wins | `MISSIONS.md`, then whatever asks `Player.Has` |
-| A weapon | `Combat.Guns` or `Combat.Arms`, a voice in `Synth.cs`, a model in `Arms.cs` |
-| A foe | `FoeKind`, `Combat.Hunt`, a model in `Models.cs`, drawing in `Battle.Update` |
+| A weapon | `Combat.Guns` or `Combat.Arms`, a voice in `Synth.cs`, a model in `ModelWorkshop` |
+| A foe | `FoeKind`, `Combat.Hunt`, a model in `ModelWorkshop`, drawing in `Battle.Update` |
 | An explosion, smoke or fire | `Effects.cs`, called from where `Battle.Tick` handles strikes |
 | Something about the ground | `TerrainNoise`, `BodyDescriptor.GroundRadius`, `Terrain.shader` |
 | A key | `Controls` and `DesktopControls.Read`, then the list in `Hud.Help` |
@@ -116,14 +116,38 @@ The Apple job signs and validates both platform archives on one Mac. A Linux job
 
 `Interior` describes built destructible tunnel shells as boxes in a local frame. `Outpost` draws those same boxes and resolves movement against them. Terrain collision still comes only from `GroundRadius`. A stationary `FoeKind.Mind` controls the outpost; ground minds stay rooted above the current excavated floor. Shield guards are stored with their outpost when leaving its reference frame, rather than also following the player. `Combat.Surface` excludes sea level from weapon collision inside dry burrows; its death opens the prize and scatters the bodies. Sentries observe noise, light and visibility. There is no terminal hacking. The citadel has a ship-sized tunnel layout and an escape timer.
 
-`War` and saved `Front` populations simulate alien and robot replication and attrition. Saved death counts reduce enemy damage, reinforcement frequency and hostile growth without a difficulty message. `EscortOrders` retains the requested wing size and Follow, Attack or Patrol order. `Frontier` rebases up to three escorts with the player and uses `War.Follow` to keep formation at autopilot speeds; the wider population still spreads only to neighbouring planets. `Colony` retains factory sites and legacy save fields. `Moonfall` controls the impact. `Frontier` steps the colonies only during play, draws the factories, nearby laser dogs and ships and stages the moon impact and singularity. Game saves hold those states, the clock and equipment. Old resource and gate fields remain readable for save compatibility. `SolarSystemDescriptor.Beyond` uses a separate random stream; `Generate` retains the original system's draws. The old gate is no longer appended; original world indices remain stable.
+`War` and saved `Front` populations simulate alien and robot replication and attrition. Saved death counts reduce enemy damage, reinforcement frequency and hostile growth without a difficulty message. `EscortOrders` retains the Follow, Attack or Patrol order. One escort slot serves the called ground dog or a ship. `Frontier` rebases the escort with the player and uses `War.Follow` to keep the ship in formation at autopilot speeds; the wider population still spreads only to neighbouring planets. `Colony` retains factory sites and legacy save fields. `Moonfall` controls the impact. Established local factories keep securing their regions while the factory uplink is open. `Frontier` steps the wider colonies during play, draws the factories, nearby laser dogs and ships and stages the moon impact and black hole. Game saves hold those states, the clock and equipment. Old resource and gate fields remain readable for save compatibility. `SolarSystemDescriptor.Beyond` uses a separate random stream; `Generate` retains the original system's draws. The old gate is no longer appended; original world indices remain stable.
 
 `Radar` draws a transparent sphere and 3D contacts separately from the canvas. `DeviceControls` supplies touch and XR input through `Controls`. The iOS native bridge stores account data in Keychain. Speech uses the same bundled Festival SLT voice on every target, with text fallback if synthesis fails. `Platforms` configures device exports and the Windows OpenXR loader and Valve Index profile. The platform settings are generated by code when building.
 
-Procedural machine models share cached meshes, with separate articulated joints driven by `MachineMotion`. Presence bodies use curved carapaces, sensory organs and rooted neural folds. `MotileCaste` selects stalker, breacher or spitter combat rules within the stable sentry kind; `Outpost` assigns the mix and `Battle` instances each anatomy. `Textures` generates shared metal, ceramic, seal and chitin maps alongside the terrain library. `Models.Surfaces` builds the panelled interior shells. Terrain blast pools use a level surface bounded by the crater, with slow shader flow.
+Machine prefabs share imported meshes, with separate articulated joints driven by `MachineMotion`. Presence bodies use curved carapaces, sensory organs and rooted neural folds. `MotileCaste` selects stalker, breacher or spitter combat rules within the stable sentry kind; `Outpost` assigns the mix and `Battle` instances each anatomy. `SurfaceWorkshop` bakes the faction material artwork into colour, height and normal maps alongside the terrain library. `Models.Surfaces` builds the panelled interior shells. Terrain blast pools use a level surface bounded by the crater, with slow shader flow.
 
 `SuitHud` adds the helmet instruments and twelve-second cold start. `VoiceInput` requests native dictation only on a player action, with an injectable test route. `VoiceBuild` compiles the macOS speech bridge and adds permission strings; iOS compiles the same Objective-C++ source. `Hermit` writes a bounded JSON state snapshot before a question. `Frontier` pre-generates the next descriptor and mission sites on a worker task during moonfall.
 
-`DeviceControls` merges direct Input System touch regions with keyboard, mouse, gamepad and Index controls. Its canvas only draws the controls; button state does not depend on IMGUI events. `SuitTutorial` gates the initial control recovery. First-person renderer masking and head-relative VR body placement share `Player`; independent tracked gauntlets remain in `Arms`. The main HUD follows the head and exposes a plane for Index ray selection.
+`DeviceControls` merges direct Input System touch regions with keyboard, mouse, gamepad and Index controls. Its canvas only draws the controls; button state does not depend on IMGUI events. `SuitTutorial` gates the initial control recovery. First-person renderer masking and head-relative VR body placement share `Player`; independent tracked gauntlets remain in `Arms`. The gauges, mission and weapon share one visor layout. On boarding, the pilot recentres and these instruments move to the windscreen. Menus expose a nearby plane for Index ray selection.
 
 `FactoryDefence` aims each factory's visible mount and fires through the shared combat path. `Scatter` retains tree damage and draws shortened trunk/crown meshes. `Hull.shader` adds violet wounds to organic models, while bounded ichor pools and suit stains keep combat readable without red blood.
+
+## Development commands
+
+| Script | What it does |
+|---|---|
+| `script/bootstrap` | Installs Unity Hub, the Unity CLI, Claude Code and OpenAI's `codex` from the `Brewfile`, then the pinned editor version. Only Unity is required: with no model to ask, the scanner reports observed facts and the robot uses authored replies. |
+| `script/setup` | Bootstraps, makes sure the current user has a Unity licence and, if they can reach neither Claude nor ChatGPT, signs them in to Claude for the scanner and the robot. |
+| `script/editor` | Opens the game in the Unity editor, on the game scene. Press Play. |
+| `script/play` | Plays the game as a standalone app, building it first if the project has changed or the last build has no Burst-compiled code. The game's log goes to `Logs/Player.log` and its frame rate to `Logs/frames.log`. |
+| `script/package macOS` | Packages existing output; also accepts `Windows` or `iOS`. |
+| `script/testflight --dry-run` | Checks signing of an existing iOS export or a native Mac export with `TESTFLIGHT_PLATFORM=macOS`. GitHub Actions distributes internal and public betas on pushes to `main`. See [CI.md](CI.md). |
+| `script/bake-assets` | Rebuilds the model, texture and sound libraries. Add `surfaces` to refresh the artwork alone. |
+| `script/build-number` | Prints the Git commit count used for macOS and iOS builds. |
+| `script/build-ios` | Exports `Build/iOS`, then compiles and links the device app with Xcode. Reuses the existing signing team and prints installation steps. |
+| `script/build-windows` | Builds `Build/Windows/Infinigame.exe` with OpenXR and packages `Build/Infinigame-Windows.zip`, with installation steps. |
+| `script/build-steam-deck` | Builds the shared Windows, SteamVR and Proton archive. |
+| `script/performance` | Reports the latest real Mac play session from `Logs/frames.log`, excluding menus. |
+| `script/build` | Builds `Build/Infinigame.app` for macOS. Unity's build log goes to `Logs/build.log`. |
+| `script/build-speech [macOS\|Windows\|iOS]` | Builds the offline Festival voice library; ordinary builds call this automatically. |
+| `script/test-speech` | Checks native speech without playing sound and writes `Build/Festival-preview.wav`. |
+| `script/test-testflight` | Checks release gating and signing cleanup without credentials or uploads. |
+| `script/test` | Checks TestFlight automation, compiles every assembly and runs the EditMode tests. Needs no Unity licence. |
+| `script/test --unity` | Also runs the EditMode and PlayMode tests inside Unity and saves pictures to `Logs/Screenshots`. |
+| `script/unity` | Runs the pinned editor against this project with any arguments. |

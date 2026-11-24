@@ -32,6 +32,40 @@ namespace Infinigame.Tests
 
     public class WalkerTests
     {
+        [TestCase(-1.55f)] [TestCase(0f)] [TestCase(1.55f)]
+        public void JetpackAloneFollowsTheSightlineInOpenSpace(float pitch)
+        {
+            var body = World.Moon;
+            var up = World.Land(body);
+            var walker = Walker.Spawn(body, up, World.Tangent(up));
+            walker.position += up * 100;
+            walker.grounded = false;
+            float3 aim = walker.forward * math.cos(pitch) + up * math.sin(pitch);
+            Walker.Step(ref walker, new WalkerInput { jump = true, lift = 1, space = true, pitch = pitch }, body, World.Dt);
+            Assert.Greater(math.dot(math.normalize(walker.velocity), aim), 0.999f);
+        }
+
+        [Test] public void SpaceJetpackUsesTrackedHeadDirectionIndependentlyOfBodyHeading()
+        {
+            var body = World.Moon;
+            float3 up = World.Land(body);
+            var walker = Walker.Spawn(body, up, World.Tangent(up));
+            walker.position += up * 100;
+            float3 gaze = math.normalize(math.cross(up, walker.forward) - up);
+            Walker.Step(ref walker, new WalkerInput { jump = true, lift = 1, space = true, gaze = gaze }, body, World.Dt);
+            Assert.Greater(math.dot(math.normalize(walker.velocity), gaze), 0.999f);
+        }
+
+        [Test] public void LookingDownKeepsJetThrustThroughTheApproachToLuna()
+        {
+            var body = World.Moon;
+            float3 up = World.Land(body);
+            var walker = Walker.Spawn(body, up, World.Tangent(up));
+            walker.height = 20; walker.position += up * walker.height; walker.grounded = false;
+            Walker.Step(ref walker, new WalkerInput { jump = true, lift = 1, gaze = -up }, body, World.Dt);
+            Assert.Less(math.dot(walker.velocity, up), -0.1f);
+        }
+
         static WalkerState Spawn(BodyDescriptor body, out float3 direction)
         {
             direction = World.Land(body);
@@ -193,7 +227,7 @@ namespace Infinigame.Tests
             // looking straight down at it and pushing forward
             for (float t = 0; t < 60f && !s.grounded; t += World.Dt) Walker.Step(ref s, new WalkerInput { move = new float2(0, 1), pitch = -1.5f }, moon, World.Dt);
             Assert.IsTrue(s.grounded, "back on the ground");
-            Assert.Less(Combat.Fall(s.impact), 10f, "and little the worse for it");
+            Assert.Less(s.impact, Walker.SoftLanding + 4, "A powered descent brakes before the ground");
         }
 
         [Test]
@@ -318,6 +352,18 @@ namespace Infinigame.Tests
             Run(ref s, default, World.Planet, true, 5f);
             Check.Near(start, s.position, 0.5f);
             Assert.IsFalse(s.landed);
+        }
+
+        [Test]
+        public void RollingOnTheSpotKeepsTheShipCentreAndBoresightStill()
+        {
+            var ship = Hover(World.Planet, World.Land(World.Planet), 50);
+            float3 centre = ship.position, forward = Forward(ship), up = math.rotate(ship.rotation, math.up());
+            ship.angularVelocity = new float3(0.4f, -0.6f, 0);
+            Run(ref ship, new ShipInput { turn = new float3(0, 0, 2) }, World.Planet, true, 1);
+            Check.Near(centre, ship.position, 0.01f);
+            Check.Near(forward, Forward(ship), 0.002f);
+            Assert.Less(math.dot(up, math.rotate(ship.rotation, math.up())), 0.5f);
         }
 
         [Test]

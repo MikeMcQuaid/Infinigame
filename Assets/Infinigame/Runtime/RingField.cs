@@ -53,7 +53,6 @@ namespace Infinigame
         static (float3[], float3[], Vector2[], int[]) Shape(Mesh mesh)
         {
             var result = (System.Array.ConvertAll(mesh.vertices, v => (float3)v), System.Array.ConvertAll(mesh.normals, n => (float3)n), mesh.uv, mesh.triangles);
-            Destroy(mesh);
             return result;
         }
 

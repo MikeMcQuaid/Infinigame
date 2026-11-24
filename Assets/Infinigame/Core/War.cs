@@ -15,7 +15,8 @@ namespace Infinigame.Core
     public enum EscortOrder { Follow, Attack, Patrol }
     [Serializable] public class EscortOrders
     {
-        public int count = 2;
+        public bool pack;
+        public int packWorld = -1;
         public EscortOrder order;
     }
 
@@ -46,7 +47,7 @@ namespace Infinigame.Core
         public static bool CanSpread(int origin, int destination) => math.abs(origin - destination) <= 1;
         public static bool Build(Front front, bool ships)
         {
-            if (ships ? front.shipyard || !Controlled(front) : front.factory || !front.mindDead && front.kills < RequiredKills(front)) return false;
+            if (ships ? front.shipyard || !front.factory : front.factory || !front.mindDead && front.kills < RequiredKills(front)) return false;
             if (ships) { front.shipyard = true; front.ships = math.max(1, front.ships); }
             else { front.factory = true; front.dogs = math.max(8 + front.rank * 4, front.dogs); }
             return true;

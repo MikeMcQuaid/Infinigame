@@ -4,7 +4,7 @@
 
 Independent self-replicating machines preserve native life. You wear their sealed armour. Your named recovery companion waits where you emerge, later rides in your cockpit and answers the radio anywhere in the system.
 
-Robodogs are quadruped combat fabricators. A robodog factory grows their population exponentially while enemies remain. Robodogs multiply faster than the brood and keep a standing pack. Small broods still hatch on a controlled world. A factory can become a shipyard once its robots conquer the whole world. Robot ships hunt the living fleet. Support reaches only the same planetary neighbourhood and one adjacent planet, never relaying across the entire system.
+Robodogs are quadruped combat fabricators. A robodog factory grows their population exponentially while enemies remain. Robodogs multiply faster than the brood and keep a standing pack. Small broods still hatch on a controlled world. Earth’s third factory and every later planetary factory can build robot ships immediately. Robot ships hunt the living fleet. Support reaches only the same planetary neighbourhood and one adjacent planet, never relaying across the entire system.
 
 The oldest machine census on Earth is a list of things that made a noise at night. The first surveyor had one working microphone and no names for what it heard. Three centuries later, an assembly crew digging out a furnace recognised a deep, three-note call from that list. They moved the furnace nine metres. The colony of frogs in the warm clay beneath it still calls every spring. Every new factory receives a copy of the recording, complete with the scrape of the surveyor trying to turn its microphone.
 
@@ -22,4 +22,4 @@ When a burrow falls silent, its nurseries carry on with the last season they wer
 
 ## Silhouettes
 
-Foundry armour uses rounded pale metal, exposed joints, cyan optics and dorsal lasers. The Presence uses layered shells, violet tissue, sensory fans and rooted neural folds. Alien fluid is violet, never red. Wounds stain shells, dying bodies leak pools and close punches splash the suit. Factories share the Foundry's curved machinery. Burrows have mineral walls and living ribs.
+Foundry dogs carry a dorsal laser above an articulated spine, with folded titanium plates over their shoulders and hips. The traveller wears the same pressed armour on the chest and gauntlets. Ships expose the rings of their engines between swept wings. Cyan optics identify Foundry machines. Factories enclose curved machinery in service panels. Presence castes have pearl and mauve shells, violet tissue and stalked senses. A stalker's crown stands high above its cheek fans, a breacher shelters its eyes behind a ram and a spitter carries two tall feelers behind its glands. Rooted minds and the vaults of the citadel grow larger sensory crowns. Violet fluid stains wounded shells, pools under dying bodies and splashes the suit. Burrows have mineral walls and living ribs.

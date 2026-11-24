@@ -15,9 +15,13 @@ if ! xcodebuild -project Build/iOS/Unity-iPhone.xcodeproj -scheme Unity-iPhone -
   exit 1
 fi
 echo "Built: $PWD/Build/iOSDerived/Build/Products/Release-iphoneos/Infinigame.app"
-echo "Connect your unlocked iPhone/iPad by USB, trust this Mac and enable Settings > Privacy & Security > Developer Mode."
-echo "Open $PWD/Infinigame.xcodeproj. Select Unity-iPhone, your device and your signing Team, leave Automatically manage signing enabled, then Product > Run."
-echo 'For an already signed app: Xcode > Window > Devices and Simulators > Installed Apps > +, choose the .app printed above.'
-if [ -z "${INFINIGAME_APPLE_TEAM:-}" ] || [ "$build_unsigned" = true ]; then
-  echo 'This compile was unsigned. Choose your Apple ID Team in Xcode before installing, or rerun with INFINIGAME_APPLE_TEAM set to your Team ID.'
+if [[ -z "${CI:-}" ]]; then
+  open -a Xcode "$PWD/Infinigame.xcodeproj"
+else
+  echo "Connect your unlocked iPhone/iPad by USB, trust this Mac and enable Settings > Privacy & Security > Developer Mode."
+  echo "Open $PWD/Infinigame.xcodeproj. Select Unity-iPhone, your device and your signing Team, leave Automatically manage signing enabled, then Product > Run."
+  echo 'For an already signed app: Xcode > Window > Devices and Simulators > Installed Apps > +, choose the .app printed above.'
+  if [ -z "${INFINIGAME_APPLE_TEAM:-}" ] || [ "$build_unsigned" = true ]; then
+    echo 'This compile was unsigned. Choose your Apple ID Team in Xcode before installing, or rerun with INFINIGAME_APPLE_TEAM set to your Team ID.'
+  fi
 fi

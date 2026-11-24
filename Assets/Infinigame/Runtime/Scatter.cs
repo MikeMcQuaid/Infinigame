@@ -153,18 +153,7 @@ namespace Infinigame
             var (trunk, needles) = Shapes.Conifer();
             brokenTrees = new Mesh[3][];
             for (int stage = 0; stage < 3; stage++)
-            {
-                brokenTrees[stage] = new Mesh[2];
-                var source = new[] { trunk, needles };
-                for (int part = 0; part < 2; part++)
-                {
-                    var vertices = source[part].vertices; var triangles = source[part].triangles; var indices = new List<int>();
-                    float cut = 7.5f - stage * 3;
-                    for (int t = 0; t < triangles.Length; t += 3)
-                        if (vertices[triangles[t]].y < cut && vertices[triangles[t + 1]].y < cut && vertices[triangles[t + 2]].y < cut) indices.AddRange(new[] { triangles[t], triangles[t + 1], triangles[t + 2] });
-                    var mesh = Instantiate(source[part]); mesh.triangles = indices.ToArray(); mesh.RecalculateBounds(); brokenTrees[stage][part] = mesh;
-                }
-            }
+                brokenTrees[stage] = Models.Parts("Conifer broken " + stage);
             layers = new[]
             {
                 boulders,
