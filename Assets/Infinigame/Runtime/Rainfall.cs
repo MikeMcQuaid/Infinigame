@@ -14,6 +14,7 @@ namespace Infinigame
         const float Width = 18f, Height = 14f, Speed = 24f;
 
         SolarSystem system;
+        Game game;
         Mesh streak;
         LineRenderer lightning;
         long lastStrike = -1;
@@ -24,19 +25,24 @@ namespace Infinigame
         void Start()
         {
             system = GetComponent<SolarSystem>();
+            game = GetComponent<Game>();
             streak = Shapes.Box();
             material = new Material(Resources.Load<Shader>("Rain")) { enableInstancing = true };
             var rnd = new Random(3);
             for (int i = 0; i < Drops; i++) seeds[i] = rnd.NextFloat3();
         }
 
+        public bool Sheltered => game.Buried || system.ReferenceBody.Dry(system.Focus);
         void Update()
         {
             int count = (int)(Drops * system.Rain);
+            if (count > 0 && Sheltered) count = 0;
             long interval = (long)(system.Clock / 17);
             if (lightning != null) lightning.enabled = count > 0 && interval == lastStrike && system.Clock % 17 < 0.23;
             if (count == 0) return;
             float3 eye = Camera.main.transform.position, up = math.normalizesafe(eye + system.Anchor, new float3(0, 1, 0));
+            float groundBelowEye = math.length(eye + system.Anchor) - system.ReferenceBody.GroundRadius(up);
+            if (groundBelowEye < -0.25f) return;
             float3 east = math.normalize(math.cross(up, math.abs(up.y) < 0.9f ? new float3(0, 1, 0) : new float3(1, 0, 0))), north = math.cross(up, east);
             if (system.Rain > 0.48f && interval != lastStrike && system.Clock % 17 < 0.23 && !system.ReferenceBody.Dry(system.Focus))
             {
@@ -68,7 +74,7 @@ namespace Infinigame
                 within -= new float3(Width, Height, Width) * math.floor(within / new float3(Width, Height, Width));
                 within -= new float3(Width, Height, Width) / 2f;
                 // a drop right in front of the eye would be a grey bar across the view, so those are left out
-                matrices[i] = Matrix4x4.TRS(eye + east * within.x + up * within.y + north * within.z, lean, math.lengthsq(within.xz) < 2.5f ? Vector3.zero : scale);
+                matrices[i] = Matrix4x4.TRS(eye + east * within.x + up * within.y + north * within.z, lean, within.y + groundBelowEye < 0.45f || math.lengthsq(within.xz) < 2.5f ? Vector3.zero : scale);
             }
             var parameters = new RenderParams(material) { worldBounds = new Bounds(eye, Vector3.one * 2f * Width), shadowCastingMode = ShadowCastingMode.Off };
             for (int start = 0; start < count; start += 1023) Graphics.RenderMeshInstanced(parameters, streak, 0, matrices, math.min(1023, count - start), start);

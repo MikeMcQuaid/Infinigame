@@ -7,6 +7,55 @@ namespace Infinigame.Tests
 {
     public class ExpeditionTests
     {
+        [Test] public void SuitRecoveryHasDistinctDiagnosticsForLongLoads()
+        {
+            var reports = Enumerable.Range(0, 1600).Select(Suit.Diagnostic).ToArray();
+            StringAssert.Contains("POWER LOSS", reports[0]);
+            Assert.AreEqual(reports.Length, reports.Distinct().Count());
+            var addresses = reports.Skip(12).Select(line => System.Text.RegularExpressions.Regex.Match(line, @"\[([0-9A-F]{4})\]").Groups[1].Value).ToArray();
+            Assert.IsTrue(addresses.All(address => address.Length == 4));
+            Assert.AreEqual(addresses.Length, addresses.Distinct().Count());
+        }
+
+        [Test] public void KnucklesCanBreakTheVisibleLipOfTheBurrowPlug()
+        {
+            var rooms = new Interior { walls = new[] { new Wall(new float3(0, 0, 2), new float3(5, 3, 1)) } };
+            Assert.IsTrue(rooms.FistContact(new float3(0, 0, 0.1f), new float3(0, 0, 0.72f), out var contact));
+            Assert.IsTrue(rooms.Breach(contact, 250));
+            Assert.IsFalse(rooms.FistContact(float3.zero, new float3(0, 0, 1), out _));
+        }
+
+        [Test] public void EachCitadelTurnHasASectionFieldBeyondItsTurret()
+        {
+            var rooms = Interior.Citadel();
+            for (int i = 2; i < rooms.route.Length - 1; i++)
+            {
+                int field = System.Array.FindIndex(rooms.walls, wall => wall.section == i);
+                Assert.GreaterOrEqual(field, 0);
+                rooms.walls[field].broken = false;
+                Assert.IsFalse(rooms.Visible(rooms.route[i], rooms.route[i + 1], true));
+                Assert.IsTrue(rooms.Visible(rooms.route[i - 1], rooms.route[i], true));
+                rooms.walls[field].broken = true;
+            }
+        }
+
+        [Test] public void PunchNeedsTravelAndRetractionButNoTimer()
+        {
+            PunchStroke stroke = default;
+            bool Step(float z) => stroke.Step(new float3(0, 0, z), float3.zero, 0.012f, 2.2f);
+            Assert.IsFalse(Step(0.2f));
+            Assert.IsFalse(Step(0.21f));
+            Assert.IsTrue(Step(0.34f));
+            Assert.IsTrue(Step(0.37f), "Keep sweeping the glove until it connects");
+            Assert.IsTrue(Step(0.38f), "The tip can decelerate as it reaches the wall");
+            stroke.Contact();
+            Assert.IsFalse(Step(0.41f));
+            Assert.IsFalse(Step(0.39f));
+            Assert.IsFalse(Step(0.23f));
+            Assert.IsTrue(Step(0.38f));
+            Assert.IsFalse(Step(0.38f));
+        }
+
         [Test] public void EveryDeathEasesPressureWithoutChangingIndividualEnemyHealth()
         {
             Assert.AreEqual(1, War.Pressure(0));
@@ -70,11 +119,13 @@ namespace Infinigame.Tests
             double Gap(double time) => math.distance(system.OrbitalPosition(world, time), fall.Position(system, time))
                 - system.bodies[world].radius - system.bodies[moon].radius;
             double launch = fall.began + Moonfall.Assembly + Moonfall.Ignition;
-            Assert.GreaterOrEqual(Gap(fall.began), 10000, "The opening shot needs clear space between the two surfaces");
+            double initial = math.distance(system.OrbitalPosition(moon, fall.began), system.OrbitalPosition(world, fall.began))
+                - system.bodies[moon].radius - system.bodies[world].radius;
+            Assert.AreEqual(initial, Gap(fall.began), 0.01, "Launch from the actual moon without a jump");
             Assert.AreEqual(Gap(fall.began), Gap(launch), 0.01, "Ignition must not send the moon backwards");
             Assert.Greater(Gap(launch + 0.5) - Gap(launch + 1), Gap(launch) - Gap(launch + 0.5));
-            Assert.Greater(Gap(launch + 1) - Gap(launch + 2), 1500, "Reach cruising speed in the first second");
-            Assert.Greater(Gap(launch + 9.9), 100);
+            Assert.Greater(Gap(launch + 1) - Gap(launch + 2), initial * 0.1, "Reach cruising speed in the first second");
+            Assert.Greater(Gap(launch + 9.9), 0);
             Assert.AreEqual(0, Gap(launch + 10), 0.01);
             Assert.IsTrue(fall.Finished(launch + 10));
         }

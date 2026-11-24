@@ -87,21 +87,26 @@ namespace Infinigame.Core
 
         // Where one member is and which way it faces, relative to the body's centre. Everyone circles
         // the troop's spot: birds and fish round and round, grazers ambling to and fro along an arc.
-        public static void Member(BodyDescriptor body, in Troop troop, int index, double time, out float3 position, out float3 forward)
+        public static double Member(BodyDescriptor body, in Troop troop, int index, double time, out float3 position, out float3 forward)
         {
             var rnd = new Random(math.hash(new uint2(troop.seed, (uint)index)) | 1u);
             float3 up = troop.centre;
             Compass(up, out float3 east, out float3 north);
             float phase = rnd.NextFloat(2f * math.PI), ring, angle, heading = 1f, lift = 0f;
+            double distanceWalked = 0;
             switch (troop.kind)
             {
                 case Creature.Grazer:
                 case Creature.Strider:
                     // a strider's legs are long: it keeps further from its fellows
                     ring = rnd.NextFloat(3f, 14f) * troop.spread * (troop.kind == Creature.Strider ? 2.5f : 1f);
-                    float amble = Turn(time, rnd.NextFloat(0.02f, 0.05f)) + phase * 3f;
+                    float rate = rnd.NextFloat(0.02f, 0.05f);
+                    float amble = Turn(time, rate) + phase * 3f;
                     angle = phase + 0.9f * math.sin(amble);
                     heading = math.cos(amble);
+                    // Each completed half-turn covers the full arc, including on the journey back.
+                    double turns = math.floor((time * rate + phase * 3f + math.PI_DBL / 2) / math.PI_DBL);
+                    distanceWalked = 0.9 * ring * (2 * turns + math.sign(heading) * math.sin(amble));
                     break;
                 case Creature.Drifter:
                     // they ride the wind in a slow wide gyre, rising and sinking as they go
@@ -139,6 +144,7 @@ namespace Infinigame.Core
                 : math.min(math.max(troop.level + lift, ground + 0.4f), body.SeaRadius - 0.5f));
             // a grazer turning round swings through facing outwards rather than flipping on the spot
             forward = math.normalize(Walker.Project(along * heading + outward * (walks ? 0.3f : 0f), direction));
+            return distanceWalked;
         }
 
         // Two directions along the ground at right angles.

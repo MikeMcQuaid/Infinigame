@@ -1142,6 +1142,28 @@ namespace Infinigame
         {
             var root = new GameObject(kind.ToString()).transform;
             MeshKit metal = new MeshKit(), glow = new MeshKit();
+            if (kind == Core.Building.ShipFactory)
+            {
+                var workshop = Building(Core.Building.Factory);
+                workshop.name = "Dog workshop"; workshop.SetParent(root, false);
+                workshop.localPosition = Models.DogWorkshop;
+                metal.Box(Vector3.zero, new Vector3(16, 0.2f, 18), 0.08f);
+                foreach (float side in new[] { -1f, 1f })
+                {
+                    metal.Box(new Vector3(side * 7.4f, 0.7f, 0), new Vector3(1.1f, 1.4f, 18), 0.12f);
+                    for (int i = -2; i <= 2; i++)
+                    {
+                        Vector3 foot = new Vector3(side * 7.4f, 1.4f, i * 3.4f);
+                        metal.Rod(foot, foot + Vector3.up * 3.8f, 0.22f, Curves, 0.14f);
+                        metal.Rod(foot + Vector3.forward * 0.9f, foot + Vector3.up * 2.7f, 0.11f, Curves);
+                        glow.Box(foot + Vector3.up * 3.84f, new Vector3(0.32f, 0.14f, 0.5f));
+                    }
+                    glow.Box(new Vector3(side * 6.5f, 0.13f, 0), new Vector3(0.09f, 0.04f, 16));
+                }
+                Add(root, "Open launch berth", metal, Alloy);
+                Add(root, "Berth lights", glow, Optics, false);
+                return root;
+            }
             metal.Box(new Vector3(0, 0.2f, 0), new Vector3(5, 0.4f, 5), 0.1f);
             if (kind == Core.Building.Radar)
             {
@@ -1184,7 +1206,7 @@ namespace Infinigame
                 metal.Box(new Vector3(-1.8f, 1.5f, 0), new Vector3(1, 3, 4), 0.1f);
                 metal.Box(new Vector3(1.8f, 1.5f, 0), new Vector3(1, 3, 4), 0.1f);
                 metal.Box(new Vector3(0, 3, 0), new Vector3(5, 0.4f, 4), 0.1f);
-                if (kind == Core.Building.Factory || kind == Core.Building.ShipFactory)
+                if (kind == Core.Building.Factory)
                 {
                     metal.Box(new Vector3(0, 0.12f, 0), new Vector3(3, 0.24f, 3), 0.08f);
                     foreach (float side in new[] { -1f, 1f })
@@ -1192,21 +1214,7 @@ namespace Infinigame
                         metal.Rod(new Vector3(side * 2, 2.7f, -1), new Vector3(side * 0.8f, 2.2f, 0), 0.13f, Curves);
                         glow.Ball(new Vector3(side * 0.8f, 2.2f, 0), 0.18f, Curves);
                     }
-                    if (kind == Core.Building.ShipFactory)
-                    {
-                        for (int i = 0; i < 3; i++)
-                        {
-                            float z = -3 + i * 3;
-                            metal.Rod(new Vector3(-4.5f, 0.2f, z), new Vector3(4.5f, 0.2f, z), 0.35f, Curves);
-                            foreach (float side in new[] { -1f, 1f })
-                            {
-                                metal.Box(new Vector3(side * 4.5f, 3.5f, z), new Vector3(0.4f, 7, 0.4f), 0.08f);
-                                metal.Rod(new Vector3(side * 4.5f, 6.5f, z), new Vector3(side * 1.5f, 3.5f, z), 0.14f, Curves);
-                            }
-                            metal.Box(new Vector3(0, 7, z), new Vector3(10, 0.4f, 0.4f), 0.08f);
-                            glow.Box(new Vector3(0, 6.75f, z), new Vector3(9, 0.1f, 0.15f));
-                        }
-                    }
+
                 }
                 if (kind == Core.Building.Workshop)
                 {
@@ -1243,16 +1251,66 @@ namespace Infinigame
 
         public static Transform Equipment(bool demolition) => Machine(demolition ? "Demolition core" : "Equipment case", root =>
         {
-            var casing = new MeshKit(); var cells = new MeshKit(); var power = new MeshKit();
-            casing.Box(new Vector3(0, 0.4f, 0), new Vector3(0.85f, 0.9f, 0.55f), 0.08f);
-            for (int i = 0; i < (demolition ? 3 : 2); i++)
+            var frame = new MeshKit(); var fittings = new MeshKit(); var seals = new MeshKit(); var lamps = new MeshKit();
+            if (demolition)
             {
-                float x = -0.26f + i * 0.26f;
-                cells.Rod(new Vector3(x, 0.07f, -0.31f), new Vector3(x, 0.7f, -0.31f), 0.085f, 32);
-                power.Rod(new Vector3(x, 0.18f, -0.4f), new Vector3(x, 0.6f, -0.4f), 0.02f, 16);
+                frame.Lathe(new[] { 0, 0.02f, 0.45f, 0.02f, 0.50f, 0.07f, 0.48f, 0.13f, 0.35f, 0.17f, 0, 0.17f }, 12);
+                for (int i = 0; i < 3; i++)
+                {
+                    var around = Turn(0, 120 * i, 0);
+                    var pod = around * Move(new Vector3(0, 0, -0.22f));
+                    fittings.Place(pod, () => fittings.Lathe(new[] { 0, 0.15f, 0.14f, 0.15f, 0.16f, 0.22f, 0.14f, 0.26f, 0.14f, 0.65f, 0.16f, 0.68f, 0.16f, 0.74f, 0.085f, 0.79f, 0, 0.79f }, 18));
+                    for (int rib = 0; rib < 3; rib++)
+                        seals.Place(pod, () => Band(seals, 0.137f, 0.149f, 0.32f + rib * 0.10f, 0.34f + rib * 0.10f, 18));
+                    frame.Place(around, () => frame.Tube(new[] { new Vector3(-0.20f, 0.11f, -0.34f), new Vector3(-0.23f, 0.65f, -0.33f), new Vector3(-0.16f, 0.86f, -0.22f) }, 0.033f, 8));
+                    lamps.Place(around, () => lamps.Box(new Vector3(0, 0.45f, -0.365f), new Vector3(0.043f, 0.32f, 0.02f), 0.005f));
+                }
+                Plate(frame, Vector3.up * 0.85f, new Vector3(0.69f, 0.10f, 0.64f), 18);
+                frame.Box(new Vector3(0, 0.91f, -0.29f), new Vector3(0.6f, 0.15f, 0.07f), 0.02f);
+                var lever = Child(root, "Arming lever");
+                lever.localPosition = new Vector3(0, 0.90f, 0.12f);
+                var handle = new MeshKit();
+                handle.Tube(new[] { new Vector3(-0.16f, 0, 0), new Vector3(-0.16f, 0.22f, 0), new Vector3(0.16f, 0.22f, 0), new Vector3(0.16f, 0, 0) }, 0.032f, 10);
+                Add(lever, "Insulated grip", handle, Paint(new Color(0.72f, 0.32f, 0.07f), 0.18f));
+                Add(root, "Charge strips", lamps, Shapes.Material("Props", new Color(0.32f, 0.12f, 0.04f)), false);
             }
-            if (!demolition) casing.Rod(new Vector3(-0.23f, 0.95f, 0), new Vector3(0.23f, 0.95f, 0), 0.045f, 24);
-            Add(root, "Protective housing", casing, Ceramic); Add(root, "Cells and connectors", cells, Alloy); Add(root, "Charge strips", power, demolition ? Shapes.Material("Props", new Color(0.2f, 0.11f, 0.07f)) : Optics, false);
+            else
+            {
+                Plate(frame, Vector3.up * 0.19f, new Vector3(1.20f, 0.36f, 0.76f), 20);
+                Plate(seals, Vector3.up * 0.38f, new Vector3(1.14f, 0.045f, 0.71f), 20);
+                var lid = Child(root, "Hinged lid");
+                lid.localPosition = new Vector3(0, 0.52f, 0.35f);
+                var cover = new MeshKit(); var liner = new MeshKit();
+                Plate(cover, new Vector3(0, 0.02f, -0.35f), new Vector3(1.20f, 0.12f, 0.76f), 20);
+                for (int i = -1; i <= 1; i++)
+                {
+                    float x = i * 0.34f;
+                    cover.Box(new Vector3(x, 0.09f, -0.35f), new Vector3(0.075f, 0.035f, 0.55f), 0.014f);
+                    foreach (int side in new[] { -1, 1 })
+                    {
+                        liner.Rod(new Vector3(x + side * 0.11f, -0.051f, -0.50f), new Vector3(x, -0.051f, -0.41f), 0.015f, 6);
+                        liner.Rod(new Vector3(x + side * 0.11f, -0.051f, -0.40f), new Vector3(x, -0.051f, -0.31f), 0.015f, 6);
+                    }
+                    foreach (float z in new[] { -0.16f, 0.12f })
+                        seals.Rod(new Vector3(x, 0.423f, z), new Vector3(x, 0.423f, z + 0.032f), 0.071f, 12);
+                    fittings.Rod(new Vector3(x, 0.423f, -0.22f), new Vector3(x, 0.423f, 0.21f), 0.065f, 12);
+                    lamps.Box(new Vector3(x, 0.487f, -0.12f), new Vector3(0.055f, 0.008f, 0.12f));
+                }
+                Add(lid, "Ribbed cover", cover, Ceramic);
+                Add(lid, "Cartridge guides", liner, Alloy);
+                foreach (int side in new[] { -1, 1 })
+                {
+                    fittings.Rod(new Vector3(side * 0.26f, 0.52f, 0.35f), new Vector3(side * 0.5f, 0.52f, 0.35f), 0.055f, 12);
+                    foreach (int end in new[] { -1, 1 })
+                        seals.Box(new Vector3(side * 0.54f, 0.21f, end * 0.32f), new Vector3(0.13f, 0.36f, 0.14f), 0.028f);
+                    lamps.Box(new Vector3(side * 0.39f, 0.27f, -0.383f), new Vector3(0.17f, 0.038f, 0.014f), 0.006f);
+                }
+                fittings.Tube(new[] { new Vector3(-0.20f, 0.21f, -0.36f), new Vector3(-0.17f, 0.21f, -0.48f), new Vector3(0.17f, 0.21f, -0.48f), new Vector3(0.20f, 0.21f, -0.36f) }, 0.028f, 10);
+                Add(root, "Module indicators", lamps, Shapes.Material("Glow", new Color(0.08f, 0.72f, 0.68f)), false);
+            }
+            Add(root, "Protective housing", frame, Ceramic);
+            Add(root, "Cells and connectors", fittings, Alloy);
+            Add(root, "Shock mounts", seals, Rubber);
         });
 
         public static Transform Gate()
@@ -1329,23 +1387,28 @@ namespace Infinigame
         // carried on three long stilts that knee above it, a sail of spines along its back, a trunk
         // let down to the ground to feed and a long drooping stalk of sense organs. The second mesh
         // is what glows: the stalk's lamps, the tips of the sail and a row along its belly.
-        public static (Mesh body, Mesh lights) Strider()
+        public static Mesh[] Strider(out Vector3[] hips)
         {
             var body = new MeshKit { crease = 180f };
             var lights = new MeshKit(body) { crease = 180f };
             body.Ball(new Vector3(0f, 4.55f, 0f), new Vector3(0.55f, 0.46f, 0.95f), Curves);
             body.Ball(new Vector3(0f, 4.2f, -0.45f), new Vector3(0.38f, 0.42f, 0.5f), Curves);
+            hips = new Vector3[3];
+            var parts = new Mesh[5];
             for (int i = 0; i < 3; i++)
             {
                 // one stilt forward and two behind, each with two knees and a spread foot
                 float angle = (120f * i) * Mathf.Deg2Rad;
                 var outward = new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle));
                 Vector3 hip = outward * 0.45f + Vector3.up * 4.6f, knee = outward * 1.7f + Vector3.up * 5.75f, hock = outward * 2.5f + Vector3.up * 2.7f, foot = outward * 1.95f;
-                body.Tube(Path(10, hip, knee, hock, foot + Vector3.up * 0.08f), 0.1f, 24, 0.045f);
-                body.Ball(knee, 0.16f, Curves);
-                body.Ball(hock, 0.13f, Curves);
+                hips[i] = hip;
+                var stilt = new MeshKit { crease = 180 };
+                stilt.Tube(Path(10, hip, knee, hock, foot + Vector3.up * 0.08f), 0.1f, 24, 0.045f);
+                stilt.Ball(knee, 0.16f, Curves);
+                stilt.Ball(hock, 0.13f, Curves);
                 for (int toe = -1; toe <= 1; toe++)
-                    body.Spike(foot + Vector3.up * 0.1f, foot + Quaternion.Euler(0f, 50f * toe, 0f) * outward * 0.5f, 0.06f, 16);
+                    stilt.Spike(foot + Vector3.up * 0.1f, foot + Quaternion.Euler(0f, 50f * toe, 0f) * outward * 0.5f, 0.06f, 16);
+                parts[i + 2] = stilt.Mesh("Stilt " + i);
             }
 
             // the sail: spines raked back along the spine, webbed between
@@ -1386,7 +1449,8 @@ namespace Infinigame
             for (int i = 0; i < 4; i++)
                 foreach (float side in new[] { -1f, 1f })
                     lights.Ball(new Vector3(side * 0.36f, 4.3f, 0.55f - 0.32f * i), 0.06f, 6);
-            return (body.Mesh("Strider"), lights.Mesh("Strider lights"));
+            parts[0] = body.Mesh("Strider"); parts[1] = lights.Mesh("Strider lights");
+            return parts;
         }
 
         // Mineral growths for airless and desert worlds: three clusters of six-sided spires, each

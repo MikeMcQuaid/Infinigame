@@ -37,7 +37,8 @@ namespace Infinigame
         // The hermit as the scanner sees them.
         public Scannable Likeness => new Scannable { name = "autonomous robot with plated limbs, exposed conduits and three cyan optical lenses with a dorsal laser", foot = Position, height = 1.9f, girth = 0.6f };
 
-        Transform camp, figure;
+        Transform camp, figure, optics;
+        MachineMotion movement;
         bool seated, unasked;
         LineRenderer repair;
         readonly LineRenderer[] repairRays = new LineRenderer[6];
@@ -72,7 +73,8 @@ namespace Infinigame
             float3 facing = Walker.Project(landing - spot, spot);
             camp.localRotation = math.lengthsq(facing) > 1e-8f ? Quaternion.LookRotation(facing, spot) : Quaternion.FromToRotation(Vector3.up, spot);
             figure = camp.Find("Hermit");
-            var movement = figure.gameObject.AddComponent<MachineMotion>();
+            optics = figure.Find("Torso/Neck/Head/Three optics");
+            movement = figure.gameObject.AddComponent<MachineMotion>();
             movement.quadruped = true;
             movement.look = Camera.main.transform;
 
@@ -86,13 +88,8 @@ namespace Infinigame
         // The recovered companion rides behind the pilot with only its head above the socket.
         void Update()
         {
-            if (camp != null)
-            {
-                var armour = camp.Find("Workshop/Powered armour");
-                if (armour != null) armour.gameObject.SetActive(!game.Player.Has(Gear.Suit));
-                var helm = camp.Find("Workshop/Fluted great helm");
-                if (helm != null) helm.gameObject.SetActive(!game.Player.Has(Gear.Suit));
-            }
+            if (figure == null) return;
+            movement.look = game.Tutorial.PointingAtShip ? game.Player.Seat : Camera.main.transform;
             if (repair == null)
             {
                 repair = new GameObject("Suit repair beam").AddComponent<LineRenderer>();
@@ -103,14 +100,16 @@ namespace Infinigame
                 {
                     repairRays[i] = Instantiate(repair, transform);
                     repairRays[i].name = "Repair scanning laser";
-                    repairRays[i].sharedMaterial = Shapes.Beam(Color.HSVToRGB(0.45f + i * 0.055f, 0.7f, 0.9f));
+                    repairRays[i].sharedMaterial = Shapes.Beam(Color.Lerp(new Color(0.08f, 0.60f, 0.58f), new Color(0.09f, 0.34f, 0.78f), i / 5f));
+                    repairRays[i].startWidth = 0.009f; repairRays[i].endWidth = 0.015f;
                 }
             }
+            Vector3 lens = optics.TransformPoint(0, 0.02f, 0.304f);
             repair.enabled = game.Tutorial != null && game.Tutorial.Repairing && !game.Paused;
             if (repair.enabled)
             {
-                repair.SetPosition(0, camp.position + camp.up * 1.1f);
-                repair.SetPosition(1, (Vector3)(game.Player.Position - game.System.Anchor) + (Vector3)math.normalizesafe(game.Player.Position) * Mathf.Lerp(1.85f, 0.12f, game.Tutorial.RepairProgress));
+                repair.SetPosition(0, lens);
+                repair.SetPosition(1, (Vector3)(game.Player.Position - game.System.Anchor) + (Vector3)math.normalizesafe(game.Player.Position) * Mathf.Lerp(1.48f, 0.12f, Mathf.SmoothStep(0, 1, game.Tutorial.RepairProgress)));
             }
             for (int i = 0; i < repairRays.Length; i++)
             {
@@ -122,7 +121,7 @@ namespace Infinigame
             if (game.Tutorial.PointingAtShip && !game.Paused)
             {
                 repair.enabled = true;
-                repair.SetPosition(0, camp.position + camp.up * 1.1f);
+                repair.SetPosition(0, lens);
                 repair.SetPosition(1, game.Player.ship.position - game.System.Anchor);
             }
             if (Provoked && !Aboard && !game.Paused && !game.Dead && math.distance(Position, game.Player.Position) < 40 && game.Outpost.Visible(Position + math.normalizesafe(Position), game.Player.Position))
@@ -139,16 +138,26 @@ namespace Infinigame
             figure.localScale = Vector3.one * (seated ? 0.25f : 1f);
             figure.localPosition = seated ? new Vector3(0, -0.24f, 0) : Vector3.zero;
             figure.localRotation = Quaternion.identity;
-            figure.GetComponent<MachineMotion>().seated = seated;
+            movement.seated = seated;
         }
 
-        public void Rescue()
+        public float3 RescueFacing
         {
-            float3 facing = DeviceControls.VR ? math.normalizesafe(Walker.Project(Camera.main.transform.forward, math.normalizesafe(game.Player.Position)), game.Player.walker.forward) : game.Player.walker.forward;
+            get
+            {
+                float3 facing = Walker.Project(Camera.main.transform.forward, math.normalizesafe(game.Player.Position));
+                return DeviceControls.VR && math.lengthsq(facing) > 0.04f ? math.normalize(facing) : game.Player.walker.forward;
+            }
+        }
+        public void Rescue(float3 exit)
+        {
+            float3 facing = game.Player.walker.forward;
             var body = game.System.ReferenceBody;
-            float3 up = math.normalize(game.Player.Position + facing * (game.Buried ? 12 : 4));
-            float3 site = up * body.GroundRadius(up);
-            game.System.Bodies[game.System.Reference].Level(site, 2.2f);
+            const float distance = 4.5f;
+            float3 up = math.normalize(exit + facing * distance);
+            float3 middle = math.normalize(exit + facing * (distance * 0.5f));
+            // Keep both sets of feet on one clear shelf at the rim.
+            game.System.Bodies[game.System.Reference].Tunnel(middle * math.max(math.length(exit), body.SeaRadius + 1), distance);
             Position = up * (body.GroundRadius(up) + 0.04f);
             camp.localPosition = Position;
             camp.localRotation = Quaternion.LookRotation(-facing, up);
@@ -168,7 +177,7 @@ namespace Infinigame
         // Something he says without being asked, from the seat beside the pilot.
         public void Remark(string words)
         {
-            if (!game.Player.Has(Gear.Suit) || Talking) return;
+            if (!game.Player.Has(Gear.Suit) && !game.Buried || Talking) return;
             game.Speech.Say(words, caption: game.Subtitles, start: () =>
             {
                 unasked = true;
@@ -178,8 +187,8 @@ namespace Infinigame
             });
         }
 
-        public string Briefing => (game.Outpost.SiteCleared ? game.Outpost.Errand : game.Wording(game.Stage >= Campaign.Won ? game.Fall.destroyed ? "finalFall" : "finalEngines" : game.Mission.brief))
-            + (DeviceControls.VR && game.Outpost.SiteCleared && game.Outpost.RegionalFactory == null && game.Stage <= Campaign.ThirdBurrow ? " Turn your left wrist towards you. Choose Build, then Robodog Factory." : "");
+        public string Briefing => (game.Outpost.Fallen ? game.Outpost.Errand : game.Wording(game.Stage >= Campaign.Won ? game.Fall.destroyed ? "finalFall" : "finalEngines" : game.Mission.brief))
+            + (DeviceControls.VR && game.Outpost.SiteCleared && game.Outpost.RegionalFactory == null && game.FactoryUnlocked ? $" Turn your left wrist towards you. Choose Build, then {game.Frontier.BuildLabel}." : "");
 
         // Authored replies keep the early story playable without an account.
         string Canned(string asked) => !game.FactoryUnlocked && (asked.IndexOf("factor", StringComparison.OrdinalIgnoreCase) >= 0 || asked.IndexOf("build", StringComparison.OrdinalIgnoreCase) >= 0 || asked.IndexOf("dog", StringComparison.OrdinalIgnoreCase) >= 0)

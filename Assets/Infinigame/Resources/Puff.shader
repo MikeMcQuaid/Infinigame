@@ -8,6 +8,7 @@ Shader "Infinigame/Puff"
 {
     Properties
     {
+        _Peak ("Peak fire brightness", Float) = 64
         _Billows ("Heads in red, their slopes in green and blue, wisps in alpha", 2D) = "gray" {}
     }
     SubShader
@@ -30,6 +31,7 @@ Shader "Infinigame/Puff"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
             #include "Fire.hlsl"
 
+            float _Peak;
             TEXTURE2D(_Billows); SAMPLER(sampler_Billows);
 
             UNITY_INSTANCING_BUFFER_START(Puffs)
@@ -135,7 +137,12 @@ Shader "Infinigame/Puff"
                 float front = saturate(1 - 8 * abs(sqrt(out2) - min(0.9, 0.25 + age))) * wisps.r;
                 fire += half3(1, 0.39, 0.11) * front * saturate(input.heat.x) * (1 - eaten);
                 float alpha = density * input.smoke.a;
-                return half4(MixFogColor(colour * alpha + fire * density, unity_FogColor.rgb * alpha, input.uv.w), alpha);
+                half3 lit = colour * input.smoke.a + fire;
+                float peak = max(lit.r, max(lit.g, lit.b));
+                lit *= min(1, _Peak / max(peak, 0.001));
+                // Bright overlapping fire attenuates what is behind it just as dense smoke does.
+                alpha = max(alpha, density * saturate(peak / _Peak));
+                return half4(MixFogColor(lit * density, unity_FogColor.rgb * alpha, input.uv.w), alpha);
             }
             ENDHLSL
         }

@@ -8,6 +8,30 @@ namespace Infinigame.Tests
 {
     public class DamageTests
     {
+        [Test]
+        public void DifficultyChangesBothSidesOfAHit()
+        {
+            foreach (Difficulty level in System.Enum.GetValues(typeof(Difficulty)))
+            {
+                var foe = new Foe { health = 80, shield = 10 };
+                Combat.Hurt(ref foe, 20, level);
+                if (level == Difficulty.Creative) Assert.LessOrEqual(foe.health, 0);
+                if (level == Difficulty.Normal) Assert.AreEqual(70, foe.health);
+                if (level == Difficulty.Realistic) Assert.Less(foe.health, 35);
+            }
+            Assert.Less(Combat.Incoming(20, Difficulty.Easy), 20);
+            Assert.Greater(Combat.Incoming(20, Difficulty.Hard), 20);
+            Assert.Greater(Combat.Incoming(20, Difficulty.Realistic), Combat.Incoming(20, Difficulty.Hard));
+        }
+
+        [Test]
+        public void PulseAssistLeadsAcrossTheCockpitSight()
+        {
+            float3 aim = Combat.Intercept(new float3(0, 0, 900), new float3(90, 0, 0), 900);
+            Assert.That(aim.x, Is.InRange(0.099f, 0.101f));
+            Assert.Greater(aim.z, 0.99f);
+        }
+
         // Drops someone from a height above level ground and says how hard they land.
         static float Landing(BodyDescriptor body, float height)
         {
@@ -344,6 +368,9 @@ namespace Infinigame.Tests
             Assert.Greater(math.distance(now, rock.position), 10f, "it has moved on since time zero");
 
             Assert.IsTrue(Rings.Hit(Ringed, now + outward * (rock.radius + 1f), 2f, time, scratch, out float3 normal, out float3 velocity));
+            Assert.IsTrue(Rings.Trace(Ringed, now + outward * 40, now - outward * 40, 2, time, scratch, out var obstacle, out _, out _));
+            Assert.AreEqual(rock.radius, obstacle.radius, 0.01f);
+            Assert.Greater(Combat.RockImpact(50, 15), Combat.RockImpact(50, 3));
             Check.Near(outward, normal, 0.01f);
             Check.Near((Rings.Now(Ringed, 0, 1, time + 0.01, rock.position) - Rings.Now(Ringed, 0, 1, time - 0.01, rock.position)) / 0.02f, velocity, 0.5f);
             Assert.IsFalse(Rings.Hit(Ringed, now + new float3(0, 80f, 0), 2f, time, scratch, out _, out _), "above the sheet there is nothing");
@@ -362,6 +389,24 @@ namespace Infinigame.Tests
     {
         static readonly float3 Target = new float3(60000f, 0f, 0f), Drift = new float3(0f, 0f, 40f);
         const float Standoff = 2000f;
+
+        [TestCase(0f), TestCase(1.57f), TestCase(3.1415927f)]
+        public void SurfaceApproachStaysClearAndFramesTheSite(float angle)
+        {
+            var body = SolarSystemDescriptor.Generate(7).bodies[SolarSystemDescriptor.Home];
+            float3 up = new float3(0, 1, 0), site = up * body.GroundRadius(up);
+            var ship = new ShipState { position = new float3(math.sin(angle), math.cos(angle), 0) * (body.radius + body.terrain.MaxHeight + 150), rotation = quaternion.identity };
+            for (int i = 0; i < 18000; i++)
+            {
+                bool arrived = Autopilot.Approach(ref ship, body, site, site, null, World.Dt);
+                Assert.Greater(math.length(ship.position), body.GroundRadius(math.normalize(ship.position)) + 3);
+                if (!arrived) continue;
+                Assert.Less(math.distance(ship.position, site), 115);
+                Assert.Greater(math.dot(math.forward(ship.rotation), math.normalize(site - ship.position)), 0.98f);
+                return;
+            }
+            Assert.Fail("The ship never reached the surface site");
+        }
 
         // Flies until arrival, calling watch every step. Returns the seconds taken.
         static float Fly(ref ShipState s, List<float4> worlds, System.Action<ShipState> watch = null)

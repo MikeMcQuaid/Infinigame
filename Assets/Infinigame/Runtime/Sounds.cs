@@ -124,6 +124,8 @@ namespace Infinigame
 
         public void Warp() => Play(warp, Mix.Warp);
 
+        public void Countdown() => Play(Take(encounters[(int)EncounterCue.Countdown]), 0.32f);
+
         public void Alarm() => Play(alarm, Mix.Alarm);
 
         public void Engage() => Play(engage, Mix.Engage);

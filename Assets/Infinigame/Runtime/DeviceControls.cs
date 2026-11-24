@@ -48,31 +48,64 @@ namespace Infinigame
         public static bool Deck =>
             System.Environment.GetEnvironmentVariable("SteamDeck") == "1" || SystemInfo.deviceModel.IndexOf("Jupiter", System.StringComparison.OrdinalIgnoreCase) >= 0 || SystemInfo.deviceModel.IndexOf("Galileo", System.StringComparison.OrdinalIgnoreCase) >= 0;
 
+        static bool UseNativeMonitor(string[] args)
+        {
+            bool windowed = false;
+            for (int i = 0; i + 1 < args.Length; i++)
+            {
+                switch (args[i].ToLowerInvariant())
+                {
+                    case "-screen-width":
+                    case "-screen-height": return false;
+                    case "-window-mode" when args[i + 1].ToLowerInvariant() == "exclusive": return false;
+                    case "-screen-fullscreen": windowed = args[i + 1] == "0"; break;
+                }
+            }
+            return !windowed;
+        }
+
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-        static void StartWindowsDisplay()
+        internal static void SetNativeMonitor()
+        {
+            var display = Screen.mainWindowDisplayInfo;
+            if (display.width <= 0 || display.height <= 0 ||
+                Screen.fullScreenMode == FullScreenMode.FullScreenWindow && Screen.width == display.width && Screen.height == display.height) return;
+            Debug.Log($"Restoring {display.name} from {Screen.width}x{Screen.height} {Screen.fullScreenMode} to its desktop size {display.width}x{display.height}");
+            Screen.SetResolution(display.width, display.height, FullScreenMode.FullScreenWindow);
+        }
+
+        internal static System.Collections.IEnumerator StartWindowsDisplay()
         {
             var args = System.Environment.GetCommandLineArgs();
-            bool requestVR = System.Array.IndexOf(args, "-vr") >= 0;
-            if (Deck && !requestVR)
+            if (System.Array.IndexOf(args, "-infinigame-vr") < 0)
             {
-                Screen.fullScreenMode = FullScreenMode.FullScreenWindow;
-                return;
+                if (UseNativeMonitor(args)) SetNativeMonitor();
+                yield break;
             }
+
+            // Apply the VR render pipeline and let the graphics device present before starting XR.
+            if (!PlayerPrefs.HasKey($"{Game.Prefs}.detail") && QualitySettings.GetQualityLevel() != 1) QualitySettings.SetQualityLevel(1);
+            yield return null;
+            Debug.Log($"Starting OpenXR with a {Screen.width}x{Screen.height} {Screen.fullScreenMode} mirror on {Screen.mainWindowDisplayInfo.name} using {SystemInfo.graphicsDeviceType}");
             var manager = UnityEngine.XR.Management.XRGeneralSettings.Instance?.Manager;
-            if (manager == null) return;
-            manager.InitializeLoaderSync();
-            if (manager.activeLoader == null) return;
+            if (manager != null) yield return manager.InitializeLoader();
+            if (manager?.activeLoader == null)
+            {
+                Debug.LogError("OpenXR could not initialise. Check that SteamVR is running and is the active OpenXR runtime.");
+                yield break;
+            }
             manager.StartSubsystems();
+            yield return null;
+            SetNativeMonitor();
             Application.quitting += () => { manager.StopSubsystems(); manager.DeinitializeLoader(); };
         }
 #endif
-        public static bool HudActions => Application.isMobilePlatform || Deck || Application.platform == RuntimePlatform.WindowsPlayer
-            || Application.platform == RuntimePlatform.LinuxPlayer || Application.isEditor && Touch;
-        public static bool Pointer => !VR && (Deck || Application.isMobilePlatform || HudActions && Keyboard.current?.altKey.isPressed == true);
+        public static bool HudActions => Application.isMobilePlatform || Deck || Application.isEditor && Touch;
+        public static bool Pointer => !VR && (Deck || Application.isMobilePlatform || Keyboard.current?.altKey.isPressed == true);
         void Start()
         {
-            if ((Application.isMobilePlatform || VR || Deck) && !PlayerPrefs.HasKey($"{Game.Prefs}.detail")) QualitySettings.SetQualityLevel(VR ? 1 : 0);
+            int detail = VR ? 1 : 0;
+            if ((Application.isMobilePlatform || VR || Deck) && !PlayerPrefs.HasKey($"{Game.Prefs}.detail") && QualitySettings.GetQualityLevel() != detail) QualitySettings.SetQualityLevel(detail);
             QualitySettings.vSyncCount = 0; Application.targetFrameRate = 60;
             Touch = Application.isMobilePlatform;
         }
@@ -118,7 +151,7 @@ namespace Infinigame
                     taps.Remove(touch.touchId.ReadValue());
                 }
                 if (!touch.press.isPressed) continue;
-                Touch = true;
+                Touch = Application.isMobilePlatform || Deck || Application.isEditor;
                 Vector2 at = touch.position.ReadValue();
                 int id = touch.touchId.ReadValue();
                 bool pressed = !touching.Contains(id); currentTouches.Add(id);
@@ -136,6 +169,7 @@ namespace Infinigame
                     else { firstTouch = at; previousTouch = previous; c.mapDrag = touch.delta.ReadValue() / Mathf.Max(1, Screen.height); }
                 }
                 if (pressed) { c.pointer = at; c.click = true; }
+                if (!HudActions) continue;
                 var start = touch.startPosition.ReadValue();
                 if (id != fingers[0] && id != fingers[1] && ScreenActions(start, pressed, ref c))
                 {
@@ -160,7 +194,7 @@ namespace Infinigame
                 {
                     moveThumb = Vector2.ClampMagnitude((at - moveOrigin) / (60 * Unit), 1);
                     c.move += moveThumb;
-                    c.sprint |= moveThumb.y >= 0.9f;
+                    c.sprint |= !game.Player.flying && moveThumb.y >= 0.9f;
                 }
                 else c.look += touch.delta.ReadValue() * (150f / Mathf.Max(1, Screen.safeArea.height));
             }
@@ -220,7 +254,7 @@ namespace Infinigame
             c.menu = pause && !menuHeld;
             c.jump = !game.Player.flying && left.trigger;
             c.lift = (c.jump ? 1 : 0) - (left.primary ? 1 : 0);
-            c.sprint = right.grip || left.grip || left.click || (game.Player.flying ? left.trigger : left.axis.y >= 0.9f);
+            c.sprint = game.Player.flying ? left.trigger : right.grip || left.grip || left.click || left.axis.y >= 0.9f;
             bool selectTrigger = right.trigger && !trigger || left.trigger && !leftTrigger;
             c.confirm = pointing && (right.primary && !primary || selectTrigger);
             c.reload = right.click && !stick && !game.Player.flying;
@@ -311,7 +345,7 @@ namespace Infinigame
                     if (pressed) TapFire(ref c);
                     c.automaticFire = c.fire = true;
                 }
-                if (i == 1) c.jump = true;
+                if (i == 1) { if (game.Player.flying) c.sprint = true; else c.jump = true; }
                 if (i == 2) c.interact |= pressed;
                 if (i == 3 && pressed) expanded = !expanded;
                 if (i == 4) c.menu |= pressed;
@@ -330,7 +364,7 @@ namespace Infinigame
             }
             return false;
         }
-        internal static float Unit => Mathf.Clamp(Screen.safeArea.height / 720f, 0.8f, 2.5f);
+        internal static float Unit => Mathf.Clamp(Screen.safeArea.height / 720f, 0.5f, 2.5f);
         Rect StickArea(int index)
         {
             float size = 140 * Unit;
@@ -368,7 +402,7 @@ namespace Infinigame
             && (i != 1 || !game.Buried) && (i != 2 || game.Player.Prompt != null || game.Outpost.Near || game.Hermit.Near);
         void LateUpdate()
         {
-            if ((VR && forearm == null || Application.isMobilePlatform && touchCanvas == null) && Camera.main != null)
+            if (VR && forearm == null && Camera.main != null)
             {
                 var post = GameObject.Find("Global Volume");
                 if (post != null) post.SetActive(false);
@@ -379,7 +413,7 @@ namespace Infinigame
                 forearm = game.gameObject.AddComponent<ForearmConsole>(); forearm.game = game;
                 var displays = new List<XRDisplaySubsystem>();
                 SubsystemManager.GetSubsystems(displays);
-                foreach (var display in displays) display.SetPreferredMirrorBlitMode(XRMirrorViewBlitMode.None);
+                foreach (var display in displays) display.SetPreferredMirrorBlitMode(XRMirrorViewBlitMode.RightEye);
                 SubsystemManager.GetSubsystems(inputs);
                 foreach (var input in inputs) input.TrySetTrackingOriginMode(TrackingOriginModeFlags.Device);
             }
@@ -435,7 +469,7 @@ namespace Infinigame
                 thumbs[i].rectTransform.anchoredPosition = i == 0 ? moveThumb * (40 * Unit) : Vector2.zero;
             }
             labels[8].text = game.Player.flying ? "AUTO" : "RECALL";
-            labels[1].text = game.Player.Has(Gear.Thrusters) || game.Player.flying ? "THRUST" : "JUMP";
+            labels[1].text = game.Player.flying ? "BOOST" : game.Player.Has(Gear.Thrusters) ? "THRUST" : "JUMP";
             for (int i = 0; i < labels.Length; i++)
             {
                 plates[i].gameObject.SetActive(Visible(i));

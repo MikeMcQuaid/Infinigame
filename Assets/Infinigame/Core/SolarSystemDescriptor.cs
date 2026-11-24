@@ -113,11 +113,12 @@ namespace Infinigame.Core
         // How the axis is set: +y tilted over, then swung round to its heading.
         quaternion Axis => math.mul(quaternion.RotateY(heading), quaternion.RotateX(tilt));
 
-        public quaternion Rotation(double time) => spinPeriod == 0 ? quaternion.identity : math.mul(Axis,
-            quaternion.RotateY(-(float)math.fmod(spinPhase + 2 * math.PI_DBL * time / spinPeriod, 2 * math.PI_DBL)));
+        [NonSerialized] public quaternion? burnAttitude;
+        public quaternion Rotation(double time) => burnAttitude ?? (spinPeriod == 0 ? quaternion.identity : math.mul(Axis,
+            quaternion.RotateY(-(float)math.fmod(spinPhase + 2 * math.PI_DBL * time / spinPeriod, 2 * math.PI_DBL))));
 
         // Angular velocity of the spin, in the inertial frame.
-        public float3 Spin => spinPeriod == 0 ? float3.zero : math.rotate(Axis, new float3(0, -(float)(2 * math.PI_DBL / spinPeriod), 0));
+        public float3 Spin => burnAttitude.HasValue || spinPeriod == 0 ? float3.zero : math.rotate(Axis, new float3(0, -(float)(2 * math.PI_DBL / spinPeriod), 0));
 
         public float SeaRadius => terrain.seaDepth > 0f ? radius : 0f;
 

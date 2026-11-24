@@ -43,6 +43,7 @@ namespace Infinigame
         float raid, pack, ashore, launch, railCharge, nextCarve, nextScorch, railUntil;
         LineRenderer railTwin, sightLine;
         Transform sightSpot;
+        float sightRange, nextSightTrace, beamRange;
         Material beamLight, railLight;
         string previousWeapon;
         bool charging;
@@ -57,7 +58,7 @@ namespace Infinigame
         {
             beamSlot = -1;
             Array.Clear(readyAt, 0, readyAt.Length);
-            nextSweepPulse = railCharge = sweepEnds = sweepUntil = 0;
+            nextSweepPulse = railCharge = sweepEnds = sweepUntil = nextSightTrace = 0;
             charging = false;
         }
         float sweepEnds;
@@ -92,7 +93,7 @@ namespace Infinigame
             ray = new GameObject("Weapon beam").AddComponent<LineRenderer>();
             ray.transform.SetParent(transform, false);
             ray.sharedMaterial = beamLight = Shapes.Beam(new Color(0.25f, 1.1f, 2.6f));
-            railLight = Shapes.Beam(new Color(2.8f, 0.62f, 0.08f));
+            railLight = Shapes.Beam(new Color(0.44f, 1.75f, 2.1f));
             ray.startWidth = ray.endWidth = 0.1f;
             ray.positionCount = 2;
             ray.enabled = false;
@@ -101,7 +102,7 @@ namespace Infinigame
             railTwin.startWidth = railTwin.endWidth = 0.08f; railTwin.positionCount = 2; railTwin.enabled = false;
             sightLine = Instantiate(railTwin, transform);
             sightLine.name = "Targeting laser";
-            sightLine.sharedMaterial = Shapes.Beam(new Color(1, 0.008f, 0.002f));
+            sightLine.sharedMaterial = Shapes.Beam(new Color(0.045f, 0.65f, 1));
             sightSpot = Shapes.Part(transform, "Aim impact", Shapes.Orb(1, 12), sightLine.sharedMaterial, Vector3.zero, Vector3.one, false).transform;
             sightSpot.gameObject.SetActive(false);
             sightLine.startWidth = 0.006f; sightLine.endWidth = 0.055f;
@@ -119,15 +120,31 @@ namespace Infinigame
                 return flash;
             }
             ours = Fire(new Color(2.5f, 8f, 12f));
-            theirs = Fire(new Color(2.5f, 0.3f, 0.6f));
+            theirs = Fire(new Color(1.8f, 0.21f, 1.55f));
             fire = Fire(new Color(12f, 6f, 2f));
         }
 
         void LateUpdate()
         {
-            if (sightLine != null && (game.Paused || game.Dead || game.Player.SystemView || game.Hermit.Talking || game.ShowControls)) { sightLine.enabled = false; sightSpot.gameObject.SetActive(false); charging = false; railCharge = 0; }
-            if (Beaming && !game.Player.flying && !DeviceControls.VR)
-                ray.SetPosition(0, game.GetComponent<Arms>().Muzzle(game.Player.Weapon) - game.System.Anchor);
+            if (sightLine != null && (game.Paused || game.Dead || game.Player.SystemView || game.Hermit.Talking || game.ShowControls || game.Buried || game.Fall.active)) { sightLine.enabled = false; sightSpot.gameObject.SetActive(false); charging = false; railCharge = 0; }
+            if (!game.Player.flying && (sightLine.enabled || Beaming))
+            {
+                var port = game.GetComponent<Arms>().Muzzle(game.Player.Weapon);
+                if (sightLine.enabled)
+                {
+                    sightLine.SetPosition(0, port.position);
+                    if (DeviceControls.VR)
+                    {
+                        sightLine.SetPosition(1, port.position + port.forward * sightRange);
+                        if (sightSpot.gameObject.activeSelf) sightSpot.position = port.position + port.forward * (sightRange - 0.03f);
+                    }
+                }
+                if (Beaming)
+                {
+                    ray.SetPosition(0, port.position);
+                    if (DeviceControls.VR) ray.SetPosition(1, port.position + port.forward * beamRange);
+                }
+            }
         }
 
 
@@ -232,6 +249,9 @@ namespace Infinigame
 
             bool there = body.kind == BodyKind.Station && Base > 0;
 
+            var weapon = player.Weapon;
+            if (previousWeapon != weapon.name) { charging = false; railCharge = railUntil = nextSightTrace = 0; }
+            previousWeapon = weapon.name;
             ray.enabled = Time.time < railUntil;
             railTwin.enabled = Time.time < railUntil && flying;
             foreach (var beam in sweep)
@@ -239,45 +259,49 @@ namespace Infinigame
                 beam.enabled = !flying && player.Weapon.sweep && Time.time < sweepUntil;
                 if (beam.enabled) beam.SetPosition(0, player.BackpackPort - system.Anchor);
             }
-            var weapon = player.Weapon;
-            if (previousWeapon != weapon.name) { charging = false; railCharge = 0; }
-            previousWeapon = weapon.name;
             Vector3 port = Models.WingPort;
             if (flying && weapon.pellets == 1 && left) port.x = -port.x;
-            float3 muzzle = flying ? player.ship.position + math.rotate(player.ship.rotation, (float3)port) :
-                weapon.needs == Gear.BackMissiles ? player.BackpackPort : game.GetComponent<Arms>().Muzzle(weapon);
+            var wrist = flying ? default : game.GetComponent<Arms>().Muzzle(weapon);
+            float3 weaponPort = flying ? player.ship.position + math.rotate(player.ship.rotation, (float3)port) : (float3)wrist.position + system.Anchor;
+            float3 muzzle = weapon.needs == Gear.BackMissiles ? player.BackpackPort : weaponPort;
             float3 forward = flying ? math.rotate(player.ship.rotation, new float3(0, 0, 1)) : (float3)view.transform.forward;
-            float3 aimOrigin = muzzle;
-            if (DeviceControls.VR && !flying && player.Aim(UnityEngine.XR.XRNode.RightHand, out var hand, out var aim))
-            {
-                forward = aim * Vector3.forward;
-                aimOrigin = (float3)hand + system.Anchor;
-                if (weapon.beam || weapon.rail) muzzle = aimOrigin;
-            }
+            bool wristSight = !flying && (weapon.rail || weapon.beam || weapon.needs == Gear.BackMissiles);
+            float3 aimOrigin = DeviceControls.VR ? weaponPort : (float3)view.transform.position + system.Anchor;
+            if (DeviceControls.VR && wristSight) forward = wrist.forward;
             bool aimMissile = DeviceControls.VR && weapon.needs == Gear.BackMissiles;
-            sightLine.enabled = DeviceControls.VR && !flying && (weapon.rail || aimMissile) && c.fire && !c.interfaceActive && player.Armed;
-            sightSpot.gameObject.SetActive(false);
+            sightLine.enabled = wristSight && !c.interfaceActive && player.Armed;
+            bool showSpot = false;
             float3 aimedAt = default;
             if (flying && DeviceControls.VR && weapon.rail) aimOrigin = player.ship.position + math.rotate(player.ship.rotation, (float3)Models.PilotEye);
-            if (sightLine.enabled || DeviceControls.VR && (aimMissile || weapon.rail) && charging && !c.fire)
+            if (sightLine.enabled || flying && DeviceControls.VR && weapon.rail && charging && !c.fire)
             {
-                float range = weapon.rail ? 2000 : 300;
-                float3 target = Combat.Ray(Foes, body, aimOrigin, forward, range, 0, false, game.Outpost.Shield, null);
-                range = WallRange(aimOrigin, forward, math.distance(aimOrigin, target));
-                target = aimOrigin + forward * range;
-                if (sightLine.enabled && range < (weapon.rail ? 1999 : 299))
+                float reach = weapon.rail ? 2000 : weapon.beam ? 250 : 300;
+                // The idle sight follows the hand every frame. Sample terrain again on every shot and release.
+                if (c.fire || charging || Time.time >= nextSightTrace)
                 {
-                    sightSpot.gameObject.SetActive(true);
-                    sightSpot.position = target - system.Anchor - forward * 0.03f;
-                    sightSpot.localScale = Vector3.one * Mathf.Clamp(range * 0.004f, 0.05f, 2);
+                    float3 hit = Combat.Ray(Foes, body, aimOrigin, forward, reach, 0, false, game.Outpost.Shield, null);
+                    sightRange = WallRange(aimOrigin, forward, math.distance(aimOrigin, hit));
+                    nextSightTrace = Time.time + 0.05f;
                 }
-                sightLine.SetPosition(0, aimOrigin - system.Anchor);
+                float3 target = aimOrigin + forward * sightRange;
+                showSpot = sightLine.enabled && sightRange < reach - 0.01f;
+                if (showSpot)
+                {
+                    sightSpot.position = target - system.Anchor - forward * 0.03f;
+                    sightSpot.localScale = Vector3.one * Mathf.Clamp(sightRange * 0.004f, 0.05f, 2);
+                }
+                sightLine.SetPosition(0, weaponPort - system.Anchor);
                 sightLine.SetPosition(1, target - system.Anchor);
                 aimedAt = target;
-                if (flying) forward = math.normalizesafe(target - muzzle, forward);
-                if (aimMissile) forward = math.normalizesafe(target - muzzle - up * 0.6f, forward);
+                if (!DeviceControls.VR || !wristSight || aimMissile)
+                {
+                    float3 launchOffset = weapon.needs == Gear.BackMissiles ? up * 0.6f : float3.zero;
+                    forward = math.normalizesafe(target - muzzle - launchOffset, forward);
+                }
             }
-            bool fireWeapon = !c.interfaceActive && (DeviceControls.VR && weapon.melee ? game.GetComponent<Arms>().MotionPunch : c.fire);
+            sightSpot.gameObject.SetActive(showSpot);
+            var fists = DeviceControls.VR && weapon.melee ? game.GetComponent<Arms>() : null;
+            bool fireWeapon = !c.interfaceActive && (fists != null ? fists.MotionPunch : c.fire);
             int slot = player.WeaponSlot;
             if (beamSlot >= 0 && (beamSlot != slot || !fireWeapon || player.energy < weapon.energy * frame))
             {
@@ -307,11 +331,15 @@ namespace Infinigame
                 charging = c.fire;
             }
             else { charging = false; railCharge = 0; }
-            if (fireWeapon && (ready || weapon.sweep) && player.Armed && (aloft || !flying) && !player.Autopilot
-                && (weapon.sweep || Suit.Spend(ref player.energy, weapon.energy * (weapon.beam ? frame : 1))))
+            float damage = weapon.damage;
+            for (int hand = 0; fireWeapon && hand < (fists != null ? 2 : 1); hand++)
             {
+                if (fists != null && (fists.PunchHands & (1 << hand)) == 0) continue;
+                if (!(ready || fists != null || weapon.sweep) || !player.Armed || flying && !aloft || player.Autopilot) break;
+                if (!weapon.sweep && !Suit.Spend(ref player.energy, weapon.energy * (weapon.beam ? frame : 1))) break;
+                weapon.damage = damage;
                 float3 eye = (float3)view.transform.position + system.Anchor;
-                if (player.ThirdPerson)
+                if (player.ThirdPerson && !wristSight)
                 {
                     float3 sight = Combat.Ray(Foes, body, eye, forward, 2000, 0, false, default, null);
                     if (!game.Outpost.Visible(eye, sight))
@@ -326,21 +354,30 @@ namespace Infinigame
                     }
                     forward = math.normalizesafe(sight - muzzle, forward);
                 }
-                if (DeviceControls.VR && weapon.melee)
-                { muzzle = game.GetComponent<Arms>().PunchOrigin; forward = game.GetComponent<Arms>().PunchDirection; }
-                if (DeviceControls.Touch && !weapon.sweep)
+                if (fists != null) { muzzle = fists.punchOrigins[hand]; forward = fists.punchDirections[hand]; }
+                bool cockpitAssist = DeviceControls.VR && flying && (weapon.beam || weapon.rail || weapon.voice == 0);
+                if ((DeviceControls.Touch && !DeviceControls.VR || cockpitAssist) && !weapon.sweep)
                 {
-                    int target = Combat.AssistedTarget(Foes, muzzle, forward, weapon.melee ? 4.5f : flying ? 1500 : 250, flying ? 18 : 14);
+                    bool Visible(float3 at)
+                    {
+                        if (!game.Outpost.Visible(muzzle, at) || game.Outpost.Shield.Blocks(muzzle, at - muzzle, out _)) return false;
+                        for (int sample = 1; sample < 12; sample++)
+                        {
+                            float3 point = math.lerp(muzzle, at, sample / 12f);
+                            if (math.length(point) < Combat.Surface(body, point)) return false;
+                        }
+                        return true;
+                    }
+                    int target = Combat.AssistedTarget(Foes, muzzle, forward, weapon.melee ? 4.5f : flying ? 1500 : 250, cockpitAssist ? 7 : flying ? 18 : 14, Visible);
                     if (target >= 0)
                     {
                         float3 at = Foes[target].position;
-                        bool clear = game.Outpost.Visible(muzzle, at) && !game.Outpost.Shield.Blocks(muzzle, at - muzzle, out _);
-                        for (int sample = 1; clear && sample < 12; sample++)
+                        if (cockpitAssist)
                         {
-                            float3 point = math.lerp(muzzle, at, sample / 12f);
-                            clear = math.length(point) >= Combat.Surface(body, point);
+                            forward = weapon.beam || weapon.rail ? math.normalizesafe(at - muzzle) : Combat.Intercept(at - muzzle, Foes[target].velocity - player.Velocity, weapon.speed);
+                            aimedAt = at;
                         }
-                        if (clear) forward = Combat.Turn(forward, math.normalizesafe(at - muzzle), math.radians(flying ? 12 : 10));
+                        else forward = Combat.Turn(forward, math.normalizesafe(at - muzzle), math.radians(flying ? 12 : 10));
                     }
                 }
                 int learnedWeapon = flying ? 5 + Array.FindIndex(Combat.Guns, gun => gun.name == weapon.name) : player.Arm;
@@ -353,7 +390,7 @@ namespace Infinigame
                 if (weapon.sweep)
                 {
                     float3 origin = player.BackpackPort;
-                    Combat.Sweep(Foes, body, origin, weapon.damage, game.Outpost.Shield, game.Outpost.Visible, struck);
+                    Combat.Sweep(Foes, body, origin, weapon.damage, game.Outpost.Shield, game.Outpost.Visible, struck, game.Challenge);
                     sweepUntil = Time.time + 0.23f;
                     for (int i = 0; i < 6; i++)
                     {
@@ -381,8 +418,10 @@ namespace Infinigame
                 }
                 else if (weapon.beam || weapon.rail || weapon.melee)
                 {
-                    float reach = weapon.melee ? DeviceControls.VR ? 1.3f : 4.5f : weapon.rail ? 2000 : flying ? 3000 : 250;
+                    float reach = weapon.melee ? fists != null ? fists.punchLengths[hand] : 4.5f : weapon.rail ? 2000 : flying ? 3000 : 250;
+                    float fullReach = reach;
                     float3 end = muzzle + forward * reach;
+                    bool grazedWall = false;
                     if (!game.Outpost.Visible(muzzle, end))
                     {
                         float near = 0, far = reach;
@@ -395,12 +434,13 @@ namespace Infinigame
                         if (!game.Outpost.Shield.Blocks(muzzle, forward * (reach + 0.02f), out _))
                             game.Outpost.Breach(muzzle + forward * (reach + 0.01f), demolition * (weapon.beam ? frame : 1));
                     }
+                    else if (fists != null) grazedWall = game.Outpost.PunchWall(muzzle, end, demolition);
                     if (game.Outpost.Shield.Blocks(muzzle, forward * reach, out var shieldStop)) reach = math.distance(muzzle, shieldStop);
                     if (system.Bodies[system.Reference].TryGetComponent<Scatter>(out var growth) && growth.Strike(muzzle, muzzle + forward * reach, demolition * (weapon.beam ? frame : 1), out float3 tree)) reach = math.distance(muzzle, tree);
                     game.Corpses.Strike(muzzle, forward * reach, weapon.damage);
                     int previousHits = struck.Count;
-                    end = Combat.Ray(Foes, body, muzzle, forward, reach, weapon.damage * (weapon.beam ? frame : 1), weapon.rail, game.Outpost.Shield, struck);
-                    if (system.Bodies[system.Reference].TryGetComponent<Creatures>(out var wildlife)) wildlife.Strike(muzzle, end - muzzle);
+                    end = Combat.Ray(Foes, body, muzzle, forward, reach, weapon.damage * (weapon.beam ? frame : 1), weapon.rail, game.Outpost.Shield, struck, level: game.Challenge);
+                    bool animal = system.Bodies[system.Reference].TryGetComponent<Creatures>(out var wildlife) && wildlife.Strike(muzzle, end - muzzle);
                     if (weapon.beam && game.Progression.ranks[0] >= 3)
                     {
                         int chained = 0;
@@ -408,12 +448,13 @@ namespace Infinigame
                         {
                             var foe = Foes[target];
                             if (foe.health <= 0 || foe.friendly || math.distance(end, foe.position) < foe.size + 0.2f || math.distance(end, foe.position) > 12 || !game.Outpost.Visible(end, foe.position)) continue;
-                            Combat.Ray(Foes, body, end, math.normalizesafe(foe.position - end), 12, weapon.damage * frame * 0.3f, false, game.Outpost.Shield, struck);
+                            Combat.Ray(Foes, body, end, math.normalizesafe(foe.position - end), 12, weapon.damage * frame * 0.3f, false, game.Outpost.Shield, struck, level: game.Challenge);
                             game.Effects.Crackle(foe.position); chained++;
                         }
                     }
                     if (weapon.rail || weapon.beam)
                     {
+                        if (!flying && weapon.beam) beamRange = math.distance(muzzle, end);
                         if (weapon.rail) railUntil = Time.time + 0.10f;
                         ray.sharedMaterial = railTwin.sharedMaterial = weapon.rail ? railLight : beamLight;
                         ray.startWidth = railTwin.startWidth = weapon.rail ? 0.028f : flying ? 0.85f : 0.1f;
@@ -421,16 +462,22 @@ namespace Infinigame
                         if (flying)
                         {
                             float3 second = player.ship.position + math.rotate(player.ship.rotation, new float3(-port.x, port.y, port.z));
-                            float3 otherDirection = DeviceControls.VR && weapon.rail ? math.normalizesafe(aimedAt - second, forward) : forward;
+                            float3 otherDirection = DeviceControls.VR && (weapon.rail || weapon.beam && math.any(aimedAt != 0)) ? math.normalizesafe(aimedAt - second, forward) : forward;
                             float otherReach = WallRange(second, otherDirection, weapon.rail ? 2000 : 3000);
-                            float3 other = Combat.Ray(Foes, body, second, otherDirection, otherReach, weapon.damage * (weapon.beam ? frame : 1), weapon.rail, game.Outpost.Shield, struck);
+                            float3 other = Combat.Ray(Foes, body, second, otherDirection, otherReach, weapon.damage * (weapon.beam ? frame : 1), weapon.rail, game.Outpost.Shield, struck, level: game.Challenge);
                             railTwin.enabled = true; railTwin.SetPosition(0, second - system.Anchor); railTwin.SetPosition(1, other - system.Anchor);
                         }
                     }
                     if (weapon.melee)
                     {
-                        if (!game.Hermit.Aboard && Combat.Crosses(muzzle, forward * reach, game.Hermit.Position + math.normalizesafe(game.Hermit.Position), 1.2f)) game.Hermit.Punched();
-                        game.Frontier.Punch(muzzle, forward * reach);
+                        bool robot = !game.Hermit.Aboard && Combat.Crosses(muzzle, forward * reach, game.Hermit.Position + math.normalizesafe(game.Hermit.Position), 1.2f);
+                        if (robot) game.Hermit.Punched();
+                        robot |= game.Frontier.Punch(muzzle, forward * reach);
+                        if (fists != null)
+                        {
+                            if (struck.Count == previousHits && reach >= fullReach && !grazedWall && !robot && !animal && math.length(end) > body.GroundRadius(math.normalizesafe(end)) + 0.12f) continue;
+                            fists.Contact(hand);
+                        }
                         if (player.Powered)
                         {
                             if (struck.Count > previousHits && struck[previousHits].foe >= 0 && !struck[previousHits].ground)
@@ -466,7 +513,7 @@ namespace Infinigame
                 }
                 else Combat.Fire(weapon, muzzle, forward, player.Velocity, ref rnd, Bolts, launchUp: weapon.needs == Gear.BackMissiles ? up : float3.zero);
                 if (weapon.sweep) { sweepIndex += 6; nextSweepPulse = Time.time + 0.24f; }
-                else readyAt[slot] = Time.time + weapon.period;
+                else readyAt[slot] = Time.time + (fists != null ? 0 : weapon.period);
                 if (weapon.rail) railCharge = 0;
                 if (flying && weapon.beam) beamSlot = slot;
                 if (!weapon.beam) game.Sounds.Shot(weapon.voice);
@@ -501,7 +548,7 @@ namespace Infinigame
                     bool hunting = !foe.friendly && !foe.scattered;
                     float3 quarry = game.Frontier.Target(foe.position, self);
                     if (foe.outerGuard && foe.kind == FoeKind.Raider && math.distance(foe.position, game.Outpost.Position) > 220)
-                        quarry = game.Outpost.Place(new float3(0, 45, -70));
+                        quarry = math.normalizesafe(game.Outpost.Place(new float3(0, 45, -70))) * (body.radius * Shapes.AirTop(body) + 45);
                     if (foe.emergence > 0 && !foe.stationary)
                     {
                         if (foe.guardian && body.kind == BodyKind.Rock)
@@ -539,6 +586,16 @@ namespace Infinigame
                     if (hunting || foe.scattered)
                     {
                         bool fired = Combat.Hunt(ref foe, body, quarry, player.Velocity, game.Threat, dt, out var shot);
+                        if (foe.kind == FoeKind.Raider && body.kind == BodyKind.Rock)
+                        {
+                            float floor = body.radius * Shapes.AirTop(body) + foe.size;
+                            if (math.lengthsq(foe.position) < floor * floor)
+                            {
+                                float3 outward = math.normalizesafe(foe.position, up);
+                                foe.position = outward * floor;
+                                foe.velocity -= outward * math.min(0, math.dot(foe.velocity, outward));
+                            }
+                        }
                         if (foe.outerGuard && foe.kind == FoeKind.Raider) game.Outpost.Shield.Bounce(before, ref foe.position, ref foe.velocity, foe.size);
                         if (foe.kind == FoeKind.Sentry)
                         {
@@ -654,7 +711,7 @@ namespace Infinigame
                     }
                     Bolts.RemoveAt(i);
                 }
-                hurt += Combat.Step(Bolts, Foes, body, self, player.Velocity, flying ? Combat.ShipRadius : Combat.PersonRadius, dt, struck, game.Outpost.Shield, game.Outpost.Visible);
+                hurt += Combat.Step(Bolts, Foes, body, self, player.Velocity, flying ? Combat.ShipRadius : Combat.PersonRadius, dt, struck, game.Outpost.Shield, game.Outpost.Visible, game.Challenge);
             }
             if (hurt > 0f) player.Hurt(hurt, !flying ? $"Gunned down by Skimmers on {body.name}" : there ? "Shot to pieces by the Presence citadel" : $"Shot down over {body.name}");
 
@@ -761,7 +818,7 @@ namespace Infinigame
                     float3 from = self + math.normalize(-ahead + rnd.NextFloat3Direction() * 0.46f) * rnd.NextFloat(1100f, 1500f);
                     // never out of the ground
                     float3 over = math.normalize(from);
-                    Add(FoeKind.Raider, over * math.max(math.length(from), Ship.Surface(body, over) + 150f));
+                    Add(FoeKind.Raider, over * math.max(math.length(from), body.kind == BodyKind.Rock ? body.radius * Shapes.AirTop(body) + 75 : Ship.Surface(body, over) + 150f));
                 }
                 game.Notify("HARROWERS INBOUND");
                 game.Hermit.Remark(game.Wording("incoming"));

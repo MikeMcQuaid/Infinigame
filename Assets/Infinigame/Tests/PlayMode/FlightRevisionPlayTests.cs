@@ -18,8 +18,8 @@ namespace Infinigame.Tests
             int row = System.Array.IndexOf(game.Items, Game.Cheats);
             for (int i = 0; i < row; i++) yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
-            yield return Press(new Controls { down = true });
-            yield return Press(new Controls { confirm = true });
+            yield return Pick("Choose mission");
+            yield return Pick($"{Campaign.Won + 2}. Replay the moon finale");
             Assert.IsFalse(game.Title);
             Assert.IsFalse(game.Paused);
             Assert.IsTrue(game.Fall.active);

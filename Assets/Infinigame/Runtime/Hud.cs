@@ -26,7 +26,7 @@ namespace Infinigame
             ("ON FOOT", new[]
             {
                 "W A S D|Run", "Mouse|Look", "Space|Jump / hold to thrust", "W  aloft|Fly where you look", "Shift|Sprint", "F|Talk, take or board", "Click|Fire", "R|Toggle fitted cloak",
-                "1 2 3 4 5|Select weapon", "B|Factory uplink", "X|Scan what you face", "V|First or third person",
+                "1 2 3 4 5|Select weapon", "B|Build at this site", "X|Scan what you face", "V|First or third person",
             }),
             ("IN THE SHIP", new[]
             {
@@ -68,7 +68,7 @@ namespace Infinigame
         Image pageBackground, attributePlate, pointerFocus;
         RectTransform menuContent;
         readonly List<(Text label, Text action, Image divider, string key)> helpKeys = new List<(Text, Text, Image, string)>();
-        Image charge, chargeTrack, reticle, menuBar, flash, murk, beacon, askMark;
+        Image reticle, menuBar, flash, murk, beacon, askMark;
         Sprite dot;
         // each of the oracle's voices' own badge, where the project has been given one
         Sprite[] badges;
@@ -158,8 +158,6 @@ namespace Infinigame
             run = Group(root, topLeft, new Vector2(56f, -48f), new Vector2(420f, 30f));
             missionPlate = Fill(run.transform, topLeft, new Vector2(-10, 8), new Vector2(1020, 50), Plate, Panel).rectTransform;
             runText = Label(run.transform, topLeft, Vector2.zero, new Vector2(1000f, 36f), 13, TextAnchor.UpperLeft, Dim);
-            chargeTrack = Fill(run.transform, topLeft, new Vector2(0f, -26f), new Vector2(220f, 3f), Faint);
-            charge = Fill(run.transform, topLeft, new Vector2(0f, -26f), new Vector2(220f, 3f), Accent);
 
             new GameObject("Globe radar").AddComponent<Radar>().game = game;
 
@@ -175,7 +173,7 @@ namespace Infinigame
             Stretch(pageBackground); pageBackground.enabled = false;
             mapBar = Group(root, top, new Vector2(0, -70), new Vector2(1300, 66));
             Stretch(Fill(mapBar.transform, centre, Vector2.zero, Vector2.zero, Plate, Panel));
-            string[] mapActions = { "MAP", "SUMMARY", "SUIT ATTRIBUTES", "CLOSE ×", "FLEET ORDERS  ›", "FACTORY UPLINK  ›", "SET AUTOPILOT", "CONTROLS", "CALL ROBODOG", "MAIN MENU" };
+            string[] mapActions = { "MAP", "SUMMARY", "SUIT ATTRIBUTES", "CLOSE ×", "FLEET ORDERS  ›", "BUILD", "SET AUTOPILOT", "CONTROLS", "CALL ROBODOG", "MAIN MENU" };
             mapButtons = new Text[mapActions.Length];
             for (int i = 0; i < mapActions.Length; i++)
             {
@@ -276,8 +274,8 @@ namespace Infinigame
             var help = DeviceControls.VR ? new (string heading, string[] rows)[]
             {
                 ("SUIT", new[] { "Left stick|Move", "Right stick ◀ ▶|Snap turn", "Right stick ▲ ▼|Change weapon", "Left trigger|Jump / jetpack", "L stick click / grip|Sprint or boost", "Swing fist|Punch", "Right trigger|Fire / aim rail or missiles", "Release trigger|Fire aimed shot", "Right A|Take item / board", "R stick click|Engage cloak" }),
-                ("COCKPIT", new[] { "Left stick ▲ ▼|Thrust / reverse", "Left stick ◀ ▶|Steer", "Right stick ▲ ▼|Pitch", "Right stick ◀ ▶|Roll", "Left trigger|Boost", "Left A|Descend", "L stick click / grip|Boost", "Right trigger|Fire / aim rail", "Right B|Cycle weapon", "Right A|Land / leave", "R stick click|Autopilot", "Hold left B|Cockpit pause menu" }),
-                ("MENUS", new[] { "Hold left B|Pause", "Either stick ▲ ▼|Move selection", "Either trigger / R A|Select row", "Point + trigger|Select button", "Right B|Go back", "Left / right stick|Pan / zoom map", "Tap left B|Expedition map", "Turn left wrist|Suit controls", "Wrist BUILD|Robodog factory" }),
+                ("COCKPIT", new[] { "Left stick ▲ ▼|Thrust / reverse", "Left stick ◀ ▶|Steer", "Right stick ▲ ▼|Pitch", "Right stick ◀ ▶|Roll", "Left trigger|Boost", "Left A|Descend", "Right trigger|Fire / aim rail", "Right B|Cycle weapon", "Right A|Land / leave", "R stick click|Autopilot", "Hold left B|Cockpit pause menu" }),
+                ("MENUS", new[] { "Hold left B|Pause", "Either stick ▲ ▼|Move selection", "Either trigger / R A|Select row", "Point + trigger|Select button", "Right B|Go back", "Left / right stick|Pan / zoom map", "Tap left B|Expedition map", "Turn left wrist|Suit controls", "Wrist BUILD|Build at this site" }),
             } : Help;
             for (int column = 0; column < help.Length; column++)
             {
@@ -523,15 +521,12 @@ namespace Infinigame
                     visor.layer = LayerMask.NameToLayer("UI");
                     surround = visor.GetComponent<Renderer>();
                 }
-                float dark = game.Buried && !game.Paused && !game.Title ? Mathf.Clamp01((12 - game.Boot) / 4) : 0;
                 Color tint = game.Frontier.Whiteout > 0 ? new Color(1, 1, 1, game.Frontier.Whiteout)
-                    : dark > 0 ? new Color(0, 0, 0, dark) : game.Paused ? Color.clear : DamageTint();
+                    : game.Paused ? Color.clear : DamageTint();
                 surround.enabled = tint.a > 0;
                 surroundInk.SetColor("_Tint", tint);
                 flash.enabled = false;
             }
-            canvas.enabled = game.Paused || !game.Buried || game.Boot >= 4 || DeviceControls.VR && game.PreparingOpening;
-            if (!canvas.enabled) return;
             var player = game.Player;
             var system = game.System;
             var body = system.ReferenceBody;
@@ -540,7 +535,7 @@ namespace Infinigame
             float now = Time.unscaledTime;
             line.fontSize = DeviceControls.Touch || DeviceControls.Deck || DeviceControls.VR ? 32 : 26;
             captionText.fontSize = DeviceControls.Touch || DeviceControls.Deck || DeviceControls.VR ? 30 : 24;
-            bool playing = (!game.Buried || game.Boot >= 4) && !game.Paused && !game.Dead && !hermit.Talking && !player.SystemView && !game.ShowControls && !game.Fall.active, planetView = player.PlanetView;
+            bool playing = !game.Paused && !game.Dead && !hermit.Talking && !player.SystemView && !game.ShowControls && !game.Fall.active, planetView = player.PlanetView;
             bool showVisor = playing && !game.GetComponent<DeviceControls>().ReadingWrist;
             // places are marked while playing and on the map of the world they are on
             bool charting = playing || (planetView && !game.Paused && !game.Dead && !game.ShowControls);
@@ -592,7 +587,7 @@ namespace Infinigame
             var cardRect = weaponCard.GetComponent<RectTransform>();
             cardRect.pivot = cardRect.anchorMin = cardRect.anchorMax = Vector2.right;
             cardRect.sizeDelta = new Vector2(Mathf.Max(heldWeapon.preferredWidth + 78, dog.HasValue ? dogLink.preferredWidth + 24 : 0), dog.HasValue ? 65 : 38);
-            cardRect.anchoredPosition = DeviceControls.VR ? new Vector2(player.Seated ? -470 : -185, 26) : new Vector2(-(Screen.width - Screen.safeArea.xMax) / canvas.scaleFactor - 12, Screen.safeArea.yMin / canvas.scaleFactor + 8);
+            cardRect.anchoredPosition = DeviceControls.VR ? new Vector2(player.Seated ? -470 : -185, 26) : new Vector2(-(Screen.width - Screen.safeArea.xMax) / canvas.scaleFactor - 12, (touchLayout ? Screen.safeArea.yMin + Screen.safeArea.height * 0.59f : Screen.safeArea.yMin) / canvas.scaleFactor + 8);
             heldWeapon.rectTransform.anchoredPosition = new Vector2(65, -5);
             weaponGlyph.rectTransform.localScale = Vector3.one * 0.32f;
             weaponGlyph.rectTransform.anchoredPosition = new Vector2(8, cardRect.sizeDelta.y - 28);
@@ -627,21 +622,18 @@ namespace Infinigame
             flash.color = DamageTint();
 
             // the mission in hand, and how much of its guard has fallen
-            runText.text = game.Stage < Campaign.Won && game.Outpost.World == game.System.Reference ? game.Outpost.Instruction : game.Stage < Campaign.Won ? game.Wording(game.Mission.task) : game.Objective; runText.color = Accent;
-            bool mobile = Application.isMobilePlatform || DeviceControls.Touch || DeviceControls.Deck || DeviceControls.VR;
+            runText.text = game.MissionAction; runText.color = Accent;
+            bool mobile = DeviceControls.HudActions || DeviceControls.VR;
             runText.fontSize = DeviceControls.VR ? 30 : mobile ? 24 : 19;
             runText.horizontalOverflow = HorizontalWrapMode.Wrap;
             runText.rectTransform.sizeDelta = new Vector2(Mathf.Min(1000, ((RectTransform)canvas.transform).rect.width - 112), 74);
             runText.resizeTextForBestFit = true; runText.resizeTextMinSize = 14; runText.resizeTextMaxSize = runText.fontSize;
-            missionPlate.sizeDelta = new Vector2(Mathf.Clamp(runText.preferredWidth, 220, 1000) + 24, runText.preferredHeight + 32);
-            charge.rectTransform.anchoredPosition = chargeTrack.rectTransform.anchoredPosition = new Vector2(0, -runText.preferredHeight - 6);
+            missionPlate.sizeDelta = new Vector2(Mathf.Clamp(runText.preferredWidth, 220, 1000) + 24, runText.preferredHeight + 16);
             run.GetComponent<RectTransform>().anchoredPosition = new Vector2(DeviceControls.VR ? 255 : 56, DeviceControls.VR ? -142 : mobile ? -105 : -48);
             helpHint.text = DeviceControls.Key("ESC · MENU", "START · MENU", "MENU", "HOLD LEFT B · MENU");
-            charge.rectTransform.sizeDelta = new Vector2(game.Outpost.World < 0 ? 0f : 220f * (1f - (float)game.Outpost.Left / Campaign.Minds(game.Stage)), 3f);
-            Show(run, showVisor);
-            escapeText.text = game.Fall.active ? game.Frontier.Ending : game.Outpost.Demolition > 0 ? $"BURROW DEMOLITION · ESCAPE {math.ceil(game.Outpost.Demolition):0}s" : $"CORE COLLAPSE · ESCAPE {math.ceil(game.Outpost.Escape):0}s";
+            Show(run, showVisor && !game.Buried);
+            escapeText.text = game.Fall.active ? game.Frontier.Ending : game.Outpost.Demolition > 0 ? $"BURROW DEMOLITION · {math.ceil(game.Outpost.Demolition):0}s" : $"CORE COLLAPSE · ESCAPE {math.ceil(game.Outpost.Escape):0}s";
             Show(escape, !game.Paused && (game.Fall.active || playing && (game.Outpost.Demolition > 0 || game.Stage == Campaign.Citadel && game.Outpost.Escape > 0)));
-            if (game.Stage == Campaign.Citadel && game.Outpost.Escape > 0) runText.text = $"ESCAPE · {math.ceil(game.Outpost.Escape):0} SECONDS";
 
 
             // the mission in hand in full
@@ -657,7 +649,7 @@ namespace Infinigame
                 string Sentence(string words) => string.IsNullOrEmpty(words) ? "Establish a foothold" : char.ToUpperInvariant(words[0]) + words.Substring(1).ToLowerInvariant();
                 briefHead.text = $"MISSION {game.Stage + 1} OF {Campaign.Missions.Length}";
                 briefTitle.text = mission.name;
-                briefTask.text = game.Objective.Substring(game.Objective.IndexOf('·') + 1).Trim();
+                briefTask.text = game.MissionAction;
                 briefRows.text = $"{worlds[on].name}  ·  {Distance(far)} from you{(game.Goal != null ? "  ·  follow its mark" : on == system.Reference ? "" : "  ·  its mark is the bright one")}\n"
                     + $"{Sentence(Campaign.Spoils(game.Stage))}\n"
                     + (game.Stage < Campaign.Citadel ? $"{Campaign.Missions[game.Stage + 1].name}  ·  {Campaign.Spoils(game.Stage + 1).ToLowerInvariant()}" : "The way out of this system");
@@ -670,7 +662,7 @@ namespace Infinigame
             if (writing)
             {
                 var badge = badges[Oracle.Voice];
-                askText.text = $"{Oracle.Voices[Oracle.Voice].ToUpperInvariant()}  ·  {Oracle.Model(Oracle.Voice).name.ToUpperInvariant()}";
+                askText.text = $"{Oracle.Voices[Oracle.Voice].ToUpperInvariant()}  ·  {Oracle.Model(Oracle.Voice).name.ToUpperInvariant()}{Game.Activity}";
                 askMark.sprite = badge != null ? badge : dot;
                 askMark.color = new Color(badge != null ? 1f : Accent.r, badge != null ? 1f : Accent.g, badge != null ? 1f : Accent.b, 0.55f + 0.45f * Mathf.Sin(now * 5f));
             }
@@ -685,7 +677,9 @@ namespace Infinigame
                 caption.GetComponent<RectTransform>().anchoredPosition = new Vector2(DeviceControls.VR ? 120f : 0f, DeviceControls.VR ? 110f : DeviceControls.HudActions ? 232f : 172f);
             }
             Show(caption, game.Subtitles && hermit.Remarking && playing, 4f);
-            lesson.text = showVisor ? game.Tutorial.Hint : "";
+            string action = showVisor && !game.Buried && !game.Tutorial.Locked ? game.Prompt : null;
+            string guidance = showVisor && !game.Buried ? game.Tutorial.Hint : "";
+            lesson.text = guidance == runText.text || action != null && (game.Outpost.Near || game.Stage == Campaign.Recovery && player.NearShip) ? "" : guidance;
             if (showVisor && !player.flying && player.Has(Gear.Stealth) && (player.cloaked || Time.time - player.HurtAt < 4))
                 lesson.text = player.cloaked ? game.Wording("cloakActive") : ControlName("R") + " · " + game.Wording("cloakHint");
             lessonPlate.gameObject.SetActive(DeviceControls.VR && lesson.text.Length > 0);
@@ -711,7 +705,6 @@ namespace Infinigame
             Show(hint, (now - game.Began < 14f || DeviceControls.VR && player.Seated) && playing && !game.ShowControls, 1f);
 
             // what the interact key would do
-            string action = showVisor && !game.Buried && !game.Tutorial.Locked ? game.Prompt : null;
             if (action != null)
             {
                 promptText.text = action;
@@ -740,8 +733,8 @@ namespace Infinigame
             if (game.Buried)
             {
                 (bannerBody, bannerSince) = (-2, now);
-                bannerTitle.text = Spaced(game.Boot < 7 ? "" : "Emergency power");
-                bannerSub.text = game.Boot < 7 ? "" : game.Mission.task;
+                bannerTitle.text = Spaced("Emergency power");
+                bannerSub.text = game.Mission.task;
             }
             // or as play begins there
             bool arriving = now - Mathf.Max(bannerSince, game.Began) < BannerStays;
@@ -805,7 +798,7 @@ namespace Infinigame
                 if (!DeviceControls.VR) safe = Vector2.Scale(safe, new Vector2(Screen.safeArea.width / Mathf.Max(1, Screen.width), Screen.safeArea.height / Mathf.Max(1, Screen.height)));
                 menuContent.localScale = Vector3.one * Mathf.Min(1, safe.x / 1500f, safe.y / 960f);
                 if (!DeviceControls.VR) menuContent.anchoredPosition = (Screen.safeArea.center - new Vector2(Screen.width, Screen.height) / 2) / canvas.scaleFactor;
-                int rows = items.Length > 9 ? (items.Length + 1) / 2 : items.Length;
+                int rows = game.Page != "Missions" && items.Length > 9 ? (items.Length + 1) / 2 : items.Length;
                 float spacing = Mathf.Min(60, 440f / Mathf.Max(1, rows - 1));
                 for (int i = 0; i < menuItems.Length; i++)
                 {
@@ -813,13 +806,14 @@ namespace Infinigame
                     if (i >= items.Length) continue;
                     float x = rows == items.Length ? 0 : i < rows ? -280 : 280;
                     menuItems[i].rectTransform.anchoredPosition = new Vector2(x, 64 - spacing * (i % rows));
+                    menuItems[i].horizontalOverflow = game.Page == "Missions" ? HorizontalWrapMode.Overflow : HorizontalWrapMode.Wrap;
                     menuItems[i].resizeTextForBestFit = true;
                     menuItems[i].resizeTextMinSize = 16;
                     menuItems[i].resizeTextMaxSize = 30;
                     menuItems[i].rectTransform.sizeDelta = new Vector2(x == 0 ? 1100 : 530, Mathf.Min(50, spacing - 2));
                     bool submenu = items[i] == Game.Settings || items[i] == Game.Writers || items[i] == Game.Cheats || items[i] == "Controls" || items[i] == "Choose mission" || items[i] == "Expedition map" || items[i] == Game.HandAlignment || items[i] == Game.WristAlignment || game.Page == Game.Writers && items[i] != "Back" && items[i] != "Sign out";
                     menuItems[i].text = items[i] + (submenu ? "   ›" : "");
-                    menuItems[i].color = game.Page == Game.ColonyPage && items[i] != "Back" && !game.Frontier.CanBuild(items[i] == "Build moon engines" ? 2 : i) ? new Color(0.35f, 0.4f, 0.43f) : items[i] == Game.Writers ? Accent : i == game.Selected ? Ink : Dim;
+                    menuItems[i].color = items[i] == Game.Writers ? Accent : i == game.Selected ? Ink : Dim;
                 }
                 var chosen = menuItems[math.min(game.Selected, items.Length - 1)];
                 menuBar.rectTransform.anchoredPosition = chosen.rectTransform.anchoredPosition - new Vector2(chosen.preferredWidth / 2f + 22f, 0f);
@@ -856,6 +850,7 @@ namespace Infinigame
             mapButtons[7].color = game.MapPage == 3 ? Accent : Ink;
             for (int i = 0; i < 3; i++) mapButtons[i].color = game.MapPage == i ? Accent : Ink;
             mapButtons[4].enabled = game.MapSummary && game.Presence.fronts.Any(front => front.shipyard);
+            mapButtons[5].text = game.Frontier.Construction.ToUpperInvariant();
             mapButtons[5].enabled = game.MapSummary && game.FactoryUnlocked && !player.flying;
             mapButtons[6].enabled = game.MapSummary && player.Has(Gear.Ship);
             mapButtons[8].enabled = game.MapSummary && game.Frontier.CanCallDogs;
@@ -907,8 +902,12 @@ namespace Infinigame
                 var outpost = game.Outpost;
                 int goal = outpost.World >= 0 ? outpost.World : -1;
                 if (goal >= 0 && !system.Charted(goal)) goal = system.Descriptor.Planet(goal);
-                if (charting && !player.SystemView && game.Stage == Campaign.Won && game.Goal is float3 shipyard)
-                    Mark(shipyard - system.Anchor, "MISSION · BUILD MOON ENGINES", Distance(math.distance(player.Position, shipyard)), Accent, false, -1, true);
+                bool approaching = charting && player.flying && !player.SystemView && game.Stage >= Campaign.Tower && game.Stage < Campaign.Citadel
+                    && outpost.World != system.Reference && outpost.World >= 0 && math.distance(self, system.Bodies[outpost.World].transform.position) < math.max(12000, 12 * worlds[outpost.World].radius);
+                if (approaching && game.Goal is float3 landing)
+                    Mark(landing - system.Anchor, "MISSION · " + worlds[outpost.World].name.ToUpperInvariant() + " LANDING SITE", Distance(math.distance(player.Position, landing)), Accent, false, -1, true);
+                if (charting && !player.SystemView && game.Stage == Campaign.Won && game.Goal is float3 moonGoal)
+                    Mark(moonGoal - system.Anchor, game.Fall.armed ? "MISSION · CLEAR THE MOON" : game.Frontier.CanBuild(2) ? "MISSION · BUILD MOON ENGINES HERE" : "MISSION · LAND ANYWHERE ON A MOON", Distance(math.distance(player.Position, moonGoal)), Accent, false, -1, true);
                 if (charting && !player.SystemView && outpost.World == system.Reference && game.Stage == Campaign.Citadel && outpost.Rooms != null)
                 {
                     Mark(outpost.Waypoint - system.Anchor, "MISSION · " + outpost.CitadelMark, Distance(math.distance(player.Position, outpost.Waypoint)), Accent, false, -1, true);
@@ -917,7 +916,7 @@ namespace Infinigame
                             Mark(foe.position - system.Anchor, foe.protectedCore ? "SHIELDED MIND" : "CITADEL MIND", Distance(math.distance(player.Position, foe.position)), Harm, true);
                 }
                 for (int i = 0; i < system.Bodies.Length && !planetView; i++)
-                    if ((inSpace || player.SystemView || i == goal && goal != system.Reference) && (i != system.Reference || player.SystemView || i == goal) && system.Charted(i) && (worlds[i].kind != BodyKind.Station || game.Stage >= Campaign.Citadel))
+                    if (!(approaching && i == outpost.World) && (inSpace || player.SystemView || i == goal && goal != system.Reference) && (i != system.Reference || player.SystemView) && system.Charted(i) && (worlds[i].kind != BodyKind.Station || game.Stage >= Campaign.Citadel))
                         // over the map the table has every distance, so the names stand alone and crowd each other less
                         Mark(system.Bodies[i].transform.position, (i == goal ? "MISSION · " : "") + (worlds[i].kind == BodyKind.Station ? "ENEMY CITADEL" : worlds[i].name.ToUpperInvariant()),
                             player.SystemView || !inSpace ? "" : worlds[i].kind == BodyKind.Station && game.Battle.Base <= 0f ? "DESTROYED"
@@ -942,17 +941,21 @@ namespace Infinigame
                     }
                 }
                 // and on that world, the raiders' place itself, then what they kept there: marks that lead the way and are never out of sight
-                if (charting && !inSpace && outpost.World == system.Reference && outpost.OuterLeft > 0)
+                if (charting && outpost.World == system.Reference && outpost.OuterLeft > 0)
                     Mark(outpost.Waypoint - system.Anchor, "MISSION · CLEAR LANDING ZONE", Distance(math.distance(player.Position, outpost.Waypoint)), Accent, false, -1, true);
-                else if (charting && (!inSpace || planetView) && outpost.World == system.Reference && outpost.EquipmentReady)
+                else if (charting && outpost.World == system.Reference && outpost.EquipmentReady)
                     Mark(outpost.Prize - system.Anchor, "MISSION · COLLECT EQUIPMENT", Distance(math.distance(player.Position, outpost.Prize)), Accent, false, -1, true);
-                else if (charting && (!inSpace || planetView) && outpost.World == system.Reference && outpost.Recovered)
-                    Mark(outpost.Exit - system.Anchor, outpost.SiteCleared ? "MISSION · BUILD REGIONAL FACTORY" : "MISSION · BURROW EXIT", Distance(math.distance(player.Position, outpost.Exit)), Accent, false, -1, true);
-                else if (charting && (!inSpace || planetView) && outpost.World == system.Reference && outpost.Fallen && game.Stage != Campaign.Citadel)
+                else if (charting && outpost.World == system.Reference && outpost.Recovered)
+                {
+                    float3 target = outpost.SiteCleared ? outpost.DeliverySite : outpost.Exit;
+                    if (outpost.SiteCleared || !outpost.ClearOfDemolition)
+                        Mark(target - system.Anchor, outpost.SiteCleared ? "MISSION · " + outpost.FactoryOrder.ToUpperInvariant() : "MISSION · BURROW EXIT", Distance(math.distance(player.Position, target)), Accent, false, -1, true);
+                }
+                else if (charting && outpost.World == system.Reference && outpost.Fallen && game.Stage != Campaign.Citadel)
                     Mark(ground + (Vector3)(outpost.Prize + math.normalizesafe(outpost.Prize) * 3f), "MISSION · ARM DEMOLITION",
                         Distance(math.distance(player.Position, outpost.Prize)), Accent, false, -1, true);
-                else if (charting && (!inSpace || planetView) && outpost.World == system.Reference && outpost.OuterLeft == 0 && game.Stage < Campaign.Citadel)
-                    Mark(ground + (Vector3)(game.Goal ?? outpost.Position), game.Stage == Campaign.FirstBurrow && !outpost.Rooms.walls.Last().broken && math.distance(player.Position, outpost.Place(outpost.Rooms.entrance)) < 15 ? $"{DeviceControls.Fire} · PUNCH HERE" : player.flying && outpost.Shield.active ? "MISSION · LAND OUTSIDE THE SHIELD" : outpost.Entering ? "MISSION · BURROW ENTRANCE" : "MISSION · FOLLOW THE TUNNEL", Distance(math.distance(player.Position, game.Goal ?? outpost.Position)), Accent, false, -1, true);
+                else if (charting && outpost.World == system.Reference && outpost.OuterLeft == 0 && game.Stage < Campaign.Citadel)
+                    Mark(ground + (Vector3)(game.Goal ?? outpost.Position), game.Stage == Campaign.FirstBurrow && outpost.Rooms != null && !outpost.Rooms.walls.Last().broken && math.distance(player.Position, outpost.Place(outpost.Rooms.entrance)) < 15 ? $"{DeviceControls.Fire} · PUNCH HERE" : player.flying && outpost.Shield.active ? "MISSION · LAND OUTSIDE THE SHIELD" : outpost.Entering ? "MISSION · BURROW ENTRANCE" : "MISSION · FOLLOW THE TUNNEL", Distance(math.distance(player.Position, game.Goal ?? outpost.Position)), Accent, false, -1, true);
                 float3 walker = player.walker.position;
                 if ((charting && (player.Has(Gear.Ship) || player.captive || game.Stage == Campaign.Recovery) || game.Tutorial.PointingAtShip) && !player.flying && math.distance(walker, player.ship.position) > 25f)
                     Mark(player.ship.position - system.Anchor, player.ShipOverhead ? "YOUR SHIP · IN ORBIT" : "SHIP", Distance(math.distance(walker, player.ship.position)), Ink, false, -1, true);
@@ -998,14 +1001,27 @@ namespace Infinigame
                 Vector3 to = world - eye;
                 // not through a world, the one underfoot or any other that stands in the way: only the maps see through them
                 bool hidden = false;
+                Vector3 shown = world;
                 for (int i = 0; i < system.Bodies.Length && !hidden && !player.SystemView; i++)
                 {
                     if (worlds[i].destroyed || worlds[i].kind == BodyKind.Gate || worlds[i].kind == BodyKind.Station) continue;
                     Vector3 centre = system.Bodies[i].transform.position - eye;
                     float along = Vector3.Dot(centre, to.normalized);
                     hidden = i != of && along > 0f && along < to.magnitude && (centre - to.normalized * along).magnitude < worlds[i].radius * 0.97f;
+                    if (!hidden || !guide) continue;
+                    Vector3 up = -centre.normalized;
+                    Vector3 around = Vector3.ProjectOnPlane(to, up).normalized;
+                    if (around.sqrMagnitude < 0.01f) around = Vector3.ProjectOnPlane(view.transform.up, up).normalized;
+                    if (player.flying)
+                    {
+                        float radius = worlds[i].radius * 1.015f;
+                        float cosine = Mathf.Clamp01(radius / Mathf.Max(radius, centre.magnitude));
+                        shown = eye + centre + radius * (up * cosine + around * Mathf.Sqrt(1 - cosine * cosine));
+                        detail = "FAR SIDE · " + detail;
+                    }
+                    else shown = eye + around * 1000;
                 }
-                Vector3 shown = hidden && guide ? eye + Vector3.ProjectOnPlane(to, eye - ground).normalized * 1000f : world, screen = view.WorldToScreenPoint(shown);
+                Vector3 screen = view.WorldToScreenPoint(shown);
                 // which way it lies from the middle of the view, which unlike where it projects to still means something abeam or astern
                 Vector2 at = (Vector2)screen / canvas.scaleFactor, away = view.transform.InverseTransformPoint(shown);
                 if (DeviceControls.VR)
@@ -1015,7 +1031,7 @@ namespace Infinigame
                 }
                 bool astern = screen.z <= 0.01f, beyond = astern || Mathf.Abs(at.x - middle.x) > middle.x - Edge || Mathf.Abs(at.y - middle.y) > middle.y - Edge;
                 bool mission = guide && (name.StartsWith("MISSION", StringComparison.Ordinal) || game.Stage == Campaign.Recovery || game.Stage == Campaign.Stranger);
-                bool spatial = DeviceControls.VR && !player.SystemView && !(mission && beyond);
+                bool spatial = DeviceControls.VR && !player.SystemView && !(mission && (beyond || hidden));
                 if (used == markers.Length || (hidden || astern) && (!guide || spatial)) return;
                 var marker = markers[used++];
                 marker.at.gameObject.SetActive(true);
@@ -1051,7 +1067,7 @@ namespace Infinigame
                     marker.at.anchoredPosition3D = at;
                 }
                 marker.icon.color = marker.name.color = colour;
-                marker.icon.enabled = !boxed;
+                marker.icon.enabled = !boxed && !(spatial && (of >= 0 || name.StartsWith("YOUR SHIP") || name == "SHIP"));
                 marker.box.enabled = boxed;
                 marker.health.enabled = marker.healthTrack.enabled = health >= 0;
                 marker.health.rectTransform.sizeDelta = new Vector2(64 * math.max(0, health), 5);
@@ -1063,7 +1079,7 @@ namespace Infinigame
                 if (spatial)
                 {
                     marker.name.enabled = marker.detail.enabled = true;
-                    marker.name.rectTransform.anchoredPosition = Vector2.up * 28;
+                    marker.name.rectTransform.anchoredPosition = Vector2.up * (of >= 0 || name.StartsWith("YOUR SHIP") ? 52 : 28);
                     marker.detail.rectTransform.anchoredPosition = Vector2.down * 39;
                     return;
                 }

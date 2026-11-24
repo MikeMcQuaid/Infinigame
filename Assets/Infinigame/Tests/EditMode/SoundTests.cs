@@ -603,6 +603,7 @@ namespace Infinigame.Tests
         [TestCase(EncounterCue.Collapse)]
         [TestCase(EncounterCue.Footfall)]
         [TestCase(EncounterCue.ShellHit)]
+        [TestCase(EncounterCue.Countdown)]
         public void EncounterCuesHaveDistinctBoundedTakes(EncounterCue cue)
         {
             var a = Encounter(cue, 0);

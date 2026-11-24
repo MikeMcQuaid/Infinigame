@@ -33,7 +33,7 @@ namespace Infinigame.Tests
             CollectionAssert.Contains(game.Items, Game.Settings);
         }
 
-        [UnityTest] public IEnumerator RegionalFactoryFinishesSecuringTheGroundWithUplinkOpen()
+        [UnityTest] public IEnumerator RegionalFactoryFinishesSecuringTheGroundWithWristOpen()
         {
             game.Jump(Campaign.ThirdBurrow);
             for (int i = 0; i < 3; i++)
@@ -46,14 +46,11 @@ namespace Infinigame.Tests
             var control = new Controls(); wrist.Activate(0, ref control);
             var shipyard = GameObject.Find("Forearm console").transform.Find("MAP");
             Assert.IsFalse(shipyard.gameObject.activeSelf);
-            yield return Press(new Controls { ride = true });
-            Assert.AreEqual(Game.ColonyPage, game.Page);
-            yield return Until(() => game.Items.Contains("Upgrade to shipyard"), 5);
-            CollectionAssert.Contains(game.Items, "Upgrade to shipyard");
+            yield return Until(() => game.Frontier.BuildLabel == "Upgrade to shipyard", 5);
             wrist.Refresh();
             Assert.IsFalse(shipyard.gameObject.activeSelf);
             Assert.AreEqual("UPGRADE TO SHIPYARD", shipyard.parent.Find("BUILD").GetComponentInChildren<UnityEngine.UI.Text>().text);
-            Assert.AreEqual(0, Time.timeScale);
+            Assert.AreEqual(1, Time.timeScale);
             Object.Destroy(wrist);
         }
 
@@ -104,6 +101,8 @@ namespace Infinigame.Tests
             Assert.AreEqual(-0.4f, flight.roll, 0.001f);
             var boost = game.GetComponent<DeviceControls>().ReadControllers(new DeviceControls.Controller { trigger = true }, default);
             Assert.IsTrue(boost.sprint);
+            var cruise = game.GetComponent<DeviceControls>().ReadControllers(new DeviceControls.Controller { axis = Vector2.up, click = true, grip = true }, default);
+            Assert.IsFalse(cruise.sprint);
             Assert.AreEqual(0, boost.lift);
             Assert.Greater(flight.look.x, 0);
             game.PreviewFinale(); yield return null; yield return null;
@@ -134,7 +133,8 @@ namespace Infinigame.Tests
             Player.Hurt(10000, "Lost suit"); yield return null;
             yield return Press(new Controls { confirm = true });
             Assert.IsFalse(game.Buried || Player.flying);
-            Assert.Less(math.distance(Player.Position, at), 4);
+            Assert.Less(math.distance(Player.Position, Models.Kennel(at)), 4, "The suit is rebuilt in the dog workshop");
+            Assert.Greater(math.distance(Player.Position, at), 8, "Leave the launch berth clear");
             Player.flying = true;
             Player.Hurt(10000, "Lost ship"); yield return null;
             yield return Press(new Controls { confirm = true });
@@ -158,6 +158,8 @@ namespace Infinigame.Tests
             Assert.AreEqual(1, front.ships);
             Assert.AreEqual(EscortOrder.Follow, game.Escorts.order);
             Assert.AreEqual(1, Object.FindObjectsByType<Transform>().Count(part => part.name == "Fleet escort"));
+            var pilot = GameObject.Find("Fleet escort").transform.Find("Robot pilot").GetComponent<MachineMotion>();
+            Assert.IsTrue(pilot.quadruped && pilot.seated);
             HoverAt(site + math.normalizesafe(site) * 180);
             Player.hull = 10000;
             yield return Until(() => game.Frontier.Contacts.Any(unit => unit.ship && math.distance(unit.position, Player.Position) < 120));
@@ -183,8 +185,7 @@ namespace Infinigame.Tests
             Vector2 pointer = RectTransformUtility.WorldToScreenPoint(glyph.canvas.worldCamera, glyph.rectTransform.TransformPoint(glyph.rectTransform.rect.center));
             yield return Press(new Controls { click = true, pointer = pointer });
             Assert.IsTrue(game.CheatsUnlocked); Assert.AreEqual(Game.Cheats, game.Page);
-            for (int i = 0; i < 5; i++) yield return Press(new Controls { down = true });
-            yield return Press(new Controls { confirm = true });
+            yield return Pick("INVULNERABLE");
             Assert.IsTrue(game.GodMode);
             yield return Press(new Controls { click = true, pointer = pointer });
             Assert.IsFalse(game.CheatsUnlocked); Assert.IsFalse(game.GodMode); Assert.IsNull(game.Page);
@@ -277,6 +278,21 @@ namespace Infinigame.Tests
             StringAssert.Contains(game.Mission.task, game.Objective);
             StringAssert.DoesNotContain("DIG THROUGH", game.Objective);
             yield return null;
+            var rooms = game.Outpost.Rooms;
+            int gate = System.Array.FindIndex(rooms.walls, wall => wall.section == 2);
+            var turn = game.Outpost.Place(rooms.route[2]);
+            Assert.IsFalse(rooms.walls[gate].broken);
+            for (int i = 0; i < game.Battle.Foes.Count; i++)
+            {
+                var foe = game.Battle.Foes[i];
+                if ((!foe.stationary && foe.kind != FoeKind.Mind) || math.distance(foe.position, turn) >= 35) continue;
+                foe.health = 0; game.Battle.Foes[i] = foe;
+            }
+            game.Outpost.Tick();
+            Assert.IsTrue(rooms.walls[gate].broken);
+            Assert.IsFalse(rooms.walls[gate + 1].broken, "Each chamber owns its field");
+            Player.ship.position = game.Outpost.Core;
+            Assert.Less(math.distance(game.Outpost.Waypoint, game.Outpost.Place(rooms.route[3])), 35, "Guide the pilot to the defender holding the first closed section");
         }
 
         [UnityTest] public IEnumerator PlaytesterReturningToLunaKeepsOneSetOfShieldGuards()
@@ -318,6 +334,9 @@ namespace Infinigame.Tests
             game.Battle.Tick(default); game.Outpost.Tick();
             Assert.AreEqual(0, game.Outpost.OuterLeft);
             Assert.IsFalse(game.Outpost.LandingLocked);
+            Player.flying = true;
+            StringAssert.Contains("LAND OUTSIDE", game.Outpost.Instruction);
+            Player.flying = false;
             Assert.IsTrue(game.Battle.Foes.Any(foe => foe.outerGuard && !foe.stationary && foe.health > 0));
             Assert.IsTrue(game.Outpost.Shield.active, "The burrow still repels ships");
             var mind = game.Battle.Foes.Single(foe => foe.kind == FoeKind.Mind);

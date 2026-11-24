@@ -26,7 +26,7 @@ Your companion helped create your armour and reconstruct your memory. It cannot 
 
 ## Stage 9
 
-Your companion helped create this version of you to break the Presence. The living citadel contains two relay minds and a larger shield mind. Their Spine turrets and turning tunnels guard a link to the final mind, buried beneath a planet too deep for nuclear weapons. Your factories must build moon engines. The impact will collapse the mind into a singularity and consume this system. There is no gate to repair or power.
+Your companion helped create this version of you to break the Presence. The living citadel contains two relay minds and a larger shield mind. Their Spine turrets and turning tunnels guard a link to the final mind, buried beneath a planet too deep for nuclear weapons. You must land on a moon and build its engines. The impact will collapse the mind into a singularity and consume this system. There is no gate to repair or power.
 
 ## After moonfall
 

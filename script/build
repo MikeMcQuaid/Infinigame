@@ -10,9 +10,6 @@ plist=Build/Infinigame.app/Contents/Info.plist
 if [ -f "$plist" ] && [ ! -w "$plist" ]; then rm -f "$plist"; fi
 
 script/lib/build-target StandaloneOSX Infinigame.Editor.EditorTools.BuildMac Logs/build.log
+touch Build/.macos-build-complete
 echo "==> Built $PWD/Build/Infinigame.app"
 echo "Run ./script/play for gameplay with performance logs, or open Build/Infinigame.app in Finder."
-# without Burst the game still runs, but terrain is built several times more slowly
-if [ -r /Volumes ] && [ -z "$(find Build/Infinigame.app -name "lib_burst_generated*" -print -quit)" ]; then
-  echo "==> Warning: the app has no Burst-compiled code. Delete Library/Bee and run script/build again." >&2
-fi

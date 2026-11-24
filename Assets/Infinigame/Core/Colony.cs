@@ -75,8 +75,9 @@ namespace Infinigame.Core
     {
         public const float Assembly = 1, Ignition = 1, Transit = 10, Consumption = 10, Infall = 3, WhiteHole = 4;
         public int moon = -1, world = -1;
+        public float3 site;
         public double began, duration = Assembly + Ignition + Transit;
-        public bool active, destroyed;
+        public bool armed, active, destroyed;
         public double TravelFraction(double time)
         {
             double transit = math.max(1, duration - Assembly - Ignition);
@@ -89,7 +90,7 @@ namespace Infinigame.Core
             if (time < began) return system.OrbitalPosition(moon, time);
             double3 outward = system.OrbitalPosition(moon, began) - system.OrbitalPosition(world, began);
             double contact = system.bodies[world].radius + system.bodies[moon].radius;
-            double clearance = math.max(20000, math.length(outward) - contact);
+            double clearance = math.max(0, math.length(outward) - contact);
             return system.OrbitalPosition(world, time) + math.normalize(outward) * (contact + clearance * (1 - TravelFraction(time)));
         }
         public bool Finished(double time) => active && time >= began + duration;

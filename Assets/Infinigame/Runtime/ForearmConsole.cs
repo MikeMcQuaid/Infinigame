@@ -175,7 +175,7 @@ namespace Infinigame
             for (int i = 0; i < labels.Length; i++)
             {
                 plates[i].gameObject.SetActive(building ? i == 3 || i < 3 && game.Frontier.VisibleBuild(i) : (i != 10 || Oracle.Enabled) && (i != 0 || game.FactoryUnlocked) && (i != 2 || game.Player.CanRecall) && (i != 5 || game.Player.Has(Gear.Stealth)) && (i != 8 && i != 9 || game.Player.Has(Gear.Thrusters)) && (i != 11 || game.Frontier.CanCallDogs));
-                labels[i].text = building ? i == 0 ? game.Frontier.BuildLabel.ToUpperInvariant() : i == 1 ? "SHIPYARD" : i == 2 ? "MOON DRIVE" : "BACK" : i == 11 ? game.Escorts.pack ? "DISMISS DOG" : "CALL ROBODOG" : actions[i];
+                labels[i].text = building ? i == 0 ? game.Frontier.BuildLabel.ToUpperInvariant() : i == 1 ? "SHIPYARD" : i == 2 ? "MOON ENGINES" : "BACK" : i == 11 ? game.Escorts.pack ? "DISMISS DOG" : "CALL ROBODOG" : actions[i];
                 bool focus = i == touching || i == pointed;
                 plates[i].color = focus ? new Color(0.14f, 0.78f, 0.85f, 1) : new Color(0.01f, 0.04f, 0.06f, 0.98f);
                 labels[i].color = focus ? new Color(0.01f, 0.06f, 0.08f) : new Color(0.4f, 0.95f, 1);

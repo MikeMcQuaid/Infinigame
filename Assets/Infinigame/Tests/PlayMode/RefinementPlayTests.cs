@@ -21,6 +21,12 @@ namespace Infinigame.Tests
                 yield return Seconds(0.5f);
                 Assert.IsFalse(Camera.main.allowHDR, "Starting SteamVR after the scene loads must disable headset bloom");
                 Assert.IsNotNull(game.GetComponent<ForearmConsole>());
+                foreach (var fist in Player.fists) Assert.IsFalse(fist.parent.parent.gameObject.activeInHierarchy, "Tracked hands supply the headset forearms");
+                var torso = Player.fists[0].parent.parent.parent;
+                Assert.IsFalse(torso.Find("Shoulders").gameObject.activeInHierarchy);
+                Assert.IsFalse(torso.Find("Collar heat exchangers").gameObject.activeInHierarchy);
+                Assert.IsFalse(torso.Find("Power indicators").gameObject.activeSelf);
+                Assert.IsFalse(torso.Find("Thruster pack/Thruster light").gameObject.activeSelf);
                 var ground = Solar.ReferenceBody;
                 Assert.AreEqual(ground.GroundRadius(math.normalizesafe(game.Hermit.Position)), math.length(game.Hermit.Position), 0.12f);
                 Assert.Greater(Vector3.Dot(Camera.main.transform.forward, ((Vector3)(game.Hermit.Position - Player.Position)).normalized), 0.8f);
@@ -155,6 +161,7 @@ namespace Infinigame.Tests
             var centre = grazer.foot + math.normalizesafe(grazer.foot) * grazer.height * 0.4f;
             Assert.IsTrue(wildlife.Strike(centre, float3.zero));
             Assert.IsFalse(wildlife.Strike(centre, float3.zero));
+            Assert.Greater(wildlife.RemainsCount, 0);
         }
 
         [UnityTest] public IEnumerator WristConstructionReturnsHomeOnlyWhenTheFactoryIsBuilt()
@@ -276,12 +283,236 @@ namespace Infinigame.Tests
             game.Jump(Campaign.FirstBurrow); yield return null;
             game.Outpost.Killed(FoeKind.Mind);
             var charge = GameObject.Find("Demolition core");
+            Player.walker.position = game.Outpost.Prize;
+            yield return null;
+            yield return null;
+            var labels = Object.FindObjectsByType<UnityEngine.UI.Text>();
+            Assert.IsTrue(labels.Any(t => t.text == "Arm burrow demolition"));
+            Assert.IsFalse(labels.Any(t => t.text == game.Tutorial.Hint), "The interaction prompt already explains how to arm the charge");
             game.Outpost.ArmDemolition();
             Assert.IsTrue(charge.activeInHierarchy);
             Assert.IsTrue(charge.GetComponentsInChildren<TextMesh>().Any(t => t.text.Contains("ARMED")));
             Assert.IsFalse(game.Outpost.EquipmentReady);
             StringAssert.Contains("beside", game.Wording("factoryDelivery"));
+            Player.walker.position = game.Outpost.Core;
+            Assert.AreEqual(game.Outpost.Exit, game.Goal);
+            Player.walker.position += new float3(40, 0, 0);
+            Assert.IsTrue(game.Outpost.ClearOfDemolition);
+            Assert.IsNull(game.Goal, "Once clear, the visor should not send you back into the blast");
+            var counter = charge.GetComponentsInChildren<TextMesh>().Single(t => t.text.Contains("ARMED"));
+            Solar.RestoreClock(Solar.Clock + 14.5);
+            game.Outpost.Tick();
+            StringAssert.Contains("6 s", counter.text);
+            var handle = charge.transform.Find("Arming lever");
+            Assert.IsNotNull(handle);
+            Assert.Greater(Quaternion.Angle(Quaternion.identity, handle.localRotation), 40);
+            Assert.Less(Resources.Load<AudioClip>("Effects/Encounter Countdown 0").length, 0.24f);
         }
+        [UnityTest] public IEnumerator RecoveryRobotWaitsBeyondTheExitWhileDialogueIsBeingPrepared()
+        {
+            var reply = new System.Threading.Tasks.TaskCompletionSource<bool>();
+            Oracle.Ask = async (persona, prompt) => { await reply.Task; return prompt; };
+            game.Jump(Campaign.Buried);
+            Oracle.Voice = 1;
+            try
+            {
+                yield return Until(() => game.PreparingOpening);
+                var robot = game.Hermit.Position;
+                yield return Press(new Controls { fire = true });
+                yield return Press(new Controls { fire = true });
+                Assert.AreEqual(Campaign.Stranger, game.Stage);
+                float3 ahead = Walker.Project(robot - Player.Position, math.normalize(Player.Position));
+                Assert.That(math.dot(ahead, Player.walker.forward), Is.EqualTo(4.5f).Within(0.15f),
+                    "The robot should already be at speaking distance in front of the exit");
+                var eye = (Vector3)(Player.Position + math.normalize(Player.Position) * Walker.EyeHeight - Solar.Anchor);
+                yield return Until(() => Vector3.Distance(Camera.main.transform.position, eye) < 0.15f);
+                Assert.Less(Vector3.Distance(Camera.main.transform.position, eye), 0.15f, "The visor reaches the exit with the suit");
+                Assert.Less(math.distance(robot, game.Hermit.Position), 0.01f);
+                Assert.IsTrue(game.Hermit.Near, "The robot at the rim must be within speaking range");
+                for (int i = 0; i <= 4; i++)
+                {
+                    float3 up = math.normalize(math.lerp(Player.Position, robot, i / 4f));
+                    Assert.That(Body.GroundRadius(up), Is.EqualTo(math.length(Player.Position)).Within(0.15f),
+                        "The crater rim must leave a clear view of the whole robot");
+                }
+                reply.SetResult(true);
+                yield return Until(() => game.Hermit.Line.Contains("recovery robot"));
+                StringAssert.Contains("recovery robot", game.Hermit.Line);
+                Assert.Less(math.distance(robot, game.Hermit.Position), 0.01f, "Speaking must not move the robot");
+                yield return ReworkShot("recovery-at-the-exit");
+            }
+            finally { reply.TrySetResult(true); }
+        }
+
+        [UnityTest] public IEnumerator MonitorFistsRollAtTheWristAndKeepTheVisorClear()
+        {
+            game.Jump(Campaign.FirstBurrow);
+            yield return new WaitForSeconds(1);
+            var torso = Player.fists[0].parent.parent.parent;
+            yield return ReworkShot("monitor-fists");
+            foreach (var fist in Player.fists)
+            {
+                Vector3 across = fist.Find("Digit 0").position - fist.Find("Digit 4").position;
+                Assert.Greater(Vector3.Dot(across, Camera.main.transform.up), 0.08f,
+                    fist.parent.parent.name + " must hold its thumb above the little finger");
+            }
+            var plates = new[] { torso.Find("Breastplates"), torso.Find("Collar heat exchangers") };
+            Assert.IsTrue(plates.All(part => !part.gameObject.activeInHierarchy));
+            yield return Press(new Controls { toggleView = true });
+            Assert.IsTrue(plates.All(part => part.gameObject.activeInHierarchy));
+            yield return Press(new Controls { toggleView = true });
+            Assert.IsTrue(plates.All(part => !part.gameObject.activeInHierarchy));
+        }
+
+        [UnityTest] public IEnumerator SuitWeaponsAimFromDistinctRightWristPorts()
+        {
+            var sight = game.Battle.transform.Find("Targeting laser").GetComponent<LineRenderer>();
+            var wrist = Player.fists[1];
+            float3 landing = Body.FindLanding(111);
+            Stand(landing, World(landing));
+            yield return new WaitForSeconds(1);
+            foreach (var gear in new[] { Gear.Beams, Gear.Rail, Gear.BackMissiles })
+            {
+                Player.Wield(gear);
+                yield return new WaitForSeconds(0.5f);
+                yield return ReworkShot("right-wrist-" + gear);
+                if (gear == Gear.Rail)
+                {
+                    input.fire = true;
+                    yield return new WaitForSeconds(0.7f);
+                    yield return ReworkShot("rail-charge-between-the-rails");
+                    input.fire = false;
+                    yield return new WaitForSeconds(0.6f);
+                }
+                foreach (var fist in Player.fists)
+                    Assert.Greater(Vector3.Dot(fist.up, Camera.main.transform.up), 0.65f, "Both palms should face the ground with " + gear);
+                Transform instruments = wrist.Find("Wrist weapons");
+                Assert.IsNotNull(instruments);
+                var selected = instruments.Cast<Transform>().Single(part => part.gameObject.activeInHierarchy);
+                Assert.AreEqual(Player.Weapon.name, selected.name);
+                var port = selected.Find("Port");
+                Assert.Greater(wrist.InverseTransformPoint(port.position).y, 0.11f, "The aperture should sit above the back of the wrist");
+                var screen = Camera.main.WorldToViewportPoint(port.position);
+                Assert.That(screen.x, Is.InRange(0f, 1f)); Assert.That(screen.y, Is.InRange(0f, 1f));
+                Assert.Greater(screen.z, Camera.main.nearClipPlane);
+                Assert.IsTrue(sight.enabled, "Aiming should paint the target before firing " + gear);
+                Assert.Less(Vector3.Distance(sight.GetPosition(0), port.position), 0.012f);
+                Assert.Greater(Vector3.Distance(sight.GetPosition(1), port.position), 0.1f);
+                Assert.Less(Vector3.Distance(game.GetComponent<Arms>().Muzzle(Player.Weapon).position, port.position), 0.012f);
+            }
+            Player.Wield(Gear.Suit);
+            yield return Until(() => !sight.enabled);
+            yield return null;
+            Assert.IsFalse(sight.enabled);
+            Assert.IsFalse(wrist.Find("Wrist weapons").Cast<Transform>().Any(part => part.gameObject.activeInHierarchy));
+        }
+
+        [UnityTest] public IEnumerator TrackedRightWristCarriesTheMissileSight()
+        {
+            DeviceControls.SimulateHeadset = true;
+            try
+            {
+                Player.Wield(Gear.BackMissiles);
+                yield return new WaitForSeconds(0.25f);
+                var port = Camera.main.transform.Find("Gauntlets/Right gauntlet/Wrist weapons/Back missiles/Port");
+                Assert.IsNotNull(port);
+                Assert.IsTrue(port.gameObject.activeInHierarchy);
+                var sight = game.Battle.transform.Find("Targeting laser").GetComponent<LineRenderer>();
+                Assert.IsTrue(sight.enabled);
+                Assert.Less(Vector3.Distance(sight.GetPosition(0), port.position), 0.012f);
+                Assert.Greater(Vector3.Distance(Player.BackpackPort - Solar.Anchor, port.position), 0.25f);
+                yield return Press(new Controls { systemView = true });
+                Assert.IsFalse(sight.enabled, "The targeting laser should be stowed while reading the map");
+            }
+            finally { DeviceControls.SimulateHeadset = false; }
+        }
+
+        [UnityTest] public IEnumerator HeadsetWeaponsShootAlongTheVisibleBore()
+        {
+            DeviceControls.SimulateHeadset = true;
+            try
+            {
+                var wrist = Camera.main.transform.Find("Gauntlets/Right gauntlet");
+                var sight = game.Battle.transform.Find("Targeting laser").GetComponent<LineRenderer>();
+                var shot = game.Battle.transform.Find("Weapon beam").GetComponent<LineRenderer>();
+                foreach (var gear in new[] { Gear.BackMissiles, Gear.Beams, Gear.Rail })
+                {
+                    Player.Wield(gear);
+                    yield return new WaitForSeconds(0.2f);
+                    wrist.localRotation = Quaternion.Euler(-11, -25, 15);
+                    var muzzle = wrist.Find("Wrist weapons/" + Player.Weapon.name + "/Port");
+                    void Straight(LineRenderer line)
+                    {
+                        Assert.IsTrue(line.enabled);
+                        Assert.Less(Vector3.Distance(muzzle.position, line.GetPosition(0)), 0.012f);
+                        Assert.Less(Vector3.Angle(muzzle.forward, line.GetPosition(1) - line.GetPosition(0)), 0.2f, gear + " must follow the calibrated barrel");
+                    }
+                    yield return null;
+                    Straight(sight);
+                    if (gear == Gear.BackMissiles) continue;
+                    var targets = game.Battle.Foes;
+                    targets.Clear();
+                    targets.Add(new Foe { kind = FoeKind.Base, guardian = true, health = 1000, maximumHealth = 1000, cooldown = 60,
+                        position = (float3)(muzzle.position + muzzle.forward * 6) + Solar.Anchor, size = 0.65f });
+                    input.fire = true;
+                    if (gear == Gear.Rail) yield return Until(() => game.Battle.RailCharge >= 1);
+                    else yield return Until(() => shot.enabled);
+                    if (gear == Gear.Rail)
+                    {
+                        var slug = muzzle.parent.Find("Rail charge");
+                        Assert.IsTrue(slug.gameObject.activeInHierarchy);
+                        Assert.Greater(slug.localScale.z, 0.9f);
+                        Assert.IsFalse(shot.enabled, "The charged round stays between the rails until release");
+                        Assert.AreEqual(1000, targets[0].health);
+                        yield return ReworkShot("vr-wrist-rail-charged");
+                        input.fire = false;
+                        yield return Until(() => shot.enabled);
+                    }
+                    Straight(shot);
+                    Assert.Less(targets[0].health, 1000, "Damage must land where the wrist is pointing");
+                    input.fire = false;
+                    yield return null;
+                    if (gear == Gear.Rail) Assert.IsFalse(muzzle.parent.Find("Rail charge").gameObject.activeSelf);
+                }
+            }
+            finally { DeviceControls.SimulateHeadset = false; }
+        }
+
+        [UnityTest] public IEnumerator HeadsetPackAndFriendlyCombatColours()
+        {
+            DeviceControls.SimulateHeadset = true;
+            try
+            {
+                Player.Wield(Gear.BackMissiles);
+                yield return new WaitForSeconds(0.25f);
+                var backpack = Player.fists[1].parent.parent.parent.Find("Thruster pack");
+                Assert.IsFalse(backpack.gameObject.activeInHierarchy, "Looking back should never reveal the backpack or its exhaust");
+                game.Effects.Flesh(Player.Position, Player.walker.forward, 1, float3.zero);
+                Assert.IsFalse(Resources.FindObjectsOfTypeAll<Transform>().Any(part => part.name == "Violet blood"));
+                var sight = game.Battle.transform.Find("Targeting laser").GetComponent<LineRenderer>();
+                Assert.Greater(sight.sharedMaterial.color.b, sight.sharedMaterial.color.r);
+                foreach (var tier in new[] { "Mobile", "Desktop" })
+                {
+                    var modules = Resources.Load<GameObject>("Models/" + tier + "/Wrist weapons").transform;
+                    foreach (Transform module in modules)
+                    {
+                        var tint = module.Find("Optics").GetComponent<Renderer>().sharedMaterial.color;
+                        Assert.Greater(tint.b, tint.r);
+                        Assert.Greater(tint.g, tint.r);
+                    }
+                    var charge = modules.Find("Rail gauntlet/Rail charge");
+                    Assert.IsNotNull(charge);
+                    Assert.IsFalse(charge.gameObject.activeSelf);
+                    var idle = charge.parent.Find("Optics").GetComponent<Renderer>().sharedMaterial.color;
+                    Assert.Greater(charge.GetComponent<Renderer>().sharedMaterial.color.grayscale, idle.grayscale * 2);
+                    var bounds = charge.GetComponent<MeshFilter>().sharedMesh.bounds;
+                    Assert.That(bounds.size.x, Is.InRange(0.001f, 0.051f), "The charge must fit between the two rails");
+                    Assert.Greater(bounds.size.z, 0.2f);
+                }
+            }
+            finally { DeviceControls.SimulateHeadset = false; }
+        }
+
         [UnityTest] public IEnumerator IndexOpeningWaitsForTheRobotsOwnWords()
         {
             var result = new System.Threading.Tasks.TaskCompletionSource<string>();
@@ -291,8 +522,8 @@ namespace Infinigame.Tests
             Oracle.Voice = 1;
             yield return null;
             StringAssert.Contains("You are alive", batch, "Prepare the rescue with the waking line before starting the clock");
-            yield return new WaitForSecondsRealtime(9);
-            Assert.Less(game.Boot, 1);
+            yield return Press(new Controls { fire = true });
+            Assert.AreEqual(1, game.Dug);
             result.SetResult("```json\n" + batch.Replace("You are not dead.", "Your signal holds.").Replace("You are alive.", "There you are.") + "\n```");
             yield return Until(() => game.Prepared("wake"));
             StringAssert.Contains("Your signal holds.", game.Wording("wake"));
@@ -337,7 +568,10 @@ namespace Infinigame.Tests
             var stick = new DeviceControls.Controller { axis = new Vector2(0.6f, 0.8f) };
             var flight = devices.ReadControllers(stick, default);
             Assert.AreEqual(0, flight.roll); Assert.Greater(flight.look.x, 0); Assert.AreEqual(0, flight.lift); Assert.AreEqual(0.8f, flight.move.y);
+            stick.axis = Vector2.up;
             stick.grip = true;
+            Assert.IsFalse(devices.ReadControllers(stick, default).sprint);
+            stick.trigger = true; stick.grip = false;
             var roll = devices.ReadControllers(stick, new DeviceControls.Controller { axis = Vector2.one });
             Assert.Greater(roll.look.sqrMagnitude, 0); Assert.AreEqual(1, roll.roll); Assert.IsTrue(roll.sprint);
         }
@@ -443,6 +677,8 @@ namespace Infinigame.Tests
             var beam = GameObject.Find("Suit repair beam").GetComponent<LineRenderer>();
             Assert.IsTrue(beam.enabled);
             Assert.Greater(beam.sharedMaterial.color.b, beam.sharedMaterial.color.r);
+            var eye = GameObject.Find("Hermit").transform.Find("Torso/Neck/Head/Three optics");
+            Assert.Less(Vector3.Distance(eye.TransformPoint(0, 0.02f, 0.304f), beam.GetPosition(0)), 0.045f, "The repair sweep starts at the central lens");
             var glyph = Object.FindAnyObjectByType<WeaponGlyph>();
             Canvas.ForceUpdateCanvases();
             var mesh = glyph.canvasRenderer.GetMesh();
@@ -452,23 +688,23 @@ namespace Infinigame.Tests
             Object.Destroy(mesh);
             yield return ReworkShot("revision3-repair");
         }
-        [UnityTest] public IEnumerator RefinementFactoryUplinkExplainsLockedUpgrades()
+        [UnityTest] public IEnumerator ConstructionUsesTheLocalSiteWithoutAPauseMenu()
         {
             game.Jump(Campaign.SecondBurrow); yield return null;
             var second = Campaign.Site(Solar.Descriptor, Campaign.SecondBurrow);
             Stand(math.normalize(second * Body.radius + World(second) * 90), World(second));
             yield return Press(new Controls { ride = true });
-            Assert.AreEqual(Game.ColonyPage, game.Page);
+            Assert.IsFalse(game.Paused);
             Assert.IsFalse(game.Frontier.CanBuild(1));
-            CollectionAssert.AreEqual(new[] { "Build robodog factory", "Back" }, game.Items);
+            Assert.AreEqual("Build robodog factory", game.Frontier.Construction);
             Assert.IsFalse(game.Frontier.VisibleBuild(1) || game.Frontier.VisibleBuild(2));
             game.Frontier.Local.factory = true;
-            Assert.AreEqual(game.Frontier.BuildLabel, game.Items[0]);
+            Assert.AreEqual("Robodog factory built", game.Frontier.Construction);
             StringAssert.Contains("FACTORY BUILT", game.Frontier.FactoryHint(0));
             for (int region = 0; region < 3; region++) { var front = game.Frontier.State(Home, region); front.aliens = 0; front.factory = front.mindDead = true; }
             game.Colonies.Add(new Colony { world = Home, region = game.Frontier.Region(Home, Player.Position), site = Player.Position });
             Assert.IsTrue(game.Frontier.CanBuild(1));
-            CollectionAssert.Contains(game.Items, "Upgrade to shipyard");
+            Assert.AreEqual("Upgrade to shipyard", game.Frontier.Construction);
             Assert.IsFalse(game.Frontier.CanBuild(2));
         }
         [UnityTest] public IEnumerator RefinementQualitySettingsKeepSixtyFrames()
@@ -619,6 +855,14 @@ namespace Infinigame.Tests
         {
             yield return HoverOver(Solar.Station, 500);
             game.Outpost.Tick();
+            Assert.IsNotNull(GameObject.Find("Folded membrane"));
+            var lamps = Object.FindObjectsByType<Light>().Where(light => light.name == "Room light").ToArray();
+            foreach (var floor in game.Outpost.Rooms.walls.Where(w => w.centre.y < 0 && w.half.y < 2))
+                Assert.IsTrue(lamps.Any(light => math.lengthsq(((float3)light.transform.localPosition).xz - floor.centre.xz) < 22 * 22),
+                    "Each occupied corridor cell should have local light");
+            HoverAt(game.Outpost.Place(game.Outpost.Rooms.route[1] + new float3(0, 0, 12)));
+            Player.ship.rotation = quaternion.identity;
+            yield return ReworkShot("citadel-inner-membrane");
             Assert.AreEqual(3, game.Battle.Foes.Count(foe => foe.kind == FoeKind.Mind));
             Assert.IsTrue(game.Battle.Foes.Where(foe => foe.kind == FoeKind.Mind).All(foe => foe.size >= 6));
             Assert.GreaterOrEqual(game.Battle.Foes.Count(foe => foe.stationary), 6);

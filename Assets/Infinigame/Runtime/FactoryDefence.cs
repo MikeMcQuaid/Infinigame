@@ -16,7 +16,7 @@ namespace Infinigame
         void Start()
         {
             mount = Models.Building(Building.Turret); mount.name = "Rotating weapon mount";
-            mount.SetParent(transform, false); mount.localPosition = Vector3.up * 3.3f; mount.localScale = Vector3.one * 0.6f;
+            mount.SetParent(transform.Find("Dog workshop") ?? transform, false); mount.localPosition = Vector3.up * 3.3f; mount.localScale = Vector3.one * 0.6f;
             beam = new GameObject("Factory beam").AddComponent<LineRenderer>(); beam.transform.SetParent(mount, false);
             beam.positionCount = 2; beam.startWidth = beam.endWidth = 0.07f;
             beam.sharedMaterial = Shapes.Beam(new Color(0.2f, 1.2f, 2)); beam.enabled = false;
@@ -27,7 +27,9 @@ namespace Infinigame
             beam.enabled = Time.time < glow;
             if (Time.deltaTime <= 0) return;
             float3 from = (float3)mount.TransformPoint(new Vector3(0, 2.6f, 2.8f)) + game.System.Anchor;
-            var target = game.Battle.Foes.Where(foe => !foe.friendly && foe.kind != FoeKind.Mind && foe.health > 0 && math.distance(foe.position, from) < 400).OrderBy(foe => math.distancesq(foe.position, from)).FirstOrDefault();
+            var body = game.System.ReferenceBody;
+            float air = body.radius * Shapes.AirTop(body);
+            var target = game.Battle.Foes.Where(foe => !foe.friendly && foe.kind != FoeKind.Mind && foe.health > 0 && math.lengthsq(foe.position) <= air * air && math.distance(foe.position, from) < 400).OrderBy(foe => math.distancesq(foe.position, from)).FirstOrDefault();
             if (target.health <= 0) return;
             Vector3 direction = transform.InverseTransformDirection(target.position - from);
             mount.localRotation = Quaternion.RotateTowards(mount.localRotation, Quaternion.LookRotation(new Vector3(direction.x, 0, direction.z)), 110 * Time.deltaTime);

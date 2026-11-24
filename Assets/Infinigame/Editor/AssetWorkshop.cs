@@ -161,12 +161,14 @@ namespace Infinigame.Editor
             Parts("Turret emplacement", launcher);
             var wreck = Combine(launcher.Select((mesh, i) => new CombineInstance { mesh = mesh, transform = Matrix4x4.Translate(i == 0 ? Vector3.down : Vector3.zero) }).ToArray());
             Wreck("Spine turret", wreck); Object.DestroyImmediate(wreck);
+            Prefab("Wrist weapons", ModelWorkshop.WristWeapons());
             Prefab("Gauntlet", ModelWorkshop.Gauntlet()); Prefab("Traveller", ModelWorkshop.Traveller());
             Prefab("Robot", ModelWorkshop.Robot()); Prefab("Ship", ModelWorkshop.Ship());
             foreach (Building kind in Enum.GetValues(typeof(Building)))
                 if (kind != Building.Robot) Prefab(kind.ToString(), ModelWorkshop.Building(kind));
             Prefab("Equipment case", ModelWorkshop.Equipment(false)); Prefab("Demolition core", ModelWorkshop.Equipment(true));
             Prefab("Gate", ModelWorkshop.Gate()); Prefab("Presence nest", ModelWorkshop.Nest());
+            Prefab("Citadel wall", ModelWorkshop.CitadelWall());
             Prefab("Citadel carapace", ModelWorkshop.CitadelCarapace());
             Prefab("Citadel sensory chamber", ModelWorkshop.CitadelRoof(true)); Prefab("Citadel vault", ModelWorkshop.CitadelRoof(false));
             void Pair(string name, (Mesh body, Mesh light) pair)
@@ -174,6 +176,7 @@ namespace Infinigame.Editor
                 Parts(name, new[] { pair.body, pair.light });
                 Wreck(name, pair.body);
             }
+            Parts("Citadel buttress", new[] { ModelWorkshop.CitadelButtress() });
             Parts("Burrow root", new[] { ModelWorkshop.BurrowRoot() });
             Pair("Harrower", ModelWorkshop.Raider()); Pair("Skimmer", ModelWorkshop.Drone()); Pair("Mind", ModelWorkshop.Mind());
             foreach (MotileCaste caste in Enum.GetValues(typeof(MotileCaste)))
@@ -190,7 +193,7 @@ namespace Infinigame.Editor
                 Wreck(caste.ToString(), whole); Object.DestroyImmediate(whole);
             }
             Parts("Missile", new[] { ModelWorkshop.Missile() }); Parts("Drifter", new[] { ModelWorkshop.Drifter() });
-            var strider = ModelWorkshop.Strider(); Parts("Strider", new[] { strider.body, strider.lights });
+            Parts("Strider", ModelWorkshop.Strider(out var striderHips), striderHips);
             Parts("Crystals", ModelWorkshop.Crystals()); Parts("Tube grove", new[] { ModelWorkshop.TubeGrove() });
             Parts("Box", new[] { ShapeWorkshop.Box() }); Parts("Wrist housing", ShapeWorkshop.Bracer());
             Parts("Moon engine", new[] { ShapeWorkshop.MoonEngine() });
@@ -205,19 +208,26 @@ namespace Infinigame.Editor
             Parts("Conifer", wood);
             for (int stage = 0; stage < 3; stage++)
             {
-                var cut = wood.Select(source =>
+                foreach (bool loose in new[] { false, true })
                 {
-                    var vertices = source.vertices; var triangles = source.triangles; var indices = new List<int>();
-                    for (int t = 0; t < triangles.Length; t += 3)
-                        if (vertices[triangles[t]].y < 7.5f - stage * 3 && vertices[triangles[t + 1]].y < 7.5f - stage * 3 && vertices[triangles[t + 2]].y < 7.5f - stage * 3)
-                            indices.AddRange(new[] { triangles[t], triangles[t + 1], triangles[t + 2] });
-                    var mesh = Object.Instantiate(source); mesh.triangles = indices.ToArray(); mesh.RecalculateBounds();
-                    return mesh;
-                }).ToArray();
-                Parts("Conifer broken " + stage, cut);
+                    var cut = wood.Select(source =>
+                    {
+                        var vertices = source.vertices; var triangles = source.triangles; var indices = new List<int>();
+                        for (int t = 0; t < triangles.Length; t += 3)
+                        {
+                            float top = Mathf.Max(vertices[triangles[t]].y, Mathf.Max(vertices[triangles[t + 1]].y, vertices[triangles[t + 2]].y));
+                            float cutHeight = 7.5f - stage * 3;
+                            if (loose ? top >= cutHeight && (stage == 0 || top < cutHeight + 3) : top < cutHeight)
+                                indices.AddRange(new[] { triangles[t], triangles[t + 1], triangles[t + 2] });
+                        }
+                        var mesh = Object.Instantiate(source); mesh.triangles = indices.ToArray(); mesh.RecalculateBounds();
+                        return mesh;
+                    }).ToArray();
+                    Parts((loose ? "Conifer falling " : "Conifer broken ") + stage, cut);
+                }
             }
             Parts("Spire", new[] { ShapeWorkshop.Spire() }); Parts("Tuft", new[] { ShapeWorkshop.Tuft() });
-            Parts("Seaweed", new[] { ShapeWorkshop.Seaweed() }); Parts("Grazer", new[] { ShapeWorkshop.Grazer() });
+            Parts("Seaweed", new[] { ShapeWorkshop.Seaweed() }); Parts("Grazer", ShapeWorkshop.Grazer(out var grazerHips), grazerHips);
             var bird = ShapeWorkshop.Bird(); Parts("Bird", new[] { bird.body, bird.wing });
             Parts("Fish", new[] { ShapeWorkshop.Fish() }); Parts("Ray", new[] { ShapeWorkshop.Ray() });
             var butterfly = ShapeWorkshop.Butterfly(); Parts("Butterfly", new[] { butterfly.body, butterfly.wing });

@@ -112,6 +112,8 @@ namespace Infinigame.Tests
             var rooms = Interior.Citadel();
             Assert.IsFalse(rooms.Visible(new float3(160, 0, 400), rooms.core, true));
             Assert.IsFalse(rooms.Visible(rooms.entrance, rooms.core, true));
+            for (int i = 0; i < rooms.walls.Length; i++)
+                if (rooms.walls[i].section != 0) rooms.walls[i].broken = true;
             float3 scar = rooms.walls[rooms.escapeWall].centre;
             Assert.IsFalse(rooms.Breach(scar, 1000));
             rooms.coreDestroyed = true;

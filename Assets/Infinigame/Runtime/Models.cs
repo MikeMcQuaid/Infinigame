@@ -6,6 +6,8 @@ namespace Infinigame
 {
     public static class Models
     {
+        public static readonly Vector3 DogWorkshop = new Vector3(11, 0, 0);
+        public static Vector3 Kennel(Vector3 site) => site + Quaternion.FromToRotation(Vector3.up, site.normalized) * DogWorkshop;
         public static readonly Vector3 PilotEye = new Vector3(0, 0.95f, 1.2f);
         public static readonly Vector3 WingPort = new Vector3(1.7f, -0.3f, 2.5f);
         public static int LimbCount(MotileCaste caste) => caste == MotileCaste.Breacher ? 8 : caste == MotileCaste.Spitter ? 4 : 6;
@@ -18,13 +20,27 @@ namespace Infinigame
         }
 
         public static Transform Gauntlet() => Prefab("Gauntlet");
+        public static Transform WristWeapons() => Prefab("Wrist weapons");
         public static Transform Traveller() => Prefab("Traveller");
         public static Transform Robot() => Prefab("Robot");
-        public static Transform Ship() => Prefab("Ship");
+        public static Transform Ship()
+        {
+            var ship = Prefab("Ship");
+            ship.Find("Cockpit").gameObject.SetActive(false);
+            var exterior = ship.Find("Exterior");
+            var trim = new[] { "Exhaust", "Port", "Starboard", "Lamps", "Stripes" };
+            var lights = System.Array.ConvertAll(trim, name => exterior.Find(name).GetComponent<Renderer>());
+            // The navigation lamps and pinstripes cover less than a pixel on a distant hull.
+            var lod = exterior.gameObject.AddComponent<LODGroup>();
+            lod.SetLODs(new[] { new LOD(0.025f, lights) });
+            lod.localReferencePoint = Vector3.zero; lod.size = 8;
+            return ship;
+        }
         public static Transform Building(Building kind) => Prefab(kind.ToString());
         public static Transform Equipment(bool demolition) => Prefab(demolition ? "Demolition core" : "Equipment case");
         public static Transform Gate() => Prefab("Gate");
         public static Transform CitadelCarapace() => LivingRoom("Citadel carapace");
+        public static Transform CitadelWall() => LivingRoom("Citadel wall");
         public static Transform Nest() => LivingRoom("Presence nest");
         public static Transform CitadelRoof(bool crown) => LivingRoom(crown ? "Citadel sensory chamber" : "Citadel vault");
 
@@ -53,7 +69,8 @@ namespace Infinigame
             return model.transform;
         }
 
-        internal static Mesh[] Parts(string name) => Resources.Load<ModelParts>("Models/" + Tier + name).meshes;
+        internal static ModelParts Geometry(string name) => Resources.Load<ModelParts>("Models/" + Tier + name);
+        internal static Mesh[] Parts(string name) => Geometry(name).meshes;
         public static (Mesh hull, Mesh lights) Raider() { var m = Parts("Harrower"); return (m[0], m[1]); }
         public static (Mesh shell, Mesh lights) Drone() { var m = Parts("Skimmer"); return (m[0], m[1]); }
         public static (Mesh body, Mesh lights) Mind() { var m = Parts("Mind"); return (m[0], m[1]); }
@@ -63,6 +80,7 @@ namespace Infinigame
             return (parts[0], parts[1], parts[2]);
         }
         public static ModelParts Wreck(string name) => Resources.Load<ModelParts>("Models/" + Tier + name + " wreck");
+        public static Mesh CitadelButtress() => Parts("Citadel buttress")[0];
         public static Mesh[] SpineLauncher() => Parts("Turret emplacement");
         public static Mesh Missile() => Parts("Missile")[0];
         public static Mesh Drifter() => Parts("Drifter")[0];

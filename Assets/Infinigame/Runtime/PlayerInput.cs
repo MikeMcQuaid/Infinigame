@@ -101,9 +101,9 @@ namespace Infinigame
                 if (flying && invertShipPitch) turn.y = -turn.y;
                 c.look += turn * (StickDegreesPerSecond * Time.unscaledDeltaTime);
                 c.fire |= pad.rightTrigger.ReadValue() > 0.5f;
-                c.scan |= pad.leftTrigger.wasPressedThisFrame;
+                c.scan |= !flying && pad.leftTrigger.wasPressedThisFrame;
                 c.jump |= pad.buttonSouth.isPressed;
-                c.sprint |= pad.leftStickButton.isPressed || (!flying && stick.y >= 0.9f);
+                c.sprint |= flying ? pad.leftTrigger.isPressed : pad.leftStickButton.isPressed || stick.y >= 0.9f;
                 c.interact |= pad.buttonWest.wasPressedThisFrame;
                 c.toggleAssist |= pad.buttonNorth.wasPressedThisFrame && pad.leftTrigger.isPressed;
                 if (pad.buttonNorth.wasPressedThisFrame && !pad.leftTrigger.isPressed) c.cycle = 1;

@@ -80,40 +80,63 @@ namespace Infinigame.Core
         // rock to the sphere and velocity is the rock's. Only rocks big enough to matter count.
         public static bool Hit(BodyDescriptor body, float3 position, float radius, double time, List<Rock> scratch, out float3 normal, out float3 velocity)
         {
+            return Trace(body, position, position, radius, time, scratch, out _, out normal, out velocity);
+        }
+
+        // Sweep the ship (or its projected course) through the same moving cells as the renderer.
+        public static bool Trace(BodyDescriptor body, float3 from, float3 to, float radius, double time, List<Rock> scratch,
+            out Rock obstacle, out float3 normal, out float3 velocity)
+        {
+            obstacle = default;
             normal = velocity = default;
-            float distance = math.length(position.xz);
-            float margin = body.ringRock + radius;
-            if (body.ringOuter == 0f || math.abs(position.y) > body.ringThick + margin || distance < body.ringInner - margin || distance > body.ringOuter + margin)
-                return false;
-            for (int size = 0; size < Classes; size++)
+            if (body.ringOuter <= 0) return false;
+            float3 delta = to - from;
+            float length = math.length(delta), first = float.PositiveInfinity;
+            float3 direction = math.normalizesafe(delta);
+            float3 middle = (from + to) * 0.5f;
+            float margin = body.ringRock + radius + length * 0.5f, radial = math.length(middle.xz);
+            if (math.abs(middle.y) > body.ringThick + margin || radial < body.ringInner - margin || radial > body.ringOuter + margin) return false;
+            for (int size = 0; size < Classes && Size(body, size) >= 1.5f; size++)
             {
-                // gravel does a ship no harm
-                if (Size(body, size) < 1.5f) break;
-                float cell = Cell(body, size), reach = radius + Size(body, size);
-                int bands = Bands(body, size);
-                for (int band = math.max(0, (int)math.floor((distance - reach - body.ringInner) / cell)); band <= math.min(bands - 1, (int)math.floor((distance + reach - body.ringInner) / cell)); band++)
+                float cell = Cell(body, size);
+                int sections = math.max(1, (int)math.ceil(length / cell));
+                float reach = radius + Size(body, size) + 0.5f * length / sections;
+                for (int part = 0; part < sections; part++)
                 {
-                    float turned = Turned(body, size, band, time);
-                    float3 start = TurnY(position, -turned);
-                    int sectors = Sectors(body, size, band);
-                    float arc = 2f * math.PI / sectors, angle = math.atan2(start.z, start.x), spread = reach / math.max(distance, 1f);
-                    for (int sector = (int)math.floor((angle - spread) / arc); sector <= (int)math.floor((angle + spread) / arc); sector++)
+                    float3 mid = from + delta * ((part + 0.5f) / sections);
+                    float distance = math.length(mid.xz);
+                    if (math.abs(mid.y) > body.ringThick + reach) continue;
+                    int bands = Bands(body, size);
+                    for (int band = math.max(0, (int)math.floor((distance - reach - body.ringInner) / cell)); band <= math.min(bands - 1, (int)math.floor((distance + reach - body.ringInner) / cell)); band++)
                     {
-                        scratch.Clear();
-                        Rocks(body, size, band, ((sector % sectors) + sectors) % sectors, scratch);
-                        foreach (var rock in scratch)
+                        float turned = Turned(body, size, band, time);
+                        float3 start = TurnY(mid, -turned);
+                        int sectors = Sectors(body, size, band);
+                        float arc = 2 * math.PI / sectors, angle = math.atan2(start.z, start.x);
+                        float spread = distance <= reach ? math.PI : math.asin(reach / distance);
+                        for (int sector = (int)math.floor((angle - spread) / arc); sector <= (int)math.floor((angle + spread) / arc); sector++)
                         {
-                            if (math.distancesq(rock.position, start) > math.square(rock.radius + radius)) continue;
-                            float3 centre = TurnY(rock.position, turned);
-                            normal = math.normalizesafe(position - centre, new float3(0, 1, 0));
-                            // every rock in a band circles the axis at the band's rate
-                            velocity = math.cross(new float3(0f, Turned(body, size, band, 1.0), 0f), centre);
-                            return true;
+                            scratch.Clear();
+                            Rocks(body, size, band, ((sector % sectors) + sectors) % sectors, scratch);
+                            foreach (var rock in scratch)
+                            {
+                                float3 centre = TurnY(rock.position, turned), offset = centre - from;
+                                float along = math.dot(offset, direction), clearance = rock.radius + radius;
+                                float sideways = math.lengthsq(offset - along * direction);
+                                if (sideways > clearance * clearance) continue;
+                                float chord = math.sqrt(clearance * clearance - sideways);
+                                float hit = math.max(0, along - chord);
+                                if (along + chord < 0 || hit > length || hit >= first) continue;
+                                first = hit;
+                                obstacle = new Rock { position = centre, radius = rock.radius };
+                                normal = math.normalizesafe(from + direction * hit - centre, new float3(0, 1, 0));
+                                velocity = math.cross(new float3(0, Turned(body, size, band, 1), 0), centre);
+                            }
                         }
                     }
                 }
             }
-            return false;
+            return math.isfinite(first);
         }
     }
 }

@@ -48,6 +48,7 @@ namespace Infinigame
         struct Spark
         {
             public float3 position, velocity, colour;
+            public bool electrical;
             // how many seconds of its flight it is drawn out along, and how far it hides what is behind it: glare hides nothing
             public float age, life, width, streak, hides;
             // what share of its speed it loses each second, and how much of gravity it feels: an ember rises
@@ -120,6 +121,7 @@ namespace Infinigame
             card = Models.Parts("Effect card")[0];
             shard = Shapes.Rock(2);
             smoke = new Material(Resources.Load<Shader>("Puff")) { enableInstancing = true };
+            if (Shapes.MatteCombat) smoke.SetFloat("_Peak", 1.25f);
             smoke.SetTexture("_Billows", Resources.Load<Texture2D>("Surfaces/Billows"));
             glare = new Material(Resources.Load<Shader>("Spark")) { enableInstancing = true };
             iron = Shapes.Hull(new Color(0.3f, 0.26f, 0.24f), 0.7f);
@@ -196,7 +198,6 @@ namespace Infinigame
         }
         public void Flesh(float3 position, float3 normal, float size, float3 velocity)
         {
-            if (math.distance(position, game.Player.Position) < 5) game.GetComponent<Arms>().Stain(flesh);
             for (int i = 0; i < 12; i++)
             {
                 float3 spray = math.normalizesafe(normal + rnd.NextFloat3Direction()) * rnd.NextFloat(2, 9);
@@ -236,7 +237,7 @@ namespace Infinigame
         public void Crackle(float3 position)
         {
             for (int i = 0; i < 2; i++) Add(new Spark { position = position, velocity = rnd.NextFloat3Direction() * 2,
-                colour = new float3(0.3f, 3, 5), life = 0.1f, width = 0.015f, streak = 0.08f });
+                colour = new float3(0.3f, 3, 5), electrical = true, life = 0.1f, width = 0.015f, streak = 0.08f });
         }
 
         // A nuclear blast: a blinding flash, a fireball, a stem and a rolling cap that rise along up,
@@ -355,7 +356,14 @@ namespace Infinigame
         {
             // Impact glare can cover both eyes at arm’s length. Keep the moving sparks.
             if (Shapes.MatteCombat && spark.streak == 0 && spark.width >= 0.25f) return;
-            if (sparkCount < Most) sparks[sparkCount++] = spark;
+            if (sparkCount == Most) return;
+            sparks[sparkCount] = spark;
+            if (Shapes.MatteCombat)
+            {
+                sparks[sparkCount].colour /= math.max(1, math.cmax(spark.colour) / 1.25f);
+                sparks[sparkCount].hides = math.max(0.85f, spark.hides);
+            }
+            sparkCount++;
         }
 
         // A piece of hull comes away, tumbling: a plate more than a lump, mostly holes, their edges still glowing.
@@ -628,8 +636,10 @@ namespace Infinigame
                 float3 tail = spark.velocity * spark.streak;
                 sparkPlaces[i] = Matrix4x4.Translate(spark.position - anchor);
                 tails[i] = new Vector4(tail.x, tail.y, tail.z, spark.width);
-                // as it cools it reddens: its blue goes first and its red last
-                glares[i] = new Vector4(spark.colour.x * left, spark.colour.y * left * left, spark.colour.z * left * left * left * left, spark.hides);
+                // Embers redden as they cool. Electrical arcs fade in their original colour.
+                float3 colour = spark.colour * left;
+                if (!spark.electrical) colour *= new float3(1, left, left * left * left);
+                glares[i] = new Vector4(colour.x, colour.y, colour.z, spark.hides);
             }
             if (sparkCount > 0)
             {

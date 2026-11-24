@@ -35,8 +35,9 @@ namespace Infinigame.Core
     {
         public float3 centre, half;
         public bool door, broken, bedrock;
+        public int section;
         public float damage;
-        public Wall(float3 centre, float3 half, bool door = false) { this.centre = centre; this.half = half; this.door = door; broken = bedrock = false; damage = 0; }
+        public Wall(float3 centre, float3 half, bool door = false) { section = 0; this.centre = centre; this.half = half; this.door = door; broken = bedrock = false; damage = 0; }
     }
 
     // Collision belongs to the built rooms only. Outside these boxes the terrain stays authoritative.
@@ -170,6 +171,12 @@ namespace Infinigame.Core
             }
             var route = new List<float3> { new float3(0, 0, -290) };
             foreach (var turn in turns) route.Add(new float3(turn.x * 58, 0, -260 + turn.y * 58));
+            for (int i = 2; i < route.Count - 1; i++)
+            {
+                float3 direction = math.normalize(route[i + 1] - route[i]);
+                walls.Add(new Wall(route[i] + direction * 28, new float3(29, 29, 29) - math.abs(direction) * 28.75f)
+                    { section = i });
+            }
             return new Interior { corridors = cells, escapeWall = exit, indestructible = true, entrance = route[0], core = route[^1], console = route[^1], route = route.ToArray(), walls = walls.ToArray() };
         }
         public bool Fits(float3 centre, float radius, bool open)
@@ -218,6 +225,24 @@ namespace Infinigame.Core
             float extra = math.max(0, wall.centre.y - wall.half.y - bottom) * 0.5f;
             wall.centre.y -= extra; wall.half.y += extra;
             walls[index] = wall; bounded = null;
+        }
+
+        // The visible rock projects beyond the movement box. Count the knuckles touching its skin.
+        public bool FistContact(float3 from, float3 to, out float3 point)
+        {
+            point = to;
+            if (indestructible || Outside(from, to, 1)) return false;
+            float nearest = float.PositiveInfinity;
+            foreach (var wall in walls)
+            {
+                if (wall.broken || wall.bedrock) continue;
+                float3 contact = math.clamp(to, wall.centre - wall.half, wall.centre + wall.half);
+                float gap = math.distance(to, contact);
+                if (gap >= nearest || gap > 0.55f || math.dot(to - from, contact - from) <= 0) continue;
+                nearest = gap;
+                point = contact;
+            }
+            return math.isfinite(nearest);
         }
 
         public bool Breach(float3 point, float damage)

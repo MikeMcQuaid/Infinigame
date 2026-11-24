@@ -4,6 +4,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 script/lib/build-target Win64 Infinigame.Editor.Platforms.Windows Logs/build-windows.log
 script/package Windows
-echo "Built: $PWD/Build/Windows/Infinigame.exe"
+echo "Packaged launchers: $PWD/Build/Packages/Windows/Infinigame/Infinigame.exe and Infinigame-VR.exe"
 echo "Copy $PWD/Build/Infinigame-Windows.zip to Windows, extract it and run Infinigame/Infinigame.exe. Keep the whole folder together."
-echo "For VR: install SteamVR, set it as the OpenXR runtime in SteamVR Settings > OpenXR, connect your headset and launch the game."
+echo "For VR: install SteamVR, set it as the OpenXR runtime in SteamVR Settings > OpenXR, connect your headset and run Infinigame/Infinigame-VR.exe."

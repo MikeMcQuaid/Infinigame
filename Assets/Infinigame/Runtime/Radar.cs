@@ -39,9 +39,10 @@ namespace Infinigame
             }
             else
             {
-                transform.position = camera.ViewportToWorldPoint(new Vector3(0.87f, DeviceControls.Touch ? 0.75f : 0.83f, 3));
+                bool desktop = !DeviceControls.VR && !DeviceControls.HudActions;
+                transform.position = camera.ViewportToWorldPoint(desktop ? new Vector3(1 - 0.15f / camera.aspect, 0.87f, 3) : new Vector3(0.87f, DeviceControls.VR ? 0.83f : 0.75f, 3));
                 transform.rotation = Quaternion.LookRotation(transform.position - camera.transform.position, camera.transform.up);
-                transform.localScale = Vector3.one * 0.34f;
+                transform.localScale = Vector3.one * (desktop ? 0.41f * Mathf.Tan(camera.fieldOfView * Mathf.Deg2Rad * 0.5f) : 0.34f);
             }
             void Contact(float3 position, bool objective, bool airborne = false, bool brain = false)
             {

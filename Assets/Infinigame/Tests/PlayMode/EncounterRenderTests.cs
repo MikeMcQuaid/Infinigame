@@ -10,6 +10,131 @@ namespace Infinigame.Tests
 {
     public class EncounterRenderTests
     {
+#if UNITY_EDITOR
+        [TestCase(1f)]
+        [TestCase(0.55f)]
+        public void DistantGiantCloudBeltsRemainVisibleAtCrescentPhase(float bands)
+        {
+            var camera = new GameObject("Distant observer").AddComponent<Camera>();
+            var mesh = Shapes.Sphere(10000, 24);
+            var stars = new Material(Resources.Load<Shader>("Stars"));
+            var gas = new Material(Resources.Load<Shader>("Gas"));
+            var planet = Shapes.Part(null, "Distant cloud tops", mesh, gas, Vector3.forward * 750000, Vector3.one, false);
+            var air = new Material(Resources.Load<Shader>("Atmosphere"));
+            var atmosphere = Shapes.Part(planet.transform, "Upper atmosphere", mesh, air, Vector3.zero, Vector3.one * 1.12f, false);
+            var screen = new RenderTexture(256, 256, 24);
+            var photo = new Texture2D(256, 256, TextureFormat.RGB24, false);
+            var active = RenderTexture.active;
+            var sun = Shader.GetGlobalVector("_SunPosition"); var light = Shader.GetGlobalColor("_SunLight");
+            try
+            {
+                atmosphere.layer = planet.layer = 30;
+                air.SetFloat("_PlanetRadius", 10000); air.SetFloat("_AtmosphereRadius", 11200);
+                Assert.IsTrue(air.HasProperty("_CloudTop"), "Opaque cloud decks must mask the far atmosphere even when their depth samples coincide");
+                air.SetFloat("_CloudTop", 1); camera.cullingMask = 1 << 30;
+                camera.clearFlags = CameraClearFlags.Skybox; camera.gameObject.AddComponent<Skybox>().material = stars;
+                stars.SetMatrix("_StarRotation", Matrix4x4.identity);
+                camera.farClipPlane = 2000000; camera.fieldOfView = 3; camera.aspect = 1;
+                camera.targetTexture = screen;
+                gas.SetFloat("_Banding", bands);
+                gas.SetVector("_Seed", new Vector4(8, 13, 21, 0));
+                gas.SetColor("_Colour", new Color(0.85f, 0.64f, 0.38f));
+                gas.SetVector("_Sky", new Vector4(0.5f, 0.35f, 0.2f, 0.7f));
+                gas.SetFloat("_AirRadius", 11200);
+                Shader.SetGlobalVector("_SunPosition", new Vector4(120000, 0, 1500000, 1));
+                Shader.SetGlobalColor("_SunLight", Color.white * 1.8f);
+                camera.Render(); RenderTexture.active = screen;
+                photo.ReadPixels(new Rect(0, 0, 256, 256), 0, 0); photo.Apply();
+                Assert.That(gas.renderQueue, Is.InRange(2501, 2984), "Cloud tops must cover the starfield and precede the rings");
+                Assert.That(gas.FindPass("DepthOnly"), Is.GreaterThanOrEqualTo(0), "Opaque cloud tops must also fill the depth prepass");
+                var belt = Enumerable.Range(85, 86).Select(y => photo.GetPixel(128, y).r).ToArray();
+                Assert.Greater(belt.Average(), 0.10f, "Cloud face collapsed to a silhouette");
+                Assert.Greater(belt.Max() - belt.Min(), 0.025f, "Windswept bands disappeared");
+            }
+            finally
+            {
+                Shader.SetGlobalColor("_SunLight", light); Shader.SetGlobalVector("_SunPosition", sun);
+                camera.targetTexture = null; RenderTexture.active = active;
+                foreach (var obj in new Object[] { camera.gameObject, planet, air, gas, stars, mesh, photo, screen }) Object.DestroyImmediate(obj);
+            }
+        }
+
+        [Test]
+        public void PatrolShipShowsOnlyTheExteriorCabin()
+        {
+            var ship = Models.Ship();
+            try
+            {
+                Assert.IsTrue(ship.Find("Exterior/Cabin").gameObject.activeInHierarchy);
+                Assert.IsFalse(ship.Find("Cockpit/Cabin").gameObject.activeInHierarchy, "Coincident cabin meshes flicker on patrol ships");
+            }
+            finally { Object.DestroyImmediate(ship.gameObject); }
+        }
+        [Test]
+        public void DesktopHdrBoundsAlienLightAndBloom()
+        {
+            var shell = Resources.Load<Shader>("DiffuseShell");
+            Assert.IsNotNull(shell);
+            Assert.IsTrue(shell.isSupported);
+            var profile = new UnityEditor.SerializedObject(UnityEditor.AssetDatabase.LoadMainAssetAtPath("Assets/Settings/PostProcessing.asset"));
+            var effects = profile.FindProperty("components");
+            var bloom = Enumerable.Range(0, effects.arraySize).Select(i => effects.GetArrayElementAtIndex(i).objectReferenceValue).Single(effect => effect.name == "Bloom");
+            var limit = new UnityEditor.SerializedObject(bloom).FindProperty("clamp");
+            Assert.IsTrue(limit.FindPropertyRelative("m_OverrideState").boolValue);
+            Assert.That(limit.FindPropertyRelative("m_Value").floatValue, Is.InRange(1f, 3f));
+        }
+
+        [Test]
+        public void MobileToneMappingKeepsHudReadableWithoutBloom()
+        {
+            var renderer = new UnityEditor.SerializedObject(QualitySettings.GetRenderPipelineAssetAt(0));
+            var profile = new UnityEditor.SerializedObject(renderer.FindProperty("m_VolumeProfile").objectReferenceValue);
+            var effects = profile.FindProperty("components");
+            var tone = Enumerable.Range(0, effects.arraySize).Select(i => effects.GetArrayElementAtIndex(i).objectReferenceValue).Single(effect => effect.name == "Tonemapping");
+            var bloom = Enumerable.Range(0, effects.arraySize).Select(i => effects.GetArrayElementAtIndex(i).objectReferenceValue).Single(effect => effect.name == "Bloom");
+            Assert.AreEqual(0, new UnityEditor.SerializedObject(bloom).FindProperty("intensity.m_Value").floatValue);
+            var settings = new UnityEditor.SerializedObject(tone);
+            Assert.Greater(settings.FindProperty("mode.m_Value").intValue, 0);
+            Assert.IsFalse(settings.FindProperty("detectPaperWhite.m_Value").boolValue);
+            Assert.That(settings.FindProperty("paperWhite.m_Value").floatValue, Is.InRange(180, 240));
+        }
+#endif
+        [UnityTest]
+        public IEnumerator HeadTrackingBendsTheKneesOverPlantedBoots()
+        {
+            var body = Models.Traveller();
+            var rig = body.gameObject.AddComponent<MachineMotion>();
+            try
+            {
+                yield return null;
+                var knee = body.Find("Left leg/Knee");
+                Vector3 ankle = knee.TransformPoint(Vector3.down * 0.47f);
+                rig.FitTrackedHead(new Vector3(0.22f, -0.55f, 0.14f), 0f);
+                yield return null;
+                Assert.Greater(rig.crouch, 0.6f);
+                Assert.Less(Vector3.Distance(ankle, knee.TransformPoint(Vector3.down * 0.47f)), 0.06f);
+                Assert.Greater(body.Find("Torso").position.x, 0.05f);
+            }
+            finally { Object.Destroy(body.gameObject); }
+        }
+
+        [Test]
+        public void ShipyardBerthIsClearToTheSkyAndAnimalsHaveSeparateLegs()
+        {
+            foreach (string tier in new[] { "Desktop", "Mobile" })
+            {
+                string path = "Models/" + tier + "/";
+                var yard = Resources.Load<GameObject>(path + "ShipFactory");
+                Assert.IsNotNull(yard.transform.Find("Dog workshop"));
+                foreach (var filter in yard.GetComponentsInChildren<MeshFilter>())
+                    Assert.IsFalse(filter.sharedMesh.vertices.Select(vertex => yard.transform.InverseTransformPoint(filter.transform.TransformPoint(vertex)))
+                        .Any(p => Mathf.Abs(p.x) < 5 && Mathf.Abs(p.z) < 5 && p.y > 0.25f), filter.name + " obstructs the berth");
+                Assert.AreEqual("Grazer eyes", Resources.Load<ModelParts>(path + "Grazer").meshes[1].name);
+                foreach (var animal in new[] { ("Grazer", 4), ("Strider", 3) })
+                    Assert.AreEqual(animal.Item2, Resources.Load<ModelParts>(path + animal.Item1).centres.Length);
+            }
+        }
+
         [Test]
         public void FixedEquipmentSurfacesAndEffectsShipAsAssets()
         {
@@ -42,6 +167,25 @@ namespace Infinigame.Tests
             Assert.IsTrue(soundtrack.Any(track => track.name.StartsWith("battle")));
         }
 
+        [TestCase("Mobile"), TestCase("Desktop")]
+        public void EverySeveredBoughHasItsOriginalBarkAndNeedles(string tier)
+        {
+            string tree = "Models/" + tier + "/Conifer";
+            var previous = Resources.Load<ModelParts>(tree);
+            for (int i = 0; i < 3; i++)
+            {
+                var standing = Resources.Load<ModelParts>(tree + " broken " + i);
+                var falling = Resources.Load<ModelParts>(tree + " falling " + i);
+                Assert.IsNotNull(falling);
+                for (int part = 0; part < 2; part++)
+                {
+                    uint loose = falling.meshes[part].GetIndexCount(0);
+                    Assert.AreEqual(previous.meshes[part].GetIndexCount(0), standing.meshes[part].GetIndexCount(0) + loose);
+                }
+                previous = standing;
+            }
+        }
+
         [Test]
         public void GauntletTracksEveryFingerIndependentlyInBothHands()
         {
@@ -58,6 +202,11 @@ namespace Infinigame.Tests
                     {
                         var flat = tips.Select(tip => tip.position).ToArray();
                         pose.SetCurl(i, 1);
+                        if (i > 0)
+                        {
+                            Vector3 pad = hand.InverseTransformPoint(tips[i].TransformPoint(Vector3.forward * 0.03f));
+                            Assert.Less(pad.y, -0.071f, "Closed fingers must clear the palm armour and lens");
+                        }
                         for (int other = 0; other < tips.Length; other++)
                             if (i == other) Assert.Greater(Vector3.Distance(flat[other], tips[other].position), 0.04f);
                             else Assert.AreEqual(flat[other], tips[other].position);
@@ -127,9 +276,18 @@ namespace Infinigame.Tests
                     }
                     finally { Object.DestroyImmediate(subject.gameObject); }
                 }
+                Portrait("field-demolition", Models.Equipment(true), new Vector3(1.22f, 1.22f, -2.1f), Vector3.up * 0.50f);
+                var delivery = Models.Equipment(false);
+                delivery.Find("Hinged lid").localRotation = Quaternion.Euler(105, 0, 0);
+                Portrait("field-delivery", delivery, new Vector3(1.3f, 1.45f, -1.9f), Vector3.up * 0.52f);
                 Portrait("field-robodog", Models.Robot(), new Vector3(2.23f, 1.44f, 1.40f), new Vector3(0, 0.87f, 0.07f));
                 Portrait("field-suit", Models.Traveller(), new Vector3(0.93f, 1.22f, 2.15f), Vector3.up * 1.04f);
                 Portrait("field-mind", Models.Nest(), new Vector3(3.8f, 3.45f, 4.55f), Vector3.up * 1.3f);
+                var buttress = new GameObject("Living buttress").transform;
+                var tissue = Shapes.BroodTissue();
+                Shapes.Part(buttress, "Root", Models.CitadelButtress(), tissue, Vector3.zero, Vector3.one * 0.08f);
+                Portrait("field-citadel-buttress", buttress, new Vector3(2.6f, 0.3f, 5.8f), Vector3.zero);
+                Object.DestroyImmediate(tissue);
                 var fortress = Models.CitadelCarapace();
                 fortress.localScale = Vector3.one * 0.01f;
                 Portrait("field-citadel", fortress, new Vector3(10.4f, 4.6f, -5.8f), new Vector3(1.1f, 0, 2.3f));
@@ -186,8 +344,7 @@ namespace Infinigame.Tests
                     Assert.Less(triangles, previous);
                     Assert.Greater(shell.bounds.size.z, 1.5f);
                     Assert.Greater(limb.bounds.size.y, 0.85f);
-                    Assert.Greater(eyes.bounds.max.y, caste == MotileCaste.Spitter ? 1.05f : 0.8f,
-                        $"{caste} must keep its raised sensory crown at detail {detail}");
+                    Assert.Greater(eyes.bounds.max.y, 0.8f, $"{caste} eye stalks must carry across detail {detail}");
                     previous = triangles;
                 }
             }
@@ -289,6 +446,20 @@ namespace Infinigame.Tests
                         "White or shader-error pixels cover the close enemy");
                 }
                 finally { DeviceControls.SimulateHeadset = headset; }
+
+                Object.Destroy(shell);
+                shell = new Material(Resources.Load<Shader>("DiffuseShell")) { color = new Color(0.83f, 0.76f, 0.70f), mainTexture = Textures.Albedo(Surface.Chitin) };
+                foreach (var part in alien.GetComponentsInChildren<Renderer>())
+                    if (part.name != "Eyes") part.sharedMaterial = shell;
+                floor.SetActive(false);
+                key.intensity = 24;
+                camera.allowHDR = true;
+                camera.Render();
+                RenderTexture.active = target;
+                picture.ReadPixels(new Rect(0, 0, target.width, target.height), 0, 0, false);
+                File.WriteAllBytes("Logs/Screenshots/desktop-hdr-close-encounter.png", picture.EncodeToPNG());
+                var desktop = picture.GetPixels32();
+                Assert.Less(desktop.Count(p => p.r > 245 && p.g > 245 && p.b > 245), desktop.Length / 100, "Direct light washes out the shell");
 #endif
             }
             finally

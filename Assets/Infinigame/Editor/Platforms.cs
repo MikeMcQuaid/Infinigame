@@ -111,18 +111,8 @@ namespace Infinigame.Editor
             string team = Environment.GetEnvironmentVariable("INFINIGAME_APPLE_TEAM");
             if (!string.IsNullOrEmpty(team)) PlayerSettings.iOS.appleDeveloperTeamID = team;
             PlayerSettings.iOS.appleEnableAutomaticSigning = true;
-            bool displayHDR = PlayerSettings.useHDRDisplay;
-            // The mobile camera renders SDR, including the title and visor.
-            try
-            {
-                PlayerSettings.useHDRDisplay = false;
-                Build("Build/iOS", BuildTarget.iOS);
-            }
-            finally
-            {
-                PlayerSettings.useHDRDisplay = displayHDR;
-                PlayerSettings.iOS.appleDeveloperTeamID = previousTeam;
-            }
+            try { Build("Build/iOS", BuildTarget.iOS); }
+            finally { PlayerSettings.iOS.appleDeveloperTeamID = previousTeam; }
         }
         static void Build(string path, BuildTarget target)
         {
