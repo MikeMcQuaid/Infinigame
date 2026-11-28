@@ -28,9 +28,14 @@ esac
 # Unity keeps symbol and debugging backups beside the player for the developer.
 find "$package" -type d \( -iname '*ButDontShipItWithYourGame*' -o -iname '*_DoNotShip' \) -prune -exec rm -rf {} +
 if [[ "$platform" == macOS && -n "${2:-}" ]]; then
-  # Direct downloads run outside the Mac App Store. Sign only the staged copy.
-  rm -f "$package/Infinigame.app/Contents/embedded.provisionprofile"
-  codesign --force --deep --sign - "$package/Infinigame.app"
+  if [[ "${3:-}" == --notarized ]]; then
+    xcrun stapler validate "$package/Infinigame.app"
+    spctl --assess --type execute "$package/Infinigame.app"
+  else
+    # The private archive packaging check runs without a Developer ID.
+    rm -f "$package/Infinigame.app/Contents/embedded.provisionprofile"
+    codesign --force --deep --sign - "$package/Infinigame.app"
+  fi
   codesign --verify --deep --strict "$package/Infinigame.app"
 fi
 cat > "$package/INSTALL.md" <<EOF
@@ -40,9 +45,13 @@ Extract the entire Infinigame folder before running the game. Keep its files tog
 
 EOF
 case "$platform" in
-  macOS) cat >> "$package/INSTALL.md" <<'EOF'
+  macOS) if [[ "${3:-}" == --notarized ]]; then
+      echo 'Move Infinigame.app to Applications and open it. The app is signed with Developer ID and notarised by Apple.' >> "$package/INSTALL.md"
+    else
+      cat >> "$package/INSTALL.md" <<'EOF'
 Open Infinigame.app. This build is ad-hoc signed rather than Developer ID notarised. If macOS blocks this downloaded copy, allow it through System Settings > Privacy & Security > Open Anyway after checking its source.
 EOF
+    fi
     ;;
   Windows) cat >> "$package/INSTALL.md" <<'EOF'
 Run Infinigame.exe for monitor play. Run Infinigame-VR.exe for the headset. Both share the same game files. For VR, install SteamVR, choose it as the OpenXR runtime in SteamVR Settings > OpenXR, connect your headset and launch the game.

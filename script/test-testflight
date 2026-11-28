@@ -40,7 +40,17 @@ abort 'Keep a downloadable Mac build when Apple validation fails' unless by_id.f
   steps.any? { |s| s.dig('with', 'name') == 'Infinigame-macOS' && s.fetch('if').include?("steps.package.outcome == 'success'") }
 windows = jobs.dig('windows', 'steps').select { |s| s['uses'].to_s.start_with?('actions/upload-artifact@') }
 abort 'Only publish merged Windows builds' unless windows.map { |s| s.dig('with', 'name') }.sort == %w[Infinigame-Windows] &&
-  windows.all? { |s| s['if'] == "env.PUBLISH == 'true'" }
+  windows.all? { |s| s['if'] == "env.PUBLISH == 'true' && steps.package.outputs.path != ''" }
+abort 'Keep both desktop downloads immutable for 90 days' unless (windows + [by_id.fetch('download-mac')]).all? { |s|
+  s.fetch('if').include?("steps.package.outputs.path != ''") && s.dig('with', 'path') == '${{ steps.package.outputs.path }}' &&
+    s.dig('with', 'retention-days') == 90 && !s.dig('with', 'overwrite')
+}
+abort 'Keep the Mac download before Apple can skip the archive on a retry' unless
+  by_id.fetch('upload-mac').fetch('if').include?("steps.download-mac.outcome == 'success' || steps.package.outputs.exists == 'true'")
+abort 'Only main may use the direct-download signing certificate' unless
+  %w[DEVELOPER_ID_APPLICATION_CERTIFICATE DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD].all? { |name|
+    by_id.fetch('package').dig('env', name) == "${{ env.PUBLISH == 'true' && secrets.#{name} || '' }}"
+  }
 dist = jobs.fetch('distribute')
 abort 'Only hand recovered builds to distribution after checking the tester groups' unless
   targets.all? { |target| mac.fetch('outputs').fetch("#{target}-number").include?("steps.groups.outcome == 'success'") }
@@ -53,7 +63,7 @@ mkdir -p tmp
 scratch="$(mktemp -d "$PWD/tmp/test-testflight.XXXXXX")"
 trap 'rm -rf "$scratch"' EXIT
 mkdir -p "$scratch/bin" "$scratch/script" "$scratch/.github" "$scratch/Build/iOS/Unity-iPhone.xcodeproj"
-cp script/testflight "$scratch/script/testflight"
+cp script/testflight script/package "$scratch/script/"
 cp .github/testflight.rb "$scratch/.github/"
 cp TESTFLIGHT.md "$scratch/TESTFLIGHT.md"
 touch "$scratch/Build/iOS/Unity-iPhone.xcodeproj/project.pbxproj"
@@ -116,6 +126,13 @@ case "$1" in
   find-identity)
     test "${!#}" = "$(cat "$TESTFLIGHT_TEST_DIRECTORY/credentials")/signing.keychain-db"
     if [[ "$2" == -v ]]; then
+      if [[ "$4" == codesigning ]]; then
+        echo '  1) AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA "Developer ID Application: Tester (OTHERTEAM1)"'
+        if [[ "$TESTFLIGHT_TEST_FAILURE" != missing-developer-id ]]; then
+          echo '  2) CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC "Developer ID Application: Tester (ABCDEFGHIJ)"'
+        fi
+        exit 0
+      fi
       test "$3 $4" = '-p basic'
       echo '  1) AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA "Apple Distribution: Tester (ABCDEFGHIJ)"'
       echo '  2) BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB "3rd Party Mac Developer Installer: Tester (OTHERTEAM1)"'
@@ -135,6 +152,13 @@ if [[ ${TESTFLIGHT_PLATFORM:-iOS} == macOS ]]; then
 fi
 echo /archive-concurrent.keychain-db >>"${TESTFLIGHT_TEST_DIRECTORY}/keychains"
 if [[ "$1" == -exportArchive ]]; then
+  if [[ "$(plutil -extract method raw "$5")" == developer-id ]]; then
+    [[ "$3" == Build/TestFlight/macOS.xcarchive && "$(plutil -extract signingCertificate raw "$5")" == CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC ]]
+    [[ "$(plutil -extract teamID raw "$5")" == ABCDEFGHIJ && "$(plutil -extract signingStyle raw "$5")" == manual ]]
+    mkdir -p "$7/Infinigame.app/Contents"
+    echo developer-id > "$7/Infinigame.app/Contents/signature"
+    exit 0
+  fi
   [[ "$8" == -authenticationKeyPath ]]
   openssl pkey -in "$9" -noout
   case "$TESTFLIGHT_TEST_FAILURE" in
@@ -162,6 +186,7 @@ else
     plist=Build/MacStore/Infinigame/Info.plist
     test "$(stat -f %Lp Build/MacStore/Infinigame/private-resource)" = 644
     [[ "$2" == Build/MacStore/MacStore.xcodeproj && "$4" == Infinigame ]]
+    [[ " $* " == *" ENABLE_HARDENED_RUNTIME=YES "* ]]
     [[ " $* " == *" -destination generic/platform=macOS "* && " $* " == *" PROVISIONING_PROFILE_SPECIFIER="* ]]
     [[ -f "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$PROFILE_UUID.provisionprofile" ]]
     [[ "$(/usr/libexec/PlistBuddy -c 'Print ITSAppUsesNonExemptEncryption' "$plist")" == false ]]
@@ -174,6 +199,7 @@ else
   mkdir -p "$archive"
   plutil -create xml1 "$archive/Info.plist"
   /usr/libexec/PlistBuddy -c 'Add :ApplicationProperties dict' \
+    -c 'Add :ApplicationProperties:Team string ABCDEFGHIJ' \
     -c 'Add :ApplicationProperties:ApplicationPath string Applications/Infinigame.app' \
     -c 'Add :ApplicationProperties:CFBundleVersion string 44' \
     -c 'Add :ApplicationProperties:CFBundleShortVersionString string 1.2.3' \
@@ -191,6 +217,19 @@ XCODEBUILD
 cat > "$scratch/bin/xcrun" <<'XCRUN'
 #!/bin/bash
 set -euo pipefail
+case "$1 $2" in
+  'notarytool submit')
+    echo submit >> "$TESTFLIGHT_TEST_DIRECTORY/notary-calls"
+    unzip -p "$3" Infinigame.app/Contents/signature | grep -qx developer-id
+    [[ " $* " == *" --wait "* && -s "$5" && "$6 $7 $8 $9" == "--key-id $APP_STORE_KEY_ID --issuer $APP_STORE_ISSUER_ID" ]]
+    status=Accepted
+    [[ "$TESTFLIGHT_TEST_FAILURE" != rejected ]] || status=Invalid
+    echo "{\"status\":\"$status\",\"id\":\"submission\"}"
+    exit 0 ;;
+  'notarytool log') echo 'Notary diagnostics'; exit 0 ;;
+  'stapler staple') touch "$3/Contents/ticket"; exit 0 ;;
+  'stapler validate') test -f "$3/Contents/ticket"; exit ;;
+esac
 test "$1 $2 $3" = 'altool --validate-app -f'
 test -f "$4"
 if [[ "${TESTFLIGHT_PLATFORM:-iOS}" == macOS ]]; then
@@ -203,6 +242,14 @@ test "$(stat -f %Lp "$API_PRIVATE_KEYS_DIR/AuthKey_${APP_STORE_KEY_ID}.p8")" = 6
 echo validate >> "$TESTFLIGHT_TEST_DIRECTORY/calls"
 [[ "$TESTFLIGHT_TEST_FAILURE" != validation ]]
 XCRUN
+cat > "$scratch/bin/codesign" <<'CODESIGN'
+#!/bin/bash
+[[ "$1 $2 $3" == '--verify --deep --strict' && "$(cat "$4/Contents/signature")" == developer-id && "$TESTFLIGHT_TEST_FAILURE" != signature ]]
+CODESIGN
+cat > "$scratch/bin/spctl" <<'SPCTL'
+#!/bin/bash
+[[ "$1 $2 $3" == '--assess --type execute' && -f "$4/Contents/ticket" && "$TESTFLIGHT_TEST_FAILURE" != gatekeeper ]]
+SPCTL
 chmod +x "$scratch/bin/"*
 export APP_STORE_KEY_ID=KEY1234567 APP_STORE_ISSUER_ID=issuer
 APP_STORE_KEY=$(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:prime256v1 -pkeyopt ec_param_enc:named_curve | base64)
@@ -305,6 +352,22 @@ fi
 grep -q 'Mac Installer Distribution.*ABCDEFGHIJ' "$scratch/run.log"
 test ! -e "$scratch/calls"
 test ! -e "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$uuid.provisionprofile"
+for failure in missing-developer-id signature rejected gatekeeper none; do
+  rm -f "$scratch/notary-calls"
+  if TESTFLIGHT_TEST_FAILURE="$failure" TESTFLIGHT_PLATFORM=macOS DEVELOPER_ID_APPLICATION_CERTIFICATE=dGVzdA== \
+      DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD=password "$scratch/script/testflight" --notarize > "$scratch/run.log" 2>&1; then
+    [[ "$failure" == none ]] || { echo "Packaged Mac download after $failure" >&2; exit 1; }
+  else
+    [[ "$failure" != none ]] || { cat "$scratch/run.log"; exit 1; }
+    test ! -e "$scratch/Build/Infinigame-macOS.zip"
+  fi
+  if [[ "$failure" == signature ]]; then
+    test ! -e "$scratch/notary-calls" || { echo 'Submitted an invalid signature to Apple' >&2; exit 1; }
+  fi
+  test -z "$(ls -A "$scratch/tmp")"
+done
+unzip -p "$scratch/Build/Infinigame-macOS.zip" Infinigame/Infinigame.app/Contents/signature | grep -qx developer-id
+unzip -Z1 "$scratch/Build/Infinigame-macOS.zip" | grep -Fx 'Infinigame/Infinigame.app/Contents/ticket'
 echo 'TestFlight signing cleanup tests passed'
 
 ruby script/test-testflight-automation.rb

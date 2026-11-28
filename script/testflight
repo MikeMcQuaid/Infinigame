@@ -3,10 +3,15 @@
 set +x
 set -euo pipefail
 cd "$(dirname "$0")/.."
-[[ $# == 1 && ($1 == --dry-run || $1 == --verify || $1 == --upload-archive || $1 == --internal || $1 == --external) ]] || {
-  echo 'Usage: script/testflight --dry-run|--verify|--upload-archive|--internal|--external' >&2; exit 1
+[[ $# == 1 && ($1 == --dry-run || $1 == --verify || $1 == --upload-archive || $1 == --internal || $1 == --external || $1 == --notarize) ]] || {
+  echo 'Usage: script/testflight --dry-run|--verify|--upload-archive|--internal|--external|--notarize (macOS)' >&2; exit 1
 }
 : "${APP_STORE_KEY:?}" "${APP_STORE_KEY_ID:?}" "${APP_STORE_ISSUER_ID:?}"
+if [[ "$1" == --notarize ]]; then
+  [[ "${TESTFLIGHT_PLATFORM:-}" == macOS ]] || { echo 'Developer ID export requires a macOS archive.' >&2; exit 1; }
+  APP_STORE_CERTIFICATES=${DEVELOPER_ID_APPLICATION_CERTIFICATE:?Set DEVELOPER_ID_APPLICATION_CERTIFICATE to the base64-encoded Developer ID Application P12}
+  APP_STORE_CERTIFICATES_PASSWORD=${DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD:?Set the Developer ID P12 export password}
+fi
 : "${APP_STORE_CERTIFICATES:?}" "${APP_STORE_CERTIFICATES_PASSWORD:?}"
 platform=${TESTFLIGHT_PLATFORM:-iOS}
 case "$platform" in
@@ -24,7 +29,7 @@ case "$platform" in
     project=Build/MacStore/MacStore.xcodeproj
     scheme=Infinigame
     plist=Build/MacStore/Infinigame/Info.plist
-    profile=${APP_STORE_PROFILE:-${APP_STORE_MACOS_PROFILE:?Missing Mac App Store profile}}
+    profile=${APP_STORE_PROFILE:-${APP_STORE_MACOS_PROFILE:-}}
     identifier_key=com.apple.application-identifier
     altool_platform=macos
     binary_extension=pkg
@@ -32,7 +37,7 @@ case "$platform" in
     ;;
   *) echo "Unknown TestFlight platform: $platform" >&2; exit 1 ;;
 esac
-[[ -f "$project/project.pbxproj" ]] || { echo "Missing Unity export: $project" >&2; exit 1; }
+[[ "$1" == --notarize || -f "$project/project.pbxproj" ]] || { echo "Missing Unity export: $project" >&2; exit 1; }
 umask 077
 mkdir -p tmp Logs Build/TestFlight
 scratch="$(mktemp -d "$PWD/tmp/testflight.XXXXXX")"
@@ -57,13 +62,18 @@ if [[ "$1" != --dry-run ]]; then
     echo 'Allocate RELEASE_VERSION and BUILD_NUMBER through the TestFlight workflow.' >&2; exit 1
   }
 fi
-base64 --decode <<<"$profile" > "$scratch/profile"
-security cms -D -i "$scratch/profile" > "$scratch/profile.plist"
-uuid="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$scratch/profile.plist")"
-team="$(/usr/libexec/PlistBuddy -c 'Print TeamIdentifier:0' "$scratch/profile.plist")"
-application="$(/usr/libexec/PlistBuddy -c "Print Entitlements:$identifier_key" "$scratch/profile.plist")"
 bundle_id=com.mikemcquaid.Infinigame
-[[ "$application" == ?*.* && "${application#*.}" == "$bundle_id" ]] || { echo "The provisioning profile must be for $bundle_id." >&2; exit 1; }
+archive="Build/TestFlight/$platform.xcarchive"
+if [[ "$1" == --notarize ]]; then
+  team=$(plutil -extract ApplicationProperties.Team raw "$archive/Info.plist")
+else
+  base64 --decode <<<"${profile:?Missing App Store profile}" > "$scratch/profile"
+  security cms -D -i "$scratch/profile" > "$scratch/profile.plist"
+  uuid="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$scratch/profile.plist")"
+  team="$(/usr/libexec/PlistBuddy -c 'Print TeamIdentifier:0' "$scratch/profile.plist")"
+  application="$(/usr/libexec/PlistBuddy -c "Print Entitlements:$identifier_key" "$scratch/profile.plist")"
+  [[ "$application" == ?*.* && "${application#*.}" == "$bundle_id" ]] || { echo "The provisioning profile must be for $bundle_id." >&2; exit 1; }
+fi
 keychain_password="$(uuidgen)"
 signing_started=true
 security create-keychain -p "$keychain_password" "$keychain"
@@ -79,6 +89,39 @@ while read -r existing_keychain; do
   keychains+=("${existing_keychain%\"}")
 done < "$scratch/keychains"
 security list-keychains -d user -s "$keychain" "${keychains[@]}"
+if [[ "$1" == --notarize || "$1" == --upload-archive ]]; then
+  info="$archive/Info.plist"
+  [[ "$(plutil -extract ApplicationProperties.CFBundleVersion raw "$info")" == "$BUILD_NUMBER" &&
+     "$(plutil -extract ApplicationProperties.CFBundleShortVersionString raw "$info")" == "$RELEASE_VERSION" &&
+     "$(plutil -extract ApplicationProperties.CFBundleIdentifier raw "$info")" == "$bundle_id" ]] || {
+    echo "The archive does not match $bundle_id $RELEASE_VERSION ($BUILD_NUMBER)." >&2; exit 1
+  }
+fi
+if [[ "$1" == --notarize ]]; then
+  identity=$(security find-identity -v -p codesigning "$keychain" | awk -v team="($team)\"" '
+    /"Developer ID Application: / && $NF == team && !found { print $2; found=1 }')
+  [[ -n "$identity" ]] || { echo "DEVELOPER_ID_APPLICATION_CERTIFICATE needs a Developer ID Application identity for team $team." >&2; exit 1; }
+  plutil -create xml1 "$scratch/direct.plist"
+  /usr/libexec/PlistBuddy -c 'Add :method string developer-id' -c 'Add :signingStyle string manual' \
+    -c "Add :signingCertificate string $identity" -c "Add :teamID string $team" "$scratch/direct.plist"
+  umask 022
+  xcodebuild -exportArchive -archivePath "$archive" -exportOptionsPlist "$scratch/direct.plist" -exportPath "$scratch/direct"
+  app="$scratch/direct/Infinigame.app"
+  codesign --verify --deep --strict "$app"
+  /usr/bin/ditto -c -k --keepParent "$app" "$scratch/submission.zip"
+  auth=(--key "$key" --key-id "$APP_STORE_KEY_ID" --issuer "$APP_STORE_ISSUER_ID")
+  result="$scratch/notary.plist"
+  if ! xcrun notarytool submit "$scratch/submission.zip" "${auth[@]}" --wait --timeout 45m --output-format plist > "$result" ||
+     [[ "$(plutil -extract status raw "$result")" != Accepted ]]; then
+    if submission=$(plutil -extract id raw "$result"); then
+      xcrun notarytool log "$submission" "${auth[@]}" >&2 || true
+    fi
+    echo 'Apple notarisation did not complete successfully.' >&2; exit 1
+  fi
+  xcrun stapler staple "$app"
+  script/package macOS "$app" --notarized
+  exit 0
+fi
 profile_directory="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
 mkdir -p "$profile_directory"
 if [[ ! -e "$profile_directory/$uuid.$extension" ]]; then
@@ -97,7 +140,7 @@ plutil -create xml1 "$scratch/export.plist"
   -c "Add :provisioningProfiles:$bundle_id string $uuid" "$scratch/export.plist"
 signing=("INFINIGAME_PROFILE=$uuid")
 if [[ "$platform" == macOS ]]; then
-  signing=("PROVISIONING_PROFILE_SPECIFIER=$uuid" "CODE_SIGN_ENTITLEMENTS=$PWD/.github/macOS.entitlements")
+  signing=("PROVISIONING_PROFILE_SPECIFIER=$uuid" "CODE_SIGN_ENTITLEMENTS=$PWD/.github/macOS.entitlements" ENABLE_HARDENED_RUNTIME=YES)
   installer=$(security find-identity -v -p basic "$keychain" | awk -v team="($team)\"" '
     /"3rd Party Mac Developer Installer: / && $NF == team && !found { print $2; found=1 }')
   if [[ -z "$installer" ]]; then
@@ -107,17 +150,9 @@ if [[ "$platform" == macOS ]]; then
   fi
   /usr/libexec/PlistBuddy -c "Add :installerSigningCertificate string $installer" "$scratch/export.plist"
 fi
-archive="Build/TestFlight/$platform.xcarchive"
 # Xcode packages these files for root to install and ordinary users to run.
 umask 022
-if [[ "$1" == --upload-archive ]]; then
-  info="$archive/Info.plist"
-  [[ "$(plutil -extract ApplicationProperties.CFBundleVersion raw "$info")" == "$BUILD_NUMBER" &&
-     "$(plutil -extract ApplicationProperties.CFBundleShortVersionString raw "$info")" == "$RELEASE_VERSION" &&
-     "$(plutil -extract ApplicationProperties.CFBundleIdentifier raw "$info")" == "$bundle_id" ]] || {
-    echo "The archive does not match $bundle_id $RELEASE_VERSION ($BUILD_NUMBER)." >&2; exit 1
-  }
-else
+if [[ "$1" != --upload-archive ]]; then
   if [[ "$1" != --dry-run ]]; then
     /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" \
       -c "Set :CFBundleShortVersionString $RELEASE_VERSION" "$plist"

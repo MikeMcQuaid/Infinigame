@@ -1,0 +1,31 @@
+#!/bin/bash
+set -euo pipefail
+
+if [[ "$PUBLISH" != true ]]; then exec script/package "$@"; fi
+
+name="Infinigame-$1"
+version=$(awk '/^  bundleVersion:/ {print $2}' ProjectSettings/ProjectSettings.asset)
+build=$(script/build-number)
+echo "[$name $version (build $build)](https://nightly.link/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/$name.zip)" >> "$GITHUB_STEP_SUMMARY"
+if [[ "$1" == macOS ]]; then
+  echo "Corresponding macOS TestFlight build: $version ($BUILD_NUMBER)." >> "$GITHUB_STEP_SUMMARY"
+fi
+
+# Keep the original artifact and its download ID when retrying a workflow.
+if [[ "$GITHUB_RUN_ATTEMPT" != 1 ]]; then
+  existing=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+    --jq '.artifacts[] | select(.expired == false) | .name')
+  if grep -Fxq "$name" <<< "$existing"; then
+    echo 'exists=true' >> "$GITHUB_OUTPUT"
+    exit 0
+  fi
+fi
+
+if [[ "$1" == macOS ]]; then
+  script/testflight --notarize
+else
+  script/package "$@"
+fi
+path="Build/$name-$version-$build.zip"
+mv "Build/$name.zip" "$path"
+echo "path=$path" >> "$GITHUB_OUTPUT"
