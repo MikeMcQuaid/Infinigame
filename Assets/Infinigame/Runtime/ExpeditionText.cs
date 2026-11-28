@@ -43,7 +43,7 @@ namespace Infinigame
             variants.Clear();
             // Older saves did not record their source. Refresh only the lines whose instructions changed.
             saved.RemoveAll(entry => entry.key == null || entry.text == null || (string.IsNullOrEmpty(entry.source)
-                ? entry.key is "arm" or "foundry" or "frogs" or "optics" or "rescue" or "escortCall" or "shipyard" : entry.source != Authored(entry.key)));
+                ? entry.key is "arm" or "foundry" or "frogs" or "optics" or "rescue" or "escortCall" or "shipyard" or "finalEngines" or "armCore" or "entranceHint" or "punchMind" or "clearLanding" : entry.source != Authored(entry.key)));
             foreach (var entry in saved) { entry.source = Authored(entry.key); variants[entry.key] = entry.text; }
             WaitingForOpening = Busy = false;
             if (selected < 0) return;

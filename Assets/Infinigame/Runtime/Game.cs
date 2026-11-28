@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine.UI;
 using System.IO;
 using System.Linq;
@@ -38,6 +39,7 @@ namespace Infinigame
             public EscortOrders escorts = new EscortOrders();
             // which mission is in hand, and everything won by the ones before it, as Campaign's bits
             public int stage, kit;
+            public Difficulty difficulty = Difficulty.Normal;
             public int fitted = -1;
             public double clock;
             public bool gate;
@@ -55,8 +57,8 @@ namespace Infinigame
         // How many slots there are, and how many clicks it takes to dig out of the ground.
         int dugHands;
         public const int Slots = 3, Digs = 2;
-        public const float BootDuration = 12;
-        public const string Settings = "Settings", Cheats = "Cheats", ColonyPage = "Factory uplink";
+
+        public const string Settings = "Settings", Cheats = "Cheats", NewDifficulty = "Choose difficulty";
         // The rows of the settings page before those of the oracle's voices.
         public const string Writers = "Expedition language model";
         string writersParent;
@@ -79,6 +81,7 @@ namespace Infinigame
             rotation *= Quaternion.Euler(FistAngles.x, mirror * FistAngles.y, mirror * FistAngles.z);
             return new Pose(grip - rotation * Vector3.forward * (PalmSetback * 0.01f), rotation);
         }
+        public Difficulty Challenge => save.difficulty;
         public bool InvertShipPitch { get; private set; }
         public int MapPage { get; private set; }
         public bool MapSummary => MapPage == 1;
@@ -127,15 +130,26 @@ namespace Infinigame
         public bool Buried => save.stage == Campaign.Buried || rebuildingUnderground;
         public int Dug { get; private set; }
         // What the player is about, for the HUD.
-        public string Objective => save.stage >= Campaign.Won ? Fall.destroyed ? "BLACK HOLE SYSTEM CONSUMPTION  ·  HOLD ON" : Fall.active ? Frontier.Ending : "BUILD MOON ENGINES AT A FACTORY"
-            : $"{Mission.name.ToUpperInvariant()}  ·  {(Outpost.Fallen ? Outpost.Errand : Outpost.World == System.Reference ? Outpost.Instruction : Wording(Mission.task))}";
-        public float Boot => Buried && !rebuildingUnderground && !Title ? Mathf.Clamp(Time.unscaledTime - Began, 0, BootDuration) : BootDuration;
-        // Where the mission in hand leads on the world the player is at, relative to its centre:
-        // the stranger's fire, the raiders' place or what they guarded. Nowhere, if it is on another world.
-        public float3? Goal => Stage == Campaign.Won && !Fall.active && Colonies.FirstOrDefault(colony => Frontier.State(colony.world, colony.region).shipyard) is Colony yard
-            ? yard.world == System.Reference ? yard.site : System.ToReference(yard.world)
+        public Colony MoonYard => FindMoonYard(System.Descriptor);
+        Colony FindMoonYard(SolarSystemDescriptor system) => Colonies.Where(site => system.bodies[site.world].orbit.parent > 0
+            && Presence.fronts.Any(front => front.world == site.world && front.region == site.region && front.shipyard)).OrderByDescending(site => site.world == Fall.moon).FirstOrDefault();
+        public float3 EnginePole => math.lengthsq(Fall.site) > 0 ? math.normalize(Fall.site) : math.normalizesafe(MoonYard?.site ?? new float3(0, 1, 0));
+        int EngineMoon => !Fall.armed && System.ReferenceBody.kind == BodyKind.Rock && System.ReferenceBody.orbit.parent > 0 ? System.Reference : Fall.moon;
+        public string Objective => Stage < Campaign.Won ? $"{Mission.name.ToUpperInvariant()}  ·  {MissionAction}" : MissionAction;
+        public string MissionAction => save.stage >= Campaign.Won ? Fall.active ? Frontier.Ending : Fall.armed ? $"TAKE OFF · CLEAR {System.Descriptor.bodies[Fall.moon].name.ToUpperInvariant()} BY {Frontier.LaunchAltitude:0} M"
+            : Frontier.CanBuild(2) ? DeviceControls.Key("B", "LT + D-PAD DOWN", "… / BUILD", "WRIST · BUILD") + " · BUILD MOON ENGINES HERE"
+            : "LAND ANYWHERE ON ANY MOON · BUILD MOON ENGINES"
+            : Stage == Campaign.Recovery && Player.NearShip ? Wording("boardShip")
+            : Stage == Campaign.Recovery && Player.InSpace ? Wording("holdForShip")
+            : Outpost.Fallen ? Outpost.Errand : Outpost.World == System.Reference ? Outpost.Instruction : Wording(Mission.task);
+        // Position of the current mission in the player's reference frame, including a landing site on another world.
+        public float3? Goal => Stage == Campaign.Won && !Fall.active && EngineMoon >= 0
+            ? Fall.armed ? System.ToReference(EngineMoon) + math.rotate(System.Descriptor.Turn(EngineMoon, System.Reference, System.Clock), EnginePole * (System.Descriptor.bodies[EngineMoon].radius + Frontier.LaunchAltitude))
+                : EngineMoon == System.Reference ? math.normalizesafe(Player.Position) * System.ReferenceBody.GroundRadius(math.normalizesafe(Player.Position)) : System.ToReference(EngineMoon)
             : Stage == Campaign.Recovery ? Player.ship.position : System.Reference == SolarSystemDescriptor.Home && save.stage == Campaign.Stranger ? Hermit.Position
-            : Outpost.World < 0 ? (float3?)null : Outpost.World != System.Reference ? System.ToReference(Outpost.World) : Outpost.Rooms == null ? (float3?)null : Stage == Campaign.Citadel ? Outpost.Waypoint : Outpost.Recovered && !Outpost.EquipmentReady ? Outpost.SiteCleared ? Outpost.DeliverySite : Outpost.Exit : Outpost.Fallen ? Outpost.Prize : Outpost.Waypoint;
+            : Outpost.World < 0 || Outpost.ClearOfDemolition && !Outpost.SiteCleared ? (float3?)null : Outpost.World != System.Reference
+                ? Stage >= Campaign.Tower && Stage < Campaign.Citadel ? (float3)System.Bodies[Outpost.World].transform.TransformPoint(Outpost.LandingSite) + System.Anchor : System.ToReference(Outpost.World)
+                : Outpost.Rooms == null ? (float3?)null : Stage == Campaign.Citadel ? Outpost.Waypoint : Outpost.Recovered && !Outpost.EquipmentReady ? Outpost.SiteCleared ? Outpost.DeliverySite : Outpost.Exit : Outpost.Fallen ? Outpost.Prize : Outpost.Waypoint;
         // Everything scanned so far, and the talk with this system's hermit as alternating lines.
         public List<Entry> Journal => save.journal;
         public List<string> Talk => save.talk;
@@ -173,10 +187,9 @@ namespace Infinigame
             .Append(upgrade.HasValue ? "Confirm upgrade" : "Select an attribute").ToArray()
             : Page == "Fleet orders" ? new[] { $"ORDERS   ·   {Escorts.order.ToString().ToUpperInvariant()}", "Back" }
             : Dead ? Over : Confirming ? new[] { "Cancel", "Confirm" }
-            : Page == Cheats ? new[] { "Choose mission", "Moon engines built · replay finale", "Take every weapon and all gear", "Mend suit and hull", "Next system", $"INVULNERABLE   ·   {(GodMode ? "ON" : "OFF")}", "Back" }
-            : Page == "Missions" ? Campaign.Missions.Select((mission, i) => $"{i + 1}. {mission.name}").Append("Citadel destroyed · build moon engines").Append("Moon engines built · replay finale").Append("Back").ToArray()
-            : Page == ColonyPage ? new[] { Frontier.BuildLabel }
-                .Concat(Frontier.VisibleBuild(2) ? new[] { "Build moon engines" } : Array.Empty<string>()).Append("Back").ToArray()
+            : Page == NewDifficulty ? Enum.GetNames(typeof(Difficulty)).Append("Back").ToArray()
+            : Page == Cheats ? new[] { "Choose mission", "Take every weapon and all gear", "Mend suit and hull", "Next system", $"INVULNERABLE   ·   {(GodMode ? "ON" : "OFF")}", "Back" }
+            : Page == "Missions" ? Campaign.Missions.Select(mission => mission.name).Append("Build moon engines").Append("Replay the moon finale").Select((name, i) => $"{i + 1}. {name}").Append("Back").ToArray()
             : Voice >= 0 ? (Oracle.Enabled ? new[] { "Disconnect language model" } :
                 (Connected(Voice) ? new[] { "Use this account" } : Array.Empty<string>()).Concat(Oracle.Roads(Voice)).Append("Use the key on the clipboard"))
                 .Append("Back").ToArray()
@@ -189,7 +202,7 @@ namespace Infinigame
             {
                 $"DETAIL   ·   {QualitySettings.names[QualitySettings.GetQualityLevel()].ToUpperInvariant()}", $"MUSIC   ·   {(Music.Muted ? "OFF" : "ON")}",
                 $"LOOK SPEED   ·   {DesktopControls.Sensitivity:0.00}", $"FULL SCREEN   ·   {(Screen.fullScreen ? "ON" : "OFF")}", $"ROBOT VOICE   ·   {(Speech.Muted ? "OFF" : "ON")}", $"ROBOT SUBTITLES   ·   {(Subtitles ? "ON" : "OFF")}", $"SHIP STICK PITCH   ·   {(InvertShipPitch ? "INVERTED" : "NORMAL")}",
-            }.Skip(Application.isMobilePlatform ? 4 : 0).Take(DialCount).Concat(DeviceControls.VR ? new[] { HandAlignment, WristAlignment } : Array.Empty<string>()).Append(Writers).Append("Back").ToArray()
+            }.Skip(Application.isMobilePlatform ? 4 : 0).Take(DialCount).Append($"DIFFICULTY   ·   {Challenge.ToString().ToUpperInvariant()}").Concat(DeviceControls.VR ? new[] { HandAlignment, WristAlignment } : Array.Empty<string>()).Append(Writers).Append("Back").ToArray()
             : Title ? slots.Append(Writers).Concat(Enumerable.Range(0, Slots).Where(slot => File.Exists(SlotPath(slot))).Select(slot => $"Delete slot {slot + 1}")).Concat(CheatsUnlocked ? new[] { Cheats, Settings, "Quit to desktop" } : new[] { Settings, "Quit to desktop" }).Where(item => item != "Quit to desktop" || Application.platform != RuntimePlatform.IPhonePlayer).ToArray()
             : Menu.Where(item => (item != "Quit to desktop" || Application.platform != RuntimePlatform.IPhonePlayer) && (item != Cheats || CheatsUnlocked) && (item != "Recentre VR" || DeviceControls.VR)).ToArray();
         // On a voice's page: how the player stands with it and what it has been asked for so far,
@@ -200,10 +213,10 @@ namespace Infinigame
             : Page == HandAlignment ? "Hold the controllers naturally. Setback slides both gloves towards your elbows. Yaw and roll mirror between hands."
             : Page == "Fleet orders" ? Frontier.FleetHint
 
-            : Page == ColonyPage ? Items[Selected] == "Back" ? "" : $"{Hermit.Name}: {Frontier.FactoryHint(Items[Selected] == "Build moon engines" ? 2 : 0)}"
-            : Page == Cheats ? Selected == 2 ? "RECOVER ALL SUIT MODULES, SHIP SYSTEMS AND TORPEDOES"
+            : Page == Cheats ? Selected == 1 ? "RECOVER ALL SUIT MODULES, SHIP SYSTEMS AND TORPEDOES"
                 : "CHOOSE A MISSION OR PREPARE THE FACTORY AND CONQUESTS REQUIRED FOR MOON ENGINES"
             : Page == Writers || Page == null && Title && Selected == Slots ? "Choose one account to personalise the story, mission guidance and scanner journal for this expedition. Ask your robot follow-up questions by text or voice."
+            : Page == NewDifficulty || Page == Settings && Selected == DialCount ? "Creative keeps you alive and drops foes in one hit. Realistic makes weapons lethal on both sides."
             : Page == null && Title ? "Optional language model · personalise your robot’s dialogue and mission guidance with your own account." : Page == Settings ? Dial switch
             {
                 0 => "CHOOSE THE DETAIL PRESET FOR THIS DEVICE",
@@ -228,7 +241,7 @@ namespace Infinigame
                 _ => $"{Oracle.Model(Voice).name} · lowest effort · requests use your own account",
             }
             // on the pause menu itself: what there is to do, and what it wins
-            : Page == null && !Title && !Dead && save.stage < Campaign.Won ? $"{(Outpost.Fallen ? Outpost.Errand : Wording(Mission.task))}   ·   WINS {Campaign.Spoils(save.stage)}"
+            : Page == null && !Title && !Dead && save.stage < Campaign.Won ? MissionAction + (Mission.wins.Length > 0 ? "   ·   REWARD: " + Campaign.Spoils(Stage) : "")
             : "";
         // Detail and music are the device's to remember, not a character's. Tests keep theirs under another name.
         public static string Prefs = "infinigame";
@@ -241,7 +254,7 @@ namespace Infinigame
         public bool CanWarp => false;
 
         // What the interact key would do right now.
-        public string Prompt => !Outpost.Near && Hermit.Near ? $"Talk to {Hermit.Name}" : Outpost.Near ? Outpost.EquipmentReady ? $"Collect {Campaign.Spoils(save.stage).ToLowerInvariant()}" : "Arm burrow demolition" : Player.Prompt ?? (NearFactory ? "Factory uplink" : null);
+        public string Prompt => !Outpost.Near && Hermit.Near ? $"Talk to {Hermit.Name}" : Outpost.Near ? Outpost.EquipmentReady ? $"Collect {Campaign.Spoils(save.stage).ToLowerInvariant()}" : "Arm burrow demolition" : Player.Prompt ?? ((Frontier.CanBuild(2) || NearFactory && Frontier.CanBuild(0)) ? Frontier.Construction : null);
 
         [NonSerialized] public SolarSystemDescriptor PreparedSystem;
         Save save;
@@ -269,7 +282,7 @@ namespace Infinigame
 
         static Save Read(int slot)
         {
-            var read = new Save { stage = Start, kit = Campaign.Kit(Start) };
+            var read = new Save { stage = Start, kit = Campaign.Kit(Start), difficulty = (Difficulty)Mathf.Clamp(PlayerPrefs.GetInt($"{Prefs}.difficulty", (int)Difficulty.Normal), 0, (int)Difficulty.Realistic) };
             if (File.Exists(SlotPath(slot)))
             {
                 JsonUtility.FromJsonOverwrite(File.ReadAllText(SlotPath(slot)), read);
@@ -307,24 +320,46 @@ namespace Infinigame
         }
 
         public bool Ready { get; private set; }
+        Canvas loadScreen;
+        Image loadBackdrop;
+        Text loadMessage;
+        string loadStage;
+        double nextLoadCaption, loadStarted;
+        int loadPercent;
+        internal static string Activity => new string('.', 1 + (int)(Time.unscaledTime * 2) % 3);
         T Add<T>() where T : MonoBehaviour { var component = gameObject.AddComponent<T>(); component.enabled = false; return component; }
         void Awake() => StartCoroutine(Initialise());
         IEnumerator Initialise()
         {
+            if (Application.isMobilePlatform)
+            {
+                QualitySettings.SetQualityLevel(0);
+                GameObject.Find("Global Volume")?.SetActive(false);
+            }
             var camera = Camera.main;
             visibleLayers = camera.cullingMask;
             camera.cullingMask = 0;
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = Color.black;
             var loading = new GameObject("Loading", typeof(Canvas), typeof(CanvasScaler));
-            loading.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
-            loading.GetComponent<Canvas>().sortingOrder = 100;
+            loading.transform.SetParent(transform, false);
+            loadScreen = loading.GetComponent<Canvas>();
+            loadScreen.renderMode = RenderMode.ScreenSpaceOverlay;
+            loadScreen.sortingOrder = 100;
+            var scaler = loading.GetComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920, 1080);
             var panel = new GameObject("Background", typeof(RectTransform), typeof(Image)); panel.transform.SetParent(loading.transform, false);
-            var backdrop = panel.GetComponent<Image>(); backdrop.color = new Color(0.015f, 0.025f, 0.04f);
-            backdrop.rectTransform.anchorMin = Vector2.zero; backdrop.rectTransform.anchorMax = Vector2.one; backdrop.rectTransform.offsetMin = backdrop.rectTransform.offsetMax = Vector2.zero;
+            loadBackdrop = panel.GetComponent<Image>(); loadBackdrop.color = new Color(0.015f, 0.025f, 0.04f);
+            loadBackdrop.rectTransform.anchorMin = Vector2.zero; loadBackdrop.rectTransform.anchorMax = Vector2.one; loadBackdrop.rectTransform.offsetMin = loadBackdrop.rectTransform.offsetMax = Vector2.zero;
             var message = new GameObject("Progress", typeof(RectTransform), typeof(Text)).GetComponent<Text>(); message.transform.SetParent(loading.transform, false);
-            message.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"); message.fontSize = 30; message.alignment = TextAnchor.MiddleCenter; message.color = new Color(0.5f, 0.9f, 1);
-            message.rectTransform.sizeDelta = new Vector2(850, 240); message.text = "INFINIGAME\nPreparing your suit…";
+            message.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"); message.fontSize = 32; message.alignment = TextAnchor.UpperCenter; message.color = new Color(0.5f, 0.9f, 1);
+            message.rectTransform.sizeDelta = new Vector2(1080, 320);
+            loadMessage = message;
+            loadStarted = Time.unscaledTimeAsDouble;
+            loadStage = "Restoring suit telemetry";
+            RefreshLoadCaption();
+            foreach (Transform part in loading.GetComponentsInChildren<Transform>()) part.gameObject.layer = LayerMask.NameToLayer("UI");
             yield return null; yield return null;
             Narrative.Load(Resources.Load<TextAsset>("STORY").text, Resources.Load<TextAsset>("MISSIONS").text,
                 Resources.Load<TextAsset>("FACTIONS").text, Resources.Load<TextAsset>("COLONIES").text);
@@ -337,7 +372,14 @@ namespace Infinigame
             save = Read(Slot);
             DesktopControls.Sensitivity = save.look;
             Oracle.Load();
-            QualitySettings.SetQualityLevel(PlayerPrefs.GetInt($"{Prefs}.detail", QualitySettings.GetQualityLevel()));
+            if (!Application.isMobilePlatform)
+            {
+                int detail = PlayerPrefs.GetInt($"{Prefs}.detail", QualitySettings.GetQualityLevel());
+                if (QualitySettings.GetQualityLevel() != detail) QualitySettings.SetQualityLevel(detail);
+            }
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+            yield return DeviceControls.StartWindowsDisplay();
+#endif
             QualitySettings.vSyncCount = 0;
             FrameLog.Automatic = PlayerPrefs.GetInt($"{Prefs}.automaticQuality", 1) == 1;
             Music.Muted = PlayerPrefs.GetInt($"{Prefs}.muted") == 1;
@@ -362,11 +404,12 @@ namespace Infinigame
             System = Add<SolarSystem>();
             Add<Rainfall>();
             Player = new GameObject("Player").AddComponent<Player>();
+            loadStage = "Fitting your suit"; yield return null;
             Player.Init(System);
             camera.clearFlags = CameraClearFlags.SolidColor;
             Player.game = this;
             var devices = Add<DeviceControls>(); devices.game = this; Player.controls = devices.Poll;
-            message.text = "INFINIGAME\nLoading equipment…"; yield return null;
+            loadStage = "Loading equipment"; yield return null;
             Scanner = Add<Scanner>();
             Scanner.game = this;
             Hermit = Add<Hermit>();
@@ -378,7 +421,7 @@ namespace Infinigame
             Battle = Add<Battle>();
             Battle.game = this;
             System.ReferenceChanged += Battle.Rebase;
-            message.text = "INFINIGAME\nBuilding the worlds…"; yield return null;
+            loadStage = "Preparing flight systems"; yield return null;
             Outpost = Add<Outpost>();
             Outpost.game = this;
             Sounds = Add<Sounds>();
@@ -394,32 +437,78 @@ namespace Infinigame
             Frontier = Add<Frontier>();
             Frontier.game = this;
             Tutorial = Add<SuitTutorial>(); Tutorial.game = this;
-            Enter();
-            ShowTitle();
-            Ready = true;
+            yield return LoadExpedition(true);
+        }
+
+        IEnumerator LoadExpedition(bool title)
+        {
+            Ready = false;
+            loadStage = "Charting the star system";
+            if (!title)
+            {
+                loadStarted = Time.unscaledTimeAsDouble;
+                loadPercent = 0;
+                RefreshLoadCaption();
+            }
+            loadBackdrop.enabled = true;
+            loadScreen.gameObject.SetActive(true);
+            var camera = Camera.main;
+            camera.cullingMask = DeviceControls.VR ? 1 << LayerMask.NameToLayer("UI") : 0;
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            foreach (var component in GetComponents<MonoBehaviour>())
+                if (component != this) component.enabled = false;
+            uint seed = Seed;
+            int depth = Depth;
+            // Pure world generation and landing-site searches can run while the visor still redraws.
+            var chart = Task.Run(() =>
+            {
+                var system = depth == 1 ? SolarSystemDescriptor.Generate(seed) : SolarSystemDescriptor.Beyond(seed);
+                Campaign.Site(system, 0);
+                return system;
+            });
+            yield return null;
+            while (!chart.IsCompleted) yield return null;
+            var descriptor = chart.GetAwaiter().GetResult();
+            int built = 0;
+            foreach (var stage in Load(descriptor))
+            {
+                loadStage = stage;
+                loadPercent = 5 + 90 * ++built / (descriptor.bodies.Length + 3);
+                yield return null;
+            }
+            Enter(worldBuilt: true);
+            if (title) ShowTitle();
+            else { Began = Time.unscaledTime; Dead = false; Resume(); Sounds.Warp(); }
             foreach (var component in GetComponents<MonoBehaviour>()) component.enabled = true;
+            loadPercent = 99;
+            loadStage = "Opening suit optics";
             yield return null;
             camera.cullingMask = DeviceControls.VR && Title ? 1 << LayerMask.NameToLayer("UI") : visibleLayers;
             camera.clearFlags = DeviceControls.VR && Title ? CameraClearFlags.SolidColor : CameraClearFlags.Skybox;
-            Destroy(loading);
+            loadBackdrop.enabled = false;
+            if (DeviceControls.VR) loadMessage.material = Hud.Overlay;
+            Ready = true;
         }
 
         // Builds the saved seed's system, terrain and gravity together, round the world the
         // mission in hand begins on, settles its hermit and the raiders' outpost and clears the air.
-        void Load(int? rebuildWorld = null)
+        IEnumerable<string> Load(SolarSystemDescriptor system, int? rebuildWorld = null)
         {
-            var system = PreparedSystem ?? (save.depth == 1 ? SolarSystemDescriptor.Generate(save.seed) : SolarSystemDescriptor.Beyond(save.seed));
-            PreparedSystem = null;
             if (save.fall.moon < 0)
             {
                 save.fall.moon = Campaign.FinalMoon(system);
                 save.fall.world = system.bodies[save.fall.moon].orbit.parent;
             }
+            if (Stage == Campaign.Won && !Fall.armed && !Fall.active && FindMoonYard(system) is Colony yard) Fall.moon = yard.world;
             system.moonfall = save.fall;
             Campaign.Site(system, 0);
             System.RestoreClock(save.clock);
             // once the ship can leave the air a mission begins over the world it is on; the citadel's, well away from its guns
-            System.Build(system, rebuildWorld ?? (save.stage >= Campaign.Tower && save.stage < Campaign.Citadel ? Campaign.World(system, save.stage) : SolarSystemDescriptor.Home));
+            int reference = rebuildWorld ?? (save.stage >= Campaign.Tower && save.stage < Campaign.Citadel ? Campaign.World(system, save.stage) : SolarSystemDescriptor.Home);
+            if (!rebuildWorld.HasValue && Stage == Campaign.Won && !Fall.active) reference = Fall.moon;
+            foreach (int i in System.Build(system, reference))
+                yield return $"World {i + 1}/{system.bodies.Length}  ·  {system.bodies[i].name}";
+            yield return "Placing the recovery robot";
             save.kit |= Campaign.Kit(save.stage);
             if (Presence.fronts == null) Presence.fronts = new List<Front>();
             Player.kit = save.kit;
@@ -429,20 +518,27 @@ namespace Infinigame
             Player.energy = Player.Powered ? Suit.Capacity : 3;
             Hermit.Settle();
             Battle.Reset();
+            yield return "Growing burrows";
             Outpost.Settle();
+            yield return "Assembling settlements";
             Frontier.Settle();
         }
 
         // Puts the player where the mission in hand begins, whole: on the ground where they woke
         // or, once the ship can leave the air, in orbit.
-        void Enter()
+        void Enter(bool worldBuilt = false)
         {
             bool lostShip = Dead && Player.flying && Player.Has(Gear.Ship);
             Colony factory = Dead ? Colonies.Where(site => Presence.fronts.Any(f => f.world == site.world && f.region == site.region && f.factory))
                 .OrderByDescending(site => lostShip && Presence.fronts.Any(f => f.world == site.world && f.region == site.region && f.shipyard))
                 .ThenByDescending(site => site.world == System.Reference).ThenBy(site => math.distancesq(site.site, Player.Position)).FirstOrDefault() : null;
             rebuildingUnderground = Dead && factory == null;
-            Load(factory?.world);
+            if (!worldBuilt)
+            {
+                var system = PreparedSystem ?? (Depth == 1 ? SolarSystemDescriptor.Generate(Seed) : SolarSystemDescriptor.Beyond(Seed));
+                PreparedSystem = null;
+                foreach (var _ in Load(system, factory?.world)) { }
+            }
             if (save.stage >= Campaign.Tower && Player.Has(Gear.Ship) && !Dead) Player.SpawnInOrbit();
             else Player.Spawn();
             Stow();
@@ -452,15 +548,29 @@ namespace Infinigame
                 float3 at = Outpost.Place(Outpost.Rooms.entrance - new float3(0, 0, 14));
                 Player.walker = Walker.Spawn(System.ReferenceBody, at, entrance - at);
             }
-            if (factory != null)
+            if (!Dead && Stage == Campaign.Won && !Fall.active)
+            {
+                if (Fall.armed)
+                {
+                    float3 pole = EnginePole, forward = Walker.Project(new float3(0.2f, 0.9f, 0.4f), pole);
+                    Player.walker = Walker.Spawn(System.ReferenceBody, pole, forward);
+                    Player.Park(Player.walker.position + Player.walker.forward * 8);
+                    Player.flying = false;
+                }
+                else factory = MoonYard;
+            }
+            if (factory != null && factory.world == System.Reference)
             {
                 float3 up = math.normalizesafe(factory.site);
                 float3 forward = math.normalizesafe(Walker.Project(new float3(0.2f, 0.9f, 0.4f), up));
-                Player.walker = Walker.Spawn(System.ReferenceBody, up, forward);
+                bool yard = Frontier.State(factory.world, factory.region).shipyard;
+                float3 workshop = yard ? (float3)Models.Kennel(factory.site) : factory.site;
+                Player.walker = Walker.Spawn(System.ReferenceBody, math.normalizesafe(workshop), forward);
                 if (Player.Has(Gear.Ship))
                 {
-                    Player.Park(lostShip ? factory.site : factory.site + forward * 8);
-                    Player.flying = lostShip && Frontier.State(factory.world, factory.region).shipyard;
+                    Player.Park(yard ? factory.site : workshop + forward * 8);
+                    if (yard) Player.ship.rotation = Quaternion.FromToRotation(Vector3.up, up);
+                    Player.flying = lostShip && yard;
                 }
             }
             // or the system would look for the world the player is near from wherever they last were
@@ -485,22 +595,55 @@ namespace Infinigame
                     Shapes.Part(burial, "Packed rubble", Shapes.Rock(5), stone, new Vector3(i == 0 ? -0.38f : 0.38f, Walker.EyeHeight + 0.59f, 0.16f), new Vector3(1.45f, 0.66f, 1.8f));
                 Shapes.Part(burial, "Sealed overburden", Shapes.Box(), stone, Vector3.up * 5, new Vector3(30, 2, 30));
             }
+            if (Stage <= Campaign.Stranger)
+                Hermit.Rescue(Buried ? BurialExit(Player.walker.forward) : Player.walker.position);
+        }
+
+        float3 BurialExit(float3 facing)
+        {
+            float3 up = math.normalize(Player.walker.position + facing * 9);
+            return up * System.ReferenceBody.GroundRadius(up);
+        }
+
+        void RefreshLoadCaption()
+        {
+            int tick = (int)((Time.unscaledTimeAsDouble - loadStarted) * 2);
+            string report = string.Join("\n", Enumerable.Range(math.max(0, tick - 3), math.min(4, tick + 1)).Select(Suit.Diagnostic));
+            loadMessage.text = $"SUIT STARTUP  {loadPercent}%\n{loadStage.ToUpperInvariant()}\n\n{report}";
+            nextLoadCaption = Time.unscaledTimeAsDouble + 0.5;
+        }
+
+        void LateUpdate()
+        {
+            if (!Ready) return;
+            bool show = Buried && !Title && !Paused && !Dead && !ShowControls && !mapOpen && !Hermit.Talking && !GetComponent<DeviceControls>().ReadingWrist;
+            loadScreen.gameObject.SetActive(show);
+            if (show) loadMessage.text = $"SUIT STARTUP  100%\n{Tutorial.Hint}";
         }
 
         void Update()
         {
-            if (!Ready) return;
+            if (!Ready)
+            {
+                if (loadMessage != null)
+                {
+                    if (DeviceControls.VR && loadScreen.renderMode != RenderMode.ScreenSpaceCamera)
+                    {
+                        loadScreen.worldCamera = Camera.main;
+                        loadScreen.planeDistance = 1.5f;
+                        loadScreen.renderMode = RenderMode.ScreenSpaceCamera;
+                        Camera.main.cullingMask = 1 << LayerMask.NameToLayer("UI");
+                    }
+                    if (Time.unscaledTimeAsDouble >= nextLoadCaption) RefreshLoadCaption();
+                }
+                return;
+            }
             if (DeviceControls.VR)
             {
                 Camera.main.cullingMask = Title ? 1 << LayerMask.NameToLayer("UI") : visibleLayers;
                 Camera.main.clearFlags = Title ? CameraClearFlags.SolidColor : CameraClearFlags.Skybox;
             }
             script.Prepare(this, save.wording ??= new List<Entry>());
-            if (Buried && !Title)
-            {
-                if (PreparingOpening) Began = Time.unscaledTime;
-                else if (Paused || mapOpen || ShowControls) Began += Time.unscaledDeltaTime;
-            }
             if (!Paused && !Dead && !Hermit.Talking && !ShowControls && !mapOpen && !Fall.active && Player.Powered && Progression.Pending)
             { Pause(); Page = "Level up"; }
             if (Paused) Selected = math.clamp(Selected, 0, Items.Length - 1);
@@ -511,7 +654,7 @@ namespace Infinigame
                 if (cheatCode.Contains("idgaf")) ToggleCheats();
                 if (cheatCode.Length > 12) cheatCode = cheatCode.Substring(cheatCode.Length - 12);
             }
-            if (Buried && DeviceControls.VR && !c.interfaceActive) c.fire = GetComponent<Arms>().MotionPunch && math.dot(GetComponent<Arms>().PunchDirection, math.normalizesafe(Player.Position)) > 0.2f;
+            if (Buried && DeviceControls.VR && !c.interfaceActive) c.fire = GetComponent<Arms>().MotionPunch;
             GetComponent<VoiceInput>().Hold(c.voice);
             if (c.voice && Hermit.Talking) c = default;
             if (c.systemView && !mapPressed && !Paused && !Dead && !Hermit.Talking && !Fall.active) { mapOpen = !mapOpen; ShowControls = false; if (mapOpen) { if (MapPage == 3) MapPage = 0; MapSelection = System.Reference; MapPan = Vector2.zero; } }
@@ -536,9 +679,10 @@ namespace Infinigame
                     MapPan = Vector2.ClampMagnitude(MapPan - c.mapDrag, 1.5f);
                 }
                 if (action == 3) { mapOpen = map = c.systemView = ShowControls = false; }
-                if (action == 4 || action == 5 || action == 9)
+                if (action == 5) Frontier.BuildFactory(Frontier.CanBuild(2) ? 2 : 0);
+                if (action == 4 || action == 9)
                 {
-                    Pause(); fromMap = action != 9; Page = action == 4 ? "Fleet orders" : action == 5 ? ColonyPage : null;
+                    Pause(); fromMap = action != 9; Page = action == 4 ? "Fleet orders" : null;
                     Selected = 0; ShowControls = false;
                     mapOpen = map = c.systemView = false; c = default;
                 }
@@ -608,16 +752,16 @@ namespace Infinigame
                 }
                 if (c.tierUp || c.tierDown) Detail(Mathf.Clamp(QualitySettings.GetQualityLevel() + (c.tierUp ? 1 : -1), 0, QualitySettings.names.Length - 1));
                 var keys = Keyboard.current;
-                if (keys != null && keys.altKey.isPressed && keys.enterKey.wasPressedThisFrame) Screen.fullScreen = !Screen.fullScreen;
+                if (keys != null && keys.altKey.isPressed && keys.enterKey.wasPressedThisFrame) ToggleFullScreen();
                 // the hermit is talked to at his fire, or from anywhere once he rides in the ship
                 if (!Buried && (c.interact && Hermit.Near && !Outpost.Near || c.talk && Player.Has(Gear.Suit)))
                 {
                     Hermit.Greet();
                     c = default;
                 }
-                else if ((c.ride || c.interact && NearFactory && Player.Prompt == null && !Outpost.Near) && !Player.flying && FactoryUnlocked)
+                else if ((c.ride || c.interact && Player.Prompt == null && !Outpost.Near && (Frontier.CanBuild(2) || NearFactory && Frontier.CanBuild(0))) && !Player.flying && FactoryUnlocked)
                 {
-                    Pause(); Page = ColonyPage; Selected = 0; c = default;
+                    Frontier.BuildFactory(Frontier.CanBuild(2) ? 2 : 0); c = default;
                 }
                 else if (c.interact && Outpost.Near)
                 {
@@ -628,12 +772,13 @@ namespace Infinigame
                 {
                     // Each punch removes a piece of overhead rubble. The floor stays intact.
                     int hits = DeviceControls.VR ? GetComponent<Arms>().PunchHands & ~dugHands : !pulled ? 1 << Dug : 0;
-                    if (Boot >= BootDuration && c.fire && hits != 0)
+                    if (c.fire && hits != 0)
                     {
                         Sounds.Dig();
                         for (int hand = 0; hand < Digs; hand++)
                             if ((hits & (1 << hand)) != 0)
                             {
+                                Player.PunchRubble(hand);
                                 dugHands |= 1 << hand;
                                 if (burial != null) burial.GetChild(hand).gameObject.SetActive(false);
                                 Dug++;
@@ -641,8 +786,7 @@ namespace Infinigame
                         if (Dug == Digs)
                         {
                             if (burial != null) Destroy(burial.gameObject);
-                            float3 exit = math.normalize(Player.walker.position + Player.walker.forward * 9);
-                            Player.walker.position = exit * System.ReferenceBody.GroundRadius(exit);
+                            Player.ClimbOut(BurialExit(Stage <= Campaign.Stranger ? Player.walker.forward : Hermit.RescueFacing));
                             rebuildingUnderground = false;
                             if (Stage == Campaign.Buried) Advance();
                         }
@@ -651,9 +795,9 @@ namespace Infinigame
                     (c.move, c.jump) = (Vector2.zero, false);
                     c.look = Vector2.zero;
                 }
-                if (Buried && Boot < BootDuration) c = default;
                 pulled = c.fire;
             }
+            if (!Ready) return;
             Time.timeScale = Paused || Dead || Hermit.Talking || ShowControls || map ? 0 : 1;
             Cursor.lockState = Paused || Dead || map || ShowControls || Hermit.Talking || DeviceControls.Pointer ? CursorLockMode.None : CursorLockMode.Locked;
 
@@ -665,6 +809,7 @@ namespace Infinigame
             bool followingMoon = Fall.active;
             if (followingMoon && !Paused && !Dead) Frontier.Tick();
             Player.Tick(c);
+            GetComponent<Arms>().TrackGloves();
             if (Player.flying && !landed && Player.ship.landed) Hermit.Remark(Wording("landed").Replace("{world}", System.ReferenceBody.name));
             if (!hot && Player.Heat > Player.HeatLimit * 0.9f && !Player.Dead) Hermit.Remark(Wording("heat"));
             // behind the title page the view drifts slowly from side to side
@@ -700,9 +845,6 @@ namespace Infinigame
                 if (!followingMoon) Frontier.Tick();
                 save.clock = System.Clock;
             }
-            if (Paused && Page == ColonyPage)
-                foreach (var front in Presence.fronts)
-                    if (front.world == System.Reference && front.factory) War.Step(front, Mathf.Min(Time.unscaledDeltaTime, 0.1f), Pressure);
             if (Player.Dead && !Dead) Die();
         }
 
@@ -777,10 +919,11 @@ namespace Infinigame
             save.stage++;
             if (done.count > 0 && save.stage - 1 != Campaign.FirstBurrow) GainExperience(20);
             save.checkpoint = Progression.Copy();
+            if (Stage == Campaign.Won && MoonYard is Colony yard) Fall.moon = yard.world;
             Frontier.Settle();
             Player.health = Player.MaxHealth;
             Player.hull = Player.MaxHull;
-            Notify(save.stage == Campaign.Won ? "SHIELD CORE DESTROYED  ·  BUILD MOON ENGINES AT YOUR FACTORY"
+            Notify(save.stage == Campaign.Won ? "SHIELD CORE DESTROYED  ·  LAND ANYWHERE ON ANY MOON AND BUILD ENGINES"
                 : spoils.Length == 0 ? "DAYLIGHT  ·  A ROBOT IS CALLING NEAR BY"
                 : $"{done.name.ToUpperInvariant()}  ·  YOU HAVE {spoils}{(Hermit.Aboard && !crewed ? $"  ·  {Hermit.Name.ToUpperInvariant()} FLIES WITH YOU NOW  ·  {DeviceControls.Key("RETURN", "LT + LEFT", "ROBOT", "WRIST ROBOT")} TO TALK" : "")}");
             Sounds.Chime();
@@ -800,8 +943,9 @@ namespace Infinigame
             if (Player.ShipOverhead)
             {
                 float3 up = Campaign.Site(System.Descriptor, 0);
-                Player.Park(up * (System.ReferenceBody.radius * Shapes.AirTop(System.ReferenceBody) + 35));
-                Player.ship.position = up * (System.ReferenceBody.radius * Shapes.AirTop(System.ReferenceBody) + 35);
+                float3 orbit = up * (System.ReferenceBody.radius * Shapes.AirTop(System.ReferenceBody) + Combat.ShipRadius + 1);
+                Player.Park(orbit);
+                Player.ship.position = orbit;
                 Player.ship.velocity = float3.zero;
                 Player.ship.landed = false;
             }
@@ -847,10 +991,29 @@ namespace Infinigame
                 if (body.GroundRadius(beside) > body.SeaRadius + 1) up = beside;
                 Colonies.Add(new Colony { world = world, region = region, site = up * body.GroundRadius(up) });
             }
+            if (Stage == Campaign.Won && MoonYard is Colony yard)
+            {
+                Fall.world = system.bodies[Campaign.FinalMoon(system)].orbit.parent;
+                Fall.moon = yard.world;
+                var front = Frontier.State(yard.world, yard.region);
+                front.aliens = front.alienShips = 0;
+            }
             save.kit = Campaign.Kit(save.stage);
             save.fitted = -1;
             Write();
             Begin();
+        }
+
+        static void ToggleFullScreen()
+        {
+            bool fullscreen = !Screen.fullScreen;
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+            if (!DeviceControls.VR)
+            {
+                if (fullscreen) { DeviceControls.SetNativeMonitor(); return; }
+            }
+#endif
+            Screen.fullScreen = fullscreen;
         }
 
         void ToggleCheats()
@@ -928,14 +1091,15 @@ namespace Infinigame
 
         // Takes up another slot's game, from the start of the mission it had reached. Nothing of the
         // last one needs putting away: it is written whenever it changes.
-        void Switch(int slot)
+        void Switch(int slot, Difficulty? difficulty = null)
         {
             Slot = slot;
             save = Read(slot);
+            if (difficulty.HasValue) save.difficulty = difficulty.Value;
             DesktopControls.Sensitivity = save.look;
             // the slot played last is the one written last
             Write();
-            Begin();
+            StartCoroutine(LoadExpedition(false));
         }
 
         // Finds out how the player stands with each voice.
@@ -1015,11 +1179,16 @@ namespace Infinigame
                 Escorts.order = (EscortOrder)(((int)Escorts.order + 1) % 3);
                 Write(); return;
             }
-            if (Page == ColonyPage && Items[Selected] != "Back")
+            if (Page == NewDifficulty && Selected < (int)Difficulty.Realistic + 1)
             {
-                Frontier.BuildFactory(Items[Selected] == "Build moon engines" ? 2 : Selected);
-                Write();
-                return;
+                var difficulty = (Difficulty)Selected;
+                Page = null; Title = false; Began = Time.unscaledTime;
+                if (pending == "new")
+                {
+                    save.difficulty = difficulty; Forfeit(); StartCoroutine(LoadExpedition(false));
+                }
+                else Switch(pendingSlot, difficulty);
+                pending = null; return;
             }
             if (Page == "Missions" && Selected == Campaign.Won + 1) { PreviewFinale(); return; }
             if (Page == "Missions" && Selected <= Campaign.Won) { Jump(Selected); return; }
@@ -1033,7 +1202,7 @@ namespace Infinigame
                     if (pendingSlot == Slot) { save = new Save { version = 5, kit = Campaign.Kit(0) }; Enter(); }
                     ShowTitle(); return;
                 }
-                if (pending == "new") { Forfeit(); Title = false; Begin(); return; }
+                if (pending == "new") { Page = NewDifficulty; Selected = (int)Challenge; return; }
                 if (pending == "slot") { Title = false; Switch(pendingSlot); return; }
                 Time.timeScale = 1;
 #if UNITY_EDITOR
@@ -1048,23 +1217,25 @@ namespace Infinigame
                 pendingSlot = int.Parse(Items[Selected].Substring(12)) - 1;
                 pending = "delete"; Confirmation = $"Delete slot {pendingSlot + 1}? This cannot be undone."; Confirming = true; Selected = 0; return;
             }
-            if (Page == Cheats && Selected == 5) { GodMode = !GodMode; return; }
-            if (Page == Cheats && Selected < 5)
+            if (Page == Cheats && Selected == 4) { GodMode = !GodMode; return; }
+            if (Page == Cheats && Selected < 4)
             {
                 if (Selected == 0) { Page = "Missions"; Selected = math.min(Stage, Campaign.Citadel); return; }
                 else if (Selected == 1)
-                {
-                    PreviewFinale(); return;
-                }
-                else if (Selected == 2)
                 {
                     Player.kit = save.kit |= Campaign.Kit(Campaign.Citadel);
                     Player.fitted = save.fitted = Suit.Default(save.kit);
                     Write();
                 }
-                else if (Selected == 4) { NextSystem(); return; }
+                else if (Selected == 3) { NextSystem(); return; }
                 else (Player.health, Player.hull) = (Player.MaxHealth, Player.MaxHull);
                 Title = false; Resume(); return;
+            }
+            if (Page == Settings && Selected == DialCount)
+            {
+                save.difficulty = (Difficulty)(((int)Challenge + 1) % ((int)Difficulty.Realistic + 1));
+                if (!Title || File.Exists(SlotPath(Slot))) Write();
+                return;
             }
             if (Page == Settings && Selected < DialCount)
             {
@@ -1073,7 +1244,7 @@ namespace Infinigame
                     case 0: Detail((QualitySettings.GetQualityLevel() + 1) % QualitySettings.names.Length); break;
                     case 1: Mute(); break;
                     case 2: Look(DesktopControls.Sensitivity > 0.7f ? 0.08f : DesktopControls.Sensitivity * 1.25f); break;
-                    case 3: Screen.fullScreen = !Screen.fullScreen; break;
+                    case 3: ToggleFullScreen(); break;
                     case 4:
                     case 5:
                         if (Dial == 4) { Speech.Muted = !Speech.Muted; if (Speech.Muted) Subtitles = true; }
@@ -1113,7 +1284,7 @@ namespace Infinigame
             {
                 if (!File.Exists(SlotPath(Selected)))
                 {
-                    Title = false; Began = Time.unscaledTime; Switch(Selected); return;
+                    pending = "slot"; pendingSlot = Selected; Page = NewDifficulty; Selected = (int)Difficulty.Normal; return;
                 }
                 // A saved slot resumes without confirmation.
                 Title = false;

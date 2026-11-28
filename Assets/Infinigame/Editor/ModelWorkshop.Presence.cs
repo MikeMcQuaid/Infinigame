@@ -66,6 +66,19 @@ namespace Infinigame
             shell.colour = previous;
         }
 
+        // A low ring of slitted pores lies against the shell under a continuous fleshy lip.
+        static void SensoryPores(MeshKit shell, MeshKit light, Vector3 centre, float spread, int count, int sides)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                float angle = (i + 0.35f) * Mathf.PI * 2 / count;
+                Vector3 rim = centre + new Vector3(Mathf.Sin(angle) * spread, 0, Mathf.Cos(angle) * spread * 0.72f);
+                var pose = Move(rim) * Turn(0, angle * Mathf.Rad2Deg, -9);
+                shell.Place(pose, () => shell.Ball(Vector3.zero, new Vector3(0.32f, 0.12f, 0.21f) * spread, sides));
+                light.Place(pose, () => light.Ball(new Vector3(0, 0.085f, 0.07f) * spread, new Vector3(0.22f, 0.044f, 0.10f) * spread, sides));
+            }
+        }
+
         static (Mesh body, Mesh light) MobileBody(bool ship)
         {
             MeshKit shell = new MeshKit(), light = new MeshKit();
@@ -276,7 +289,103 @@ namespace Infinigame
             return (body.Mesh("Rooted mind"), light.Mesh("Neural folds"));
         }
 
+        // Two joined skins let the same living membrane face either way at a turn or an exit.
+        public static Transform CitadelWall() => Machine("Citadel wall", root =>
+        {
+            var hide = new MeshKit { tiling = 0.28f };
+            var vessels = new MeshKit { tiling = 0.25f };
+            foreach (int side in new[] { -1, 1 })
+            {
+                Vector3 Skin(float x, float y)
+                {
+                    float edge = Mathf.Clamp01((29 - Mathf.Max(Mathf.Abs(x), Mathf.Abs(y))) / 4);
+                    float fold = 0.5f + 0.5f * Mathf.Cos(x * 0.32f + 1.7f * Mathf.Sin(y * 0.11f) + 0.15f * y);
+                    float haunch = Mathf.Pow(Mathf.Abs(y / 29f), 3) * (0.65f + 0.35f * Mathf.Cos(x * 0.19f));
+                    return new Vector3(side * x, y, side * (1.2f + edge * (2.3f * fold * fold + 2.1f * haunch)));
+                }
+                int steps = Curves / 2;
+                var rows = new Vector3[steps + 1][];
+                for (int y = 0; y <= steps; y++)
+                {
+                    rows[y] = new Vector3[steps + 1];
+                    for (int x = 0; x <= steps; x++)
+                        rows[y][x] = Skin(58f * x / steps - 29, 58f * y / steps - 29);
+                }
+                hide.Skin(rows, false);
+                for (int rib = -1; rib <= 1; rib++)
+                {
+                    // Paired tendons turn into a broad fan as the wall meets the vault.
+                    var tendon = new Vector3[25];
+                    for (int i = 0; i < tendon.Length; i++)
+                    {
+                        float v = (i - 12) / 12f;
+                        float x = rib * 16 + 5.8f * v + 3.4f * Mathf.Sin(v * 3.2f + rib);
+                        tendon[i] = Skin(x, 29 * v);
+                    }
+                    hide.Tube(tendon, 1.15f, 12, 0.65f);
+                    foreach (int branch in new[] { -1, 1 })
+                        hide.Tube(Path(8, tendon[16], Skin(tendon[19].x * side + branch * 3, 16),
+                            Skin(tendon[24].x * side + branch * 6, 27)), 0.7f, 10, 0.18f);
+                }
+                for (int strand = -1; strand <= 1; strand++)
+                {
+                    var vein = new Vector3[33];
+                    for (int i = 0; i < vein.Length; i++)
+                    {
+                        float y = -29 + 58f * i / (vein.Length - 1);
+                        float x = strand * 14 + 3.7f * Mathf.Sin(y * 0.12f + strand) + y * 0.13f;
+                        vein[i] = Skin(x, y);
+                        if (i == 9 || i == 21)
+                        {
+                            float fork = i == 9 ? 1 : -1;
+                            vessels.Tube(Path(6, vein[i], Skin(x + fork * 3, y + 2), Skin(x + fork * 6, y + 8)),
+                                0.31f, 8, 0.04f);
+                        }
+                    }
+                    vessels.Tube(vein, 0.42f, 10, 0.22f);
+                }
+            }
+            // Close the four exposed edges at the mouth and at a breached wall.
+            var corners = new[] { new Vector2(-29, -29), new Vector2(29, -29), new Vector2(29, 29), new Vector2(-29, 29) };
+            for (int i = 0; i < corners.Length; i++)
+            {
+                Vector3 a = corners[i], b = corners[(i + 1) % corners.Length], face = Vector3.forward * 1.2f;
+                hide.Quad(a - face, b - face, b + face, a + face);
+            }
+            var capillaries = Shapes.BroodTissue();
+            capillaries.color = new Color(0.91f, 0.57f, 0.32f);
+            capillaries.EnableKeyword("_EMISSION");
+            capillaries.SetTexture("_EmissionMap", capillaries.mainTexture);
+            capillaries.SetColor("_EmissionColor", new Color(0.91f, 0.48f, 0.24f));
+            Add(root, "Folded membrane", hide, Shapes.BroodTissue());
+            Add(root, "Capillaries", vessels, capillaries, false);
+        });
+
         // A floor root spreads from the neural folds, then branches up the inner face of the wall.
+        public static Mesh CitadelButtress()
+        {
+            var tissue = new MeshKit { tiling = 0.2f };
+            var spine = Path(8, new Vector3(0, -30, 0), new Vector3(1.4f, -17, -1.8f),
+                new Vector3(-1.3f, 3, 2.2f), new Vector3(1.1f, 19, 3), new Vector3(3, 30, 0));
+            tissue.Sweep(spine, i =>
+            {
+                float t = i / (spine.Length - 1f);
+                float radius = 1.6f + 3.1f * Mathf.Pow(Mathf.Abs(2 * t - 1), 2.7f);
+                var section = Oval(18, radius);
+                for (int j = 0; j < section.Length; j++)
+                    section[j] *= 1 + 0.21f * Mathf.Cos(5 * j * Mathf.PI * 2 / section.Length + 3 * t);
+                return section;
+            }, Vector3.forward);
+            for (int i = 0; i < 5; i++)
+            {
+                float side = i % 2 == 0 ? -1 : 1;
+                var joint = spine[7 + i * 4];
+                var end = new Vector3(side * (3 + i * 0.8f), i < 2 ? -30 : 30, 3 - i * 1.9f);
+                tissue.Tube(Path(9, joint, Vector3.Lerp(joint, end, 0.5f) + new Vector3(side, 0, 1.8f), end), 0.55f, 12, 2.3f);
+            }
+            return tissue.Mesh("Fluted citadel buttress");
+        }
+
         public static Mesh BurrowRoot()
         {
             var tissue = new MeshKit { tiling = 1.4f };
@@ -319,7 +428,7 @@ namespace Infinigame
                 Scute(shell, axis * 3 + Vector3.up * 7.4f, axis * 35 + Vector3.up * 2, across, 6.7f, 2.7f);
                 foreach (float side in new[] { -1f, 1f })
                 {
-                    Vector3 mid = axis * 18 + across * side * 7;
+                    Vector3 mid = axis * (17 + 2 * Mathf.Sin(i + side)) + across * side * 7;
                     shell.colour = new Color(0.89f, 0.75f, 0.65f);
                     shell.Tube(Path(6, across * side * 4 + Vector3.up * 5, mid + Vector3.up * 7.7f, axis * 34 + Vector3.up), 3.1f, 14, 0.8f);
                     for (int bay = 0; bay < 4; bay++)
@@ -331,7 +440,7 @@ namespace Infinigame
                     }
                 }
             }
-            if (crown) SensoryCrown(shell, pores, Vector3.up * 9, 8.5f, 14, 5, 14);
+            if (crown) SensoryPores(shell, pores, Vector3.up * 9.4f, 5.2f, 5, 14);
             Add(root, "Vault and ribs", shell, Shapes.PresenceShell(48));
             Add(root, "Sensory pores", pores, Shapes.PresenceOptics(48), false);
             Add(root, "Incubation chambers", chambers, Shapes.Carapace(Color.black, 48, new Color(0.53f, 0.28f, 0.12f)), false);

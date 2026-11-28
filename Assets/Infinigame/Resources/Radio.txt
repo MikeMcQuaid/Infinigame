@@ -4,7 +4,6 @@
 0	foundry	We are the Foundry, independent machines protecting what still lives. The presence grows bodies from a shared mind and consumes everything beyond itself. We must sever those minds to protect the life that remains.
 0	frogs	I can still play you the frogs our first surveyor heard. Years later a furnace crew recognised the call and moved the furnace nine metres. I still carry that recording.
 0	legs	Leg power restored. Walk a few steps. Only your emergency fists work until we recover a power cell.
-0	motorLock	SUIT RECOVERY · MOTOR LOCK
 0	optics	Optics restored. Look up along my light. That ship above the crater is yours. We need to restore your suit before you can reach it.
 0	rescue	You are alive. I am your recovery robot. The living minds are consuming Earth. I can guide you to the first mind. Your suit is damaged. I’m restoring power.
 0	scanFoundry	Foundry equipment identified: {subject}. Position confirmed {place}.
@@ -22,17 +21,18 @@
 1	repairHint	COMPANION LINK · LISTEN · OPTICS AND LEGS REPAIRING
 1	walk	WALK A FEW STEPS
 1	warning	Stop attacking friendly robots. The next attacks will trigger lethal defence.
-2	arm	The mind is silent. Arm the demolition at its core, then get clear of the burrow before it blows.
-2	armCore	ARM THE BURROW DEMOLITION
+2	arm	The charge is behind the fallen mind. Arm it, then retrace your steps to daylight. You have 20 seconds to get clear.
+2	armCore	ARM THE CHARGE BEHIND THE MIND
 2	armCoreHint	ARM BURROW DEMOLITION
 2	blastRadius	DEMOLITION ARMED · LEAVE THE BURROW · GET 35 m FROM THE MIND
 2	buildAnother	Build another robodog factory in this region
+2	buildShipyard	Build a shipyard in this region
 2	buildRegion	Build a robodog factory in this region
-2	clearLanding	DESTROY THE LANDING ZONE TURRETS
+2	clearLanding	CLEAR THE LANDING ZONE
 2	collect	COLLECT EQUIPMENT BESIDE YOUR FACTORY
 2	factoryDelivery	The burrow is gone. Your equipment is ready beside this region’s factory.
 2	deliveryAfterBuild	Collect your new equipment beside the factory once it is ready.
-2	entranceHint	ENTER THE MARKED BURROW · DIG THROUGH BLOCKAGES
+2	entranceHint	ENTER THE MARKED BURROW · BREAK THE ROCK PLUGS
 2	escape	Demolition armed. Twenty seconds. Get clear of the burrow!
 2	exit	ESCAPE THE BURROW
 2	factoryCleared	Factory online. The mind is silent and the pack is hunting the surviving aliens.
@@ -44,10 +44,10 @@
 2	followMind	FOLLOW THE TUNNEL · DESTROY {count} MIND
 2	followMinds	FOLLOW THE TUNNEL · DESTROY {count} MINDS
 2	punchDoor	PUNCH THE MARKED ENTRANCE
-2	punchMind	PUNCH THE MIND AND ITS GUARDS
+2	punchMind	PUNCH THE VIOLET MIND
 2	shipyard	Shipyard online. Your first escort is launching now and will follow you, including on autopilot. Use Fleet orders in the expedition summary to command your escort. The rest defend this planet and its neighbours.
 3	branchHint	BEAM CUTS TERRAIN · DIG A FLANKING ROUTE · RECOVER SURFACE THRUSTERS
-3	buildLast	Build here. Earth’s third factory also assembles ships
+3	buildLast	Build a shipyard here to assemble escort ships and robodogs
 4	factoryShips	Your robots assemble ships to defend this planet and its immediate neighbours.
 4	orbitHint	SURFACE FLIGHT LIMIT 65 m · RECOVER THE ORBITAL BOOSTER
 5	arrival	Arrival confirmed at {world}. I am watching the approaches.
@@ -70,10 +70,18 @@
 9	collapse	The mind is collapsing. Everything is falling towards it. You are not dead. Stay with me.
 9	creator	I helped create you to silence the presence. The last mind lies beneath the crust. A moon impact will collapse it, and the system with it.
 9	factoryMoon	The impact collapses the buried mind into a black hole that consumes this system.
-9	finalEngines	The core is gone, but the final mind is buried too deep for torpedoes. Our colonies must build engines on a moon.
+9	finalEngines	The citadel is gone, but the final mind is buried too deep for torpedoes. Choose any moon. Land anywhere on its surface and use Build to install the engines. Take off and climb to the marked safe distance before ignition.
 9	finalFall	The mind has collapsed. Stay with me while the system falls into it.
 9	ignition	The moon engines are built. Our ship is linked to follow from a safe distance. Watch the ignition. Then we strike the buried mind.
 4	upgradeForDelivery	Open Build at an Earth factory to add a shipyard and release your equipment. Later worlds build both together.
 2	poweredPunch	Your fists are powered now. Land a punch on a hostile and the suit converts the impact into health and energy.
 0	escortLocked	The first two burrows are yours to clear. By the third, a factory can send you a ground escort.
 4	escortCall	On foot, open the expedition summary or your wrist display and select Call robodog. One dog equips a jetpack and follows you. It guards the entrance while you are underground.
+2	waitForBlast	CLEAR OF BLAST · WAIT FOR DETONATION
+5	landOutside	LAND OUTSIDE THE TEAL FIELD · ENTER ON FOOT
+5	holdForShip	SHIP INBOUND · HOLD POSITION
+5	boardShip	BOARD YOUR SHIP
+9	flyBreach	FLY THROUGH THE OPEN SCAR
+9	citadelTurret	DESTROY THE SPINE TURRET HOLDING THE NEXT SHIELD
+9	citadelRelay	DESTROY THE RELAY MIND HOLDING THE NEXT SHIELD
+9	citadelMind	DESTROY THE FINAL MIND

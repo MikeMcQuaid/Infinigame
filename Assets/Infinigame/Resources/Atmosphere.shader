@@ -6,6 +6,7 @@ Shader "Infinigame/Atmosphere"
     {
         _SkyColour ("Sky", Color) = (0.25, 0.5, 1, 1)
         _DuskColour ("Dusk", Color) = (1, 0.45, 0.2, 1)
+        _CloudTop ("Opaque cloud deck", Float) = 0
         _PlanetRadius ("Planet Radius", Float) = 1000
         _AtmosphereRadius ("Atmosphere Radius", Float) = 1250
         _Density ("Density", Float) = 2.2
@@ -24,6 +25,7 @@ Shader "Infinigame/Atmosphere"
 
             HLSLPROGRAM
             #pragma vertex Vertex
+            #pragma multi_compile_instancing
             #pragma fragment Fragment
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Noise.hlsl"
@@ -31,7 +33,7 @@ Shader "Infinigame/Atmosphere"
             CBUFFER_START(UnityPerMaterial)
                 half4 _SkyColour;
                 half4 _DuskColour;
-                float _PlanetRadius;
+                float _PlanetRadius, _CloudTop;
                 float _AtmosphereRadius;
                 float _Density;
             CBUFFER_END
@@ -39,17 +41,21 @@ Shader "Infinigame/Atmosphere"
             struct Attributes
             {
                 float4 positionOS : POSITION;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
             struct Varyings
             {
                 float4 positionCS : SV_POSITION;
                 float3 positionWS : TEXCOORD0;
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
             Varyings Vertex(Attributes input)
             {
+                UNITY_SETUP_INSTANCE_ID(input);
                 Varyings output;
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
                 output.positionWS = TransformObjectToWorld(input.positionOS.xyz);
                 output.positionCS = TransformWorldToHClip(output.positionWS);
                 return output;
@@ -57,6 +63,7 @@ Shader "Infinigame/Atmosphere"
 
             half4 Fragment(Varyings input) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
                 float3 centre = float3(UNITY_MATRIX_M._m03, UNITY_MATRIX_M._m13, UNITY_MATRIX_M._m23);
                 float3 origin = _WorldSpaceCameraPos - centre;
                 float3 ray = normalize(input.positionWS - _WorldSpaceCameraPos);
@@ -66,7 +73,12 @@ Shader "Infinigame/Atmosphere"
                 // slips just under the skyline between their facets should see the thick air of the
                 // horizon, not a sliver of the thin air above.
                 float b = dot(origin, ray);
-                float shell = b * b - dot(origin, origin) + _AtmosphereRadius * _AtmosphereRadius;
+                // Measure the perpendicular miss distance without subtracting two orbital distances squared.
+                float3 miss = cross(origin, ray);
+                // At orbital distances the back of the shell can share the cloud tops' depth sample.
+                if (_CloudTop > 0 && b < 0 && dot(origin, origin) > _AtmosphereRadius * _AtmosphereRadius
+                    && dot(miss, miss) < 0.994 * _PlanetRadius * _PlanetRadius) discard;
+                float shell = _AtmosphereRadius * _AtmosphereRadius - dot(miss, miss);
                 if (shell < 0) return 0;
                 float enter = max(-b - sqrt(shell), 0);
                 float leave = -b + sqrt(shell);

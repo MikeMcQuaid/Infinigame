@@ -13,19 +13,13 @@ namespace Infinigame.Tests
 
 
         [UnityTest]
-        public IEnumerator RevisionColonyExplanationFitsBelowTheHeading()
+        public IEnumerator ConstructionReportsTheSelectedSiteInPlay()
         {
-            game.Jump(Campaign.Won);
+            game.Jump(Campaign.SecondBurrow);
             Player.flying = false;
             yield return Press(new Controls { ride = true });
-            yield return null;
-            var labels = GameObject.Find("HUD").GetComponentsInChildren<UnityEngine.UI.Text>();
-            var note = labels.Single(text => text.text == game.Hint);
-            var subtitle = labels.Single(text => text.text.Contains("DEPTH") && text.text.Contains("JOURNAL"));
-            Assert.Less(note.rectTransform.anchoredPosition.y + note.rectTransform.rect.height / 2,
-                subtitle.rectTransform.anchoredPosition.y - subtitle.rectTransform.rect.height / 2, "the explanation does not overlap the subtitle");
-            Assert.LessOrEqual(note.preferredHeight, note.rectTransform.rect.height, "all of the explanation fits");
-            StringAssert.Contains(game.Hermit.Name, note.text);
+            Assert.IsFalse(game.Paused);
+            Assert.IsNotEmpty(game.Notice);
         }
 
         [UnityTest]
@@ -51,7 +45,10 @@ namespace Infinigame.Tests
         [UnityTest]
         public IEnumerator RevisionAuthoredPatrolKindsAreUsed()
         {
-            game.Jump(2);
+            yield return Choose(Game.Settings);
+            yield return Pick("DIFFICULTY");
+            Assert.AreEqual(Difficulty.Hard, game.Challenge);
+            game.Jump(Campaign.FirstBurrow);
             Player.walker.position = game.Outpost.Place(new float3(0, 1, -8));
             yield return Seconds(0.2f);
             Assert.AreEqual(game.Mission.count, game.Battle.Foes.Count(foe => foe.kind == FoeKind.Sentry));
@@ -244,7 +241,8 @@ namespace Infinigame.Tests
             yield return null;
             display.localPosition -= Vector3.up * 8;
             var skin = Shapes.Solid(Surface.Chitin, new Color(0.6f, 0.52f, 0.38f), true);
-            Shapes.Part(display, "Grazer", Shapes.Grazer(), skin, Vector3.zero, Vector3.one);
+            foreach (var part in Resources.Load<ModelParts>("Models/" + (LodSettings.Tier == 0 ? "Mobile" : "Desktop") + "/Grazer").meshes)
+                Shapes.Part(display, "Grazer", part, skin, Vector3.zero, Vector3.one);
             var (birdBody, wing) = Shapes.Bird();
             Shapes.Part(display, "Bird", birdBody, skin, new Vector3(-1.8f, 1.3f, 0), Vector3.one);
             Shapes.Part(display, "Right wing", wing, skin, new Vector3(-1.8f, 1.3f, 0), Vector3.one);
@@ -267,12 +265,16 @@ namespace Infinigame.Tests
             Player.flying = false;
             var front = game.Frontier.Local; front.kills = War.RequiredKills(front);
             game.Frontier.BuildFactory(0);
-            yield return Press(new Controls { ride = true });
+            yield return null;
             yield return Shot("81-colony", Camera.main.transform, Vector3.zero, Vector3.forward);
-            yield return Press(new Controls { menu = true });
             int io = System.Array.FindIndex(Solar.Descriptor.bodies, world => world.name == "Io");
-            yield return HoverOver(io, 100);
-            float3 up = Body.volcanoes[0].direction;
+            var volcanicMoon = Solar.Descriptor.bodies[io];
+            float3 up = volcanicMoon.volcanoes[0].direction;
+            HoverAt(Solar.ToReference(io) + up * (volcanicMoon.radius + 100));
+            Solar.Focus = Player.Position;
+            yield return Until(() => Solar.Reference == io, 3);
+            Assert.AreEqual(io, Solar.Reference, $"Crater camera is at {Body.name}, paused {game.Paused}, ending {game.Fall.active}");
+            Player.ship.velocity = float3.zero;
             float height = Body.GroundRadius(up);
             HoverAt(up * (height + 30));
             Solar.Bodies[io].Dig(up * height, 20);

@@ -324,6 +324,20 @@ namespace Infinigame.Tests
         static readonly SolarSystemDescriptor Solar = SolarSystemDescriptor.Generate(1);
         static BodyDescriptor Planet => Solar.bodies[SolarSystemDescriptor.Home];
 
+        [TestCase(Creature.Grazer)]
+        [TestCase(Creature.Strider)]
+        public void FeetKeepWalkingForwardsWhenTheAnimalTurns(Creature kind)
+        {
+            var troop = new Troop { kind = kind, centre = new float3(0, 1, 0), level = Planet.radius, spread = 1, seed = 51 };
+            double previous = Wildlife.Member(Planet, troop, 0, 0, out _, out _);
+            for (int t = 1; t <= 300; t++)
+            {
+                double next = Wildlife.Member(Planet, troop, 0, t, out _, out _);
+                Assert.GreaterOrEqual(next, previous - 0.0001);
+                previous = next;
+            }
+        }
+
         static List<Troop> Troops(BodyDescriptor body, Creature kind)
         {
             var troops = new List<Troop>();

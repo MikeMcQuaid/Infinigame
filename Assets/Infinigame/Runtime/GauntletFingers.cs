@@ -10,6 +10,7 @@ namespace Infinigame
 {
     public class GauntletFingers : MonoBehaviour
     {
+        public static readonly Vector3 Knuckles = new Vector3(0, -0.016f, 0.151f);
         readonly Transform[,] bones = new Transform[5, 3];
         readonly float[] curls = { 0.78f, 0.78f, 0.78f, 0.78f, 0.78f };
 
@@ -26,8 +27,8 @@ namespace Infinigame
         public static Quaternion Bend(int digit, int joint, float curl)
         {
             bool thumb = digit == 0;
-            float angle = Mathf.Lerp(joint == 0 ? -5 : 4, thumb ? 49 : joint == 1 ? 86 : 68, curl);
-            float spread = joint != 0 ? 0 : thumb ? Mathf.Lerp(-58, -19, curl) : (digit - 2.5f) * 3 * (1 - curl);
+            float angle = Mathf.Lerp(joint == 0 ? -5 : 4, thumb ? 47 : joint == 0 ? 72 : joint == 1 ? 64 : 40, curl);
+            float spread = joint != 0 ? 0 : thumb ? Mathf.Lerp(-58, -32, curl) : (digit - 2.5f) * 3 * (1 - curl);
             return Quaternion.Euler(angle, spread, thumb && joint == 0 ? 32 : 0);
         }
 

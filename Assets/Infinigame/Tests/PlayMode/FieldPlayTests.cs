@@ -46,6 +46,10 @@ namespace Infinigame.Tests
             Assert.AreEqual(stage, game.Stage, "The equipment must be collected at the factory");
             Assert.Less(math.distance(game.Outpost.Prize, game.Settlement.site), 20);
             Player.walker.position = game.Outpost.Prize;
+            var lid = GameObject.Find("Factory equipment").transform.Find("Hinged lid");
+            Assert.IsNotNull(lid);
+            yield return Seconds(0.75f);
+            Assert.Greater(Quaternion.Angle(Quaternion.identity, lid.localRotation), 55, "The case opens to show its modules as the pilot approaches");
             yield return Press(new Controls { interact = true });
             if (stage == Campaign.FirstBurrow)
             {

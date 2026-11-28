@@ -58,7 +58,7 @@ namespace Infinigame
         LineRenderer[] orbits;
         readonly Vector4[] storms = new Vector4[Weather.Storms];
 
-        public void Build(SolarSystemDescriptor descriptor, int reference)
+        public System.Collections.Generic.IEnumerable<int> Build(SolarSystemDescriptor descriptor, int reference)
         {
             if (Bodies != null)
                 foreach (var body in Bodies)
@@ -69,8 +69,10 @@ namespace Infinigame
             for (int i = 0; i < Bodies.Length; i++)
             {
                 Bodies[i] = new GameObject().AddComponent<CelestialBody>();
+                Bodies[i].gameObject.SetActive(false);
                 Bodies[i].transform.SetParent(transform, false);
                 Bodies[i].Init(descriptor.bodies[i]);
+                yield return i;
             }
             orbits = new LineRenderer[Bodies.Length];
             // the interface's shader: seen from both sides, since a ring's winding depends on where you stand
@@ -97,6 +99,7 @@ namespace Infinigame
             if (Clock == 0)
                 for (int i = 0; i < 96 && math.dot(landing, math.normalize(ToReference(0))) < 0.5f; i++) Clock += math.abs(ReferenceBody.spinPeriod) / 96;
             Place();
+            foreach (var body in Bodies) body.gameObject.SetActive(true);
         }
 
         void Update()

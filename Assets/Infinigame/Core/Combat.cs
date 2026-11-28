@@ -8,7 +8,38 @@ namespace Infinigame.Core
     // on foot; the base is the raiders' station, which shoots at whatever comes near.
     public enum FoeKind { Raider, Drone, Base, Mind, Sentry }
     public enum MotileCaste { Stalker, Breacher, Spitter }
+    public enum Difficulty { Creative, Easy, Normal, Hard, Realistic }
     public enum Alert { Calm, Searching, Alarmed }
+
+    // Each hand must extend and retract before it can land another blow.
+    public struct PunchStroke
+    {
+        bool tracked, swinging, landed;
+        public float3 Travel { get; private set; }
+        public void Contact() => landed = true;
+        float3 previous, start, tip, axis;
+        public bool Step(float3 hand, float3 shoulder, float seconds, float speed)
+        {
+            float3 step = hand - previous;
+            previous = hand;
+            if (!tracked) { tracked = true; start = hand; return false; }
+            if (swinging)
+            {
+                if (math.dot(hand - tip, axis) > 0)
+                {
+                    tip = hand; Travel = step;
+                    return !landed;
+                }
+                if (math.dot(tip - hand, axis) >= 0.08f) { swinging = landed = false; start = hand; }
+                return false;
+            }
+            if (math.dot(step, hand - shoulder) <= 0) { start = hand; return false; }
+            float3 reach = hand - start;
+            if (math.lengthsq(reach) < 0.11f * 0.11f || math.length(step) < speed * math.max(0.001f, seconds)) return false;
+            tip = hand; axis = math.normalize(reach); Travel = reach; swinging = true;
+            return true;
+        }
+    }
 
     // Position is relative to the body's centre, like the player's.
     public struct Foe
@@ -95,7 +126,12 @@ namespace Infinigame.Core
             new Weapon { name = "Hemisphere lasers", damage = 240, period = 14, sweep = true, energy = 38, voice = 0, needs = Gear.Nova },
         };
 
-        public static void Hurt(ref Foe foe, float damage)
+        public static float Incoming(float damage, Difficulty level) => damage * (level switch
+        {
+            Difficulty.Creative => 0.5f, Difficulty.Easy => 0.65f, Difficulty.Hard => 1.5f, Difficulty.Realistic => 4, _ => 1,
+        });
+
+        public static void Hurt(ref Foe foe, float damage, Difficulty level = Difficulty.Normal)
         {
             if (damage <= 0 || foe.protectedCore) return;
             if (!foe.friendly)
@@ -103,6 +139,11 @@ namespace Infinigame.Core
                 foe.alert = Alert.Alarmed; foe.suspicion = 2; foe.scattered = false;
                 foe.provoked = true;
             }
+            damage = level switch
+            {
+                Difficulty.Creative => foe.shield + foe.health, Difficulty.Easy => damage * 1.5f,
+                Difficulty.Hard => damage * 0.85f, Difficulty.Realistic => damage * 4, _ => damage,
+            };
             float absorbed = math.min(foe.shield, damage);
             foe.shield -= absorbed; foe.health -= damage - absorbed;
         }
@@ -117,7 +158,7 @@ namespace Infinigame.Core
             return up * height + (east * math.cos(angle) + math.cross(up, east) * math.sin(angle)) * math.sqrt(1 - height * height);
         }
 
-        public static void Sweep(List<Foe> foes, BodyDescriptor body, float3 origin, float damage, Shield shield, System.Func<float3, float3, bool> visible, List<Strike> strikes)
+        public static void Sweep(List<Foe> foes, BodyDescriptor body, float3 origin, float damage, Shield shield, System.Func<float3, float3, bool> visible, List<Strike> strikes, Difficulty level = Difficulty.Normal)
         {
             for (int i = 0; i < foes.Count; i++)
             {
@@ -133,7 +174,7 @@ namespace Infinigame.Core
                     if (math.length(at) < Surface(body, at)) { blocked = true; break; }
                 }
                 if (blocked) continue;
-                Hurt(ref foe, damage);
+                Hurt(ref foe, damage, level);
                 foes[i] = foe;
                 strikes.Add(new Strike { at = foe.position, foe = i });
             }
@@ -169,7 +210,10 @@ namespace Infinigame.Core
         // Hull lost to hitting something this hard. A landing costs nothing; flying into a hillside is the end.
         public static float Crash(float impact) => math.max(0f, impact - 12f) * 1.6f;
 
-        // Hull lost to striking a rock of a belt or a ring this hard: a dent, however fast, and never the last of a hull.
+        // Hull damage increases with both the closing speed and the radius of the rock.
+        public static float RockImpact(float closingSpeed, float radius) =>
+            math.max(0, closingSpeed) * 0.12f * math.min(radius / 4, 32);
+
         public static float Graze(float impact, float hull) => math.min(math.min(2f + 0.1f * impact, 10f), math.max(0f, hull - 5f));
 
         // Hull or health lost each second to heat past what it can take, both in kelvin.
@@ -311,7 +355,7 @@ namespace Infinigame.Core
             return 200 * math.saturate(1 - math.distance(blast, target) / math.max(1, radius));
         }
 
-        public static float Step(List<Bolt> bolts, List<Foe> foes, BodyDescriptor body, float3 player, float3 playerVelocity, float playerRadius, float dt, List<Strike> struck, Shield shield = default, System.Func<float3, float3, bool> visible = null)
+        public static float Step(List<Bolt> bolts, List<Foe> foes, BodyDescriptor body, float3 player, float3 playerVelocity, float playerRadius, float dt, List<Strike> struck, Shield shield = default, System.Func<float3, float3, bool> visible = null, Difficulty level = Difficulty.Normal)
         {
             float hurt = 0f;
             for (int i = bolts.Count - 1; i >= 0; i--)
@@ -359,7 +403,7 @@ namespace Infinigame.Core
                         if (!(hit = Crosses(bolt.position, step - foe.velocity * dt, foe.position, foe.size))) continue;
                         struckFoe = f;
                         // nothing short of a nuclear blast marks the citadel
-                        if (foe.kind != FoeKind.Base || bolt.blast >= Nuclear) { Hurt(ref foe, bolt.damage * (bolt.blast >= Nuclear && foe.kind == FoeKind.Mind ? 0.2f : 1)); foe.recoil = 1; }
+                        if (foe.kind != FoeKind.Base || bolt.blast >= Nuclear) { Hurt(ref foe, bolt.damage * (bolt.blast >= Nuclear && foe.kind == FoeKind.Mind ? 0.2f : 1), bolt.robot ? Difficulty.Normal : level); foe.recoil = 1; }
                         foes[f] = foe;
                         // it ends on the near side of what it hit
                         at = foe.position - math.normalizesafe(step) * math.min(foe.size, math.distance(bolt.position, foe.position));
@@ -375,7 +419,7 @@ namespace Infinigame.Core
                         if (foe.friendly || foe.health <= 0 || bolt.robot && foe.kind == FoeKind.Mind || shield.Blocks(at, foe.position - at, out _) || visible != null && !visible(at, foe.position)) continue;
                         float near = math.distance(foe.position, at) - foe.size;
                         if (near <= 0f || near >= bolt.blast || (foe.kind == FoeKind.Base && bolt.blast < Nuclear)) continue;
-                        Hurt(ref foe, bolt.damage * (1f - near / bolt.blast) * (bolt.blast >= Nuclear && foe.kind == FoeKind.Mind ? 0.2f : 1));
+                        Hurt(ref foe, bolt.damage * (1f - near / bolt.blast) * (bolt.blast >= Nuclear && foe.kind == FoeKind.Mind ? 0.2f : 1), bolt.robot ? Difficulty.Normal : level);
                         foes[f] = foe;
                     }
                 if (hit || (bolt.life -= dt) <= 0f)
@@ -400,7 +444,7 @@ namespace Infinigame.Core
         }
 
         // Beam damage is supplied per step; a rail ray damages every hull before the ground.
-        public static float3 Ray(List<Foe> foes, BodyDescriptor body, float3 from, float3 direction, float reach, float damage, bool pierce, Shield shield, List<Strike> struck, bool robot = false)
+        public static float3 Ray(List<Foe> foes, BodyDescriptor body, float3 from, float3 direction, float reach, float damage, bool pierce, Shield shield, List<Strike> struck, bool robot = false, Difficulty level = Difficulty.Normal)
         {
             direction = math.normalizesafe(direction, new float3(0, 0, 1));
             float3 end = from + direction * reach;
@@ -450,7 +494,7 @@ namespace Infinigame.Core
             foreach (var hit in hits)
             {
                 var foe = foes[hit.index];
-                Hurt(ref foe, damage);
+                Hurt(ref foe, damage, level);
                 if (damage > 0) foe.recoil = 1;
                 foes[hit.index] = foe;
                 float3 at = from + direction * hit.distance;
@@ -468,7 +512,7 @@ namespace Infinigame.Core
             return math.distancesq(from + step * along, centre) < radius * radius;
         }
 
-        public static int AssistedTarget(List<Foe> foes, float3 from, float3 forward, float reach, float degrees = 4)
+        public static int AssistedTarget(List<Foe> foes, float3 from, float3 forward, float reach, float degrees = 4, System.Func<float3, bool> visible = null)
         {
             int target = -1; float closest = math.cos(math.radians(degrees));
             for (int i = 0; i < foes.Count; i++)
@@ -476,9 +520,18 @@ namespace Infinigame.Core
                 var foe = foes[i];
                 if (foe.friendly || foe.health <= 0 || foe.protectedCore || math.distance(from, foe.position) > reach) continue;
                 float alignment = math.dot(forward, math.normalizesafe(foe.position - from));
-                if (alignment > closest) { closest = alignment; target = i; }
+                if (alignment > closest && (visible == null || visible(foe.position))) { closest = alignment; target = i; }
             }
             return target;
+        }
+
+        // The bolt inherits the firing ship's velocity. Solve for the first intercept in that frame.
+        public static float3 Intercept(float3 offset, float3 relativeVelocity, float speed)
+        {
+            float distanceSq = math.lengthsq(offset), along = math.dot(offset, relativeVelocity);
+            float discriminant = along * along + (speed * speed - math.lengthsq(relativeVelocity)) * distanceSq;
+            float divisor = discriminant >= 0 ? math.sqrt(discriminant) - along : 0;
+            return math.normalizesafe(divisor > 0.001f ? offset + relativeVelocity * (distanceSq / divisor) : offset);
         }
 
         // Swings one direction towards another by no more than an angle.

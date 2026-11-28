@@ -86,6 +86,7 @@ namespace Infinigame.Tests
             };
             Assert.AreEqual(2, Combat.AssistedTarget(foes, float3.zero, new float3(0, 0, 1), 250));
             Assert.AreEqual(-1, Combat.AssistedTarget(foes, float3.zero, new float3(0, 0, 1), 50));
+            Assert.AreEqual(3, Combat.AssistedTarget(foes, float3.zero, new float3(0, 0, 1), 250, 18, at => at.x >= 20));
             foes.RemoveAt(2);
             Assert.AreEqual(-1, Combat.AssistedTarget(foes, float3.zero, new float3(0, 0, 1), 250));
         }

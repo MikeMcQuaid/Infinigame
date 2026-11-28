@@ -45,7 +45,7 @@ Open Infinigame.app. This build is ad-hoc signed rather than Developer ID notari
 EOF
     ;;
   Windows) cat >> "$package/INSTALL.md" <<'EOF'
-Run Infinigame.exe for automatic detection. Infinigame-VR.exe explicitly requests a headset and shares the same game files. For VR, install SteamVR, choose it as the OpenXR runtime in SteamVR Settings > OpenXR, connect your headset and launch the game.
+Run Infinigame.exe for monitor play. Run Infinigame-VR.exe for the headset. Both share the same game files. For VR, install SteamVR, choose it as the OpenXR runtime in SteamVR Settings > OpenXR, connect your headset and launch the game.
 
 On Steam Deck, in Desktop Mode, use Steam > Games > Add a Non-Steam Game > Browse and select Infinigame.exe. In its Properties > Compatibility, force Proton Experimental. Set General > Game Resolution to Native, then return to Gaming Mode. Use the Gamepad with Mouse Trackpad Steam Input layout. A confirms, RT fires, Y changes weapon, X interacts and View toggles the map. Touch also works. Infinigame.png is included for the Steam shortcut icon.
 EOF

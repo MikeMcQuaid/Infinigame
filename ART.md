@@ -2,7 +2,7 @@
 
 The flight chassis, suit and robodog share folded titanium armour, exposed bearings and cyan optics. Engine rings show through open service bays between the ship’s swept wings. The gauntlet carries two dorsal rails, a segmented cuff and a recessed palm lens. [Equipment concept](docs/art/flight-and-gauntlet-concept.jpg) · [In-game meshes](docs/art/flight-and-gauntlet.jpg)
 
-`RenderFlightEquipment` photographs both factions’ gameplay meshes under the same studio lights. The Presence’s eye stalks and hollow ribs recur from a single skimmer to the roofs above the citadel’s flight passages. [Faction model sheet](docs/art/faction-models.jpg)
+`RenderFlightEquipment` photographs both factions’ gameplay meshes under the same studio lights. The Presence carries hooded eye stalks from the ground castes to its living ships. The citadel has branching capillaries beneath folded vaults. [Faction model sheet](docs/art/faction-models.jpg)
 
 The beam shader draws a moving filament inside a softer halo. Sparks brighten towards their head and explosion puffs carry a turbulent hot front. Violet ichor spreads across a terrain-fitted mesh beneath the resting body. Its feathered edge and shallow-angle reflection let the surface underneath show through.
 
@@ -18,7 +18,7 @@ The robodog's diagonal feet bear weight for three fifths of each stride. Distanc
 
 The preview plays two takes of each cue. It opens with a patrol footfall and dorsal emitter, followed by the stalker’s warning, the breacher’s double thud and the spitter’s valve chatter. A shell impact and collapse close the sequence. In play, four spatial voices share these events. Nearby warnings take priority over quiet footsteps. Walls muffle attacks, a tunnel adds a short echo and the music and combat effects dip during speech. [Encounter sound preview](docs/art/ground-encounter-sound.mp3)
 
-Run `script/test --unity -testFilter RenderGroundEncounter` for a matching 1280 × 640 studio image and measurements in `Logs/Screenshots/ground-encounter.txt`. The close pair contains 172,148 triangles. A studio run on Apple M5 Max measured a median of 4.83 ms for 20 warmed renders with synchronous pixel readback. Use `script/performance` after a normal Mac play session to measure the whole game.
+Run `script/test --unity -testFilter RenderGroundEncounter` for a matching 1280 × 640 studio image and measurements in `Logs/Screenshots/ground-encounter.txt`. The close pair contains 172,148 triangles. A studio run on Apple M5 Max measured a median of 5.09 ms for 20 warmed renders with synchronous pixel readback. Use `script/performance` after a normal Mac play session to measure the whole game.
 
 Before the asset bake, a 1920 × 1080 HDR macOS development player ran the factory patrol against one stalker. Across 18 half-second windows on foot, median FPS was 58.5 and median GPU time was 6.5 ms. The slowest entry frame took 1.50 seconds. Burst was disabled for this build. Larger swarms, iPad and VR need their own measurements.
 
@@ -26,7 +26,7 @@ Before the asset bake, a 1920 × 1080 HDR macOS development player ran the facto
 
 The traveller has a complete articulated body for third-person play and a matching pair of first-person gauntlets. Do not expose an unambiguous human face or robotic brain. The suit is worn from the opening. Critical power leaves only emergency fists, with visible arcing at the gauntlets.
 
-Friendly machines have angular armour over dark moving joints. Presence shells are rounded and expose violet tissue between overlapping plates. Lavender-blue lenses cap the mobile castes’ sensory stalks. Amber chambers sit under the ribs of the citadel.
+Friendly machines have angular armour over dark moving joints. Presence shells are rounded and expose violet tissue between overlapping plates. Violet lenses cap the mobile castes’ sensory stalks. Friendly weapon sights, charge and exhaust run from ice blue to cyan. Neutral wildlife uses earth tones, greens and amber. Amber chambers sit under the ribs of the citadel.
 
 Reuse meshes and materials for repeated machines. Device tiers may reduce tessellation and small details, but must retain the same silhouette. Validate close views in the screenshot tour and use real frame logs before changing global terrain budgets.
 

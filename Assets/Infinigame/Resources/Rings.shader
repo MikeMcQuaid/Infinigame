@@ -23,6 +23,7 @@ Shader "Infinigame/Rings"
             Cull Off
 
             HLSLPROGRAM
+            #pragma multi_compile_instancing
             #pragma vertex Vertex
             #pragma fragment Fragment
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
@@ -38,24 +39,34 @@ Shader "Infinigame/Rings"
                 float _Seed;
             CBUFFER_END
 
+            struct Attributes
+            {
+                float4 positionOS : POSITION;
+                float2 uv : TEXCOORD0;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
             struct Varyings
             {
                 float4 positionCS : SV_POSITION;
                 float3 positionWS : TEXCOORD0;
                 float2 uv : TEXCOORD1;
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
-            Varyings Vertex(float4 positionOS : POSITION, float2 uv : TEXCOORD0)
+            Varyings Vertex(Attributes input)
             {
                 Varyings output;
-                output.positionWS = TransformObjectToWorld(positionOS.xyz);
+                UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
+                output.positionWS = TransformObjectToWorld(input.positionOS.xyz);
                 output.positionCS = TransformWorldToHClip(output.positionWS);
-                output.uv = uv;
+                output.uv = input.uv;
                 return output;
             }
 
             half4 Fragment(Varyings input) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
                 float across = input.uv.x;
                 float fine = Noise(float3(across * 160.0, _Seed, 0.5));
                 // the same bands and division that decide where the rocks themselves are
@@ -66,6 +77,9 @@ Shader "Infinigame/Rings"
 
                 float3 centre = float3(UNITY_MATRIX_M._m03, UNITY_MATRIX_M._m13, UNITY_MATRIX_M._m23);
                 float3 fromCentre = input.positionWS - centre;
+                float3 sight = normalize(input.positionWS - _WorldSpaceCameraPos);
+                float3 miss = cross(fromCentre, sight);
+                if (dot(fromCentre, sight) > 0 && dot(centre - _WorldSpaceCameraPos, sight) > 0 && dot(miss, miss) < _PlanetRadius * _PlanetRadius) discard;
                 float3 toSun = SunDirection();
                 float behind = -dot(fromCentre, toSun);
                 float lit = behind > 0.0 ? smoothstep(0.97, 1.03, length(fromCentre + toSun * behind) / _PlanetRadius) : 1.0;

@@ -64,18 +64,28 @@ namespace Infinigame
         int tier = -1, growing;
         float floor;
         readonly Dictionary<int3, float> wounds = new Dictionary<int3, float>();
+        readonly Dictionary<int3, (float time, int stage)> felled = new Dictionary<int3, (float, int)>();
         readonly Instances[] broken = { new Instances(), new Instances(), new Instances() };
-        Mesh[][] brokenTrees;
+        Mesh[][] brokenTrees, boughs;
+        readonly List<(Matrix4x4 matrix, Layer layer, int stage, float time)> debris = new List<(Matrix4x4, Layer, int, float)>();
+        readonly HashSet<int3> cutGrass = new HashSet<int3>();
+
+        void ScatterPiece(Matrix4x4 matrix, Layer layer, int stage)
+        {
+            if (debris.Count >= 128) debris.RemoveAt(0);
+            debris.Add((matrix, layer, stage, Time.time));
+        }
         static int3 TreeKey(Vector3 point) => (int3)math.round(math.normalizesafe((float3)point) * 1000000);
         public bool Strike(float3 from, float3 to, float damage, out float3 hit)
         {
             hit = to; float closest = math.distance(from, to); bool found = false;
-            int3 wounded = default; float previous = 0;
+            Matrix4x4 wounded = default; Layer wood = null; float previous = 0;
             if (layers == null) return false;
             float3 ray = to - from; float length = math.lengthsq(ray);
             foreach (var layer in layers)
             {
-                if (layer.name != "conifer tree") continue;
+                bool grass = layer.name == "tussock of grass";
+                if (!grass && layer.name != "conifer tree") continue;
                 float cellRadius = QuadtreeLod.NodeSize(body.radius, layer.depth) + 25;
                 foreach (var cell in layer.cells.Values)
                 {
@@ -86,20 +96,36 @@ namespace Infinigame
                         float3 foot = (Vector3)thing.GetColumn(3); var key = TreeKey(foot); wounds.TryGetValue(key, out float hurt);
                         if (hurt >= 80) continue;
                         float3 up = math.normalizesafe(foot);
-                        float height = (hurt >= 60 ? 1.4f : hurt >= 40 ? 4 : hurt >= 20 ? 7 : 10) * thing.lossyScale.x;
+                        float height = grass ? layer.height * thing.lossyScale.x : (hurt >= 60 ? 1.4f : hurt >= 40 ? 4 : hurt >= 20 ? 7 : 10) * thing.lossyScale.x;
                         float3 flat = ray - up * math.dot(ray, up), offset = from - foot;
                         float along = math.saturate(-math.dot(offset, flat) / math.max(math.lengthsq(flat), 0.001f));
                         float3 point = from + ray * along;
                         float3 centre = foot + up * math.clamp(math.dot(point - foot, up), 0, height);
                         if (math.distance(point, centre) > math.max(0.5f, thing.lossyScale.x)) continue;
+                        if (grass)
+                        {
+                            if (damage > 0 && math.distancesq(from, point) <= closest * closest && cutGrass.Add(key)) ScatterPiece(thing, layer, -1);
+                            continue;
+                        }
                         float distance = math.distance(from, point);
                         if (distance >= closest) continue;
-                        closest = distance; hit = point; found = true; wounded = key; previous = hurt;
+                        closest = distance; hit = point; found = true; wounded = thing; wood = layer; previous = hurt;
                     }
                 }
             }
-            if (found) wounds[wounded] = previous + damage;
+            if (found) DamageTree(wounded, wood, previous, damage);
             return found;
+        }
+
+        void DamageTree(Matrix4x4 tree, Layer layer, float previous, float damage)
+        {
+            var key = TreeKey(tree.GetColumn(3));
+            if (previous >= 80) return;
+            int first = (int)(previous / 20);
+            int cut = math.min(previous + damage >= 80 ? 2 : 3, (int)((previous + damage) / 20));
+            for (int stage = first; stage < cut; stage++) ScatterPiece(tree, layer, stage);
+            wounds[key] = previous + damage;
+            if (previous + damage >= 80) felled[key] = (Time.time, math.max(first, cut) - 1);
         }
 
         readonly HashSet<NodeId> near = new HashSet<NodeId>();
@@ -151,9 +177,12 @@ namespace Infinigame
                 return;
             }
             var (trunk, needles) = Shapes.Conifer();
-            brokenTrees = new Mesh[3][];
+            brokenTrees = new Mesh[3][]; boughs = new Mesh[3][];
             for (int stage = 0; stage < 3; stage++)
+            {
                 brokenTrees[stage] = Models.Parts("Conifer broken " + stage);
+                boughs[stage] = Models.Parts("Conifer falling " + stage);
+            }
             layers = new[]
             {
                 boulders,
@@ -243,12 +272,25 @@ namespace Infinigame
                         float size = Detail.Fade(distance, range);
                         if (cell.things == null || cell.things.Length == 0 || !above || size <= 0f || !InView(cell.centre, cellSize + tall + 30f)) continue;
                         cell.whole = layer.distant == null || distance < fine * (cell.whole ? 1.15f : 1f);
-                        if (layer.name != "conifer tree" || wounds.Count == 0) (cell.whole ? layer.whole : layer.plain).Add(cell.things, size);
+                        if (layer.name == "tussock of grass" && cutGrass.Count > 0)
+                        {
+                            foreach (var grass in cell.things)
+                                if (!cutGrass.Contains(TreeKey(grass.GetColumn(3)))) layer.whole.Add(grass);
+                        }
+                        else if (layer.name != "conifer tree" || wounds.Count == 0) (cell.whole ? layer.whole : layer.plain).Add(cell.things, size);
                         else foreach (var thing in cell.things)
                         {
-                            wounds.TryGetValue(TreeKey(thing.GetColumn(3)), out float hurt);
+                            var key = TreeKey(thing.GetColumn(3));
+                            wounds.TryGetValue(key, out float hurt);
                             if (hurt < 20) (cell.whole ? layer.whole : layer.plain).Add(thing);
                             else if (hurt < 80) broken[Mathf.Clamp((int)(hurt / 20) - 1, 0, 2)].Add(thing);
+                            else if (felled.TryGetValue(key, out var fall))
+                            {
+                                float age = Mathf.Clamp01((Time.time - fall.time) / 1.35f);
+                                var fallen = thing * Matrix4x4.Rotate(Quaternion.AngleAxis(87 * age * age, Vector3.forward));
+                                (fall.stage < 0 ? layer.whole : broken[fall.stage]).Add(fallen);
+                                if (age > 0.5f) broken[2].Add(thing);
+                            }
                         }
                     }
                 }
@@ -268,6 +310,21 @@ namespace Infinigame
                     for (int part = 0; part < 2; part++) for (int stage = 0; stage < 3; stage++) broken[stage].Draw(brokenTrees[stage][part], layer.materials[part], layer.shadows, bounds);
                 if (layer.distant != null) layer.plain.Draw(layer.distant, layer.distantMaterial, false, bounds);
                 Drawn += layer.whole.Count + layer.plain.Count;
+            }
+            for (int i = debris.Count - 1; i >= 0; i--)
+            {
+                var piece = debris[i];
+                float age = Time.time - piece.time;
+                if (age >= 3) { debris.RemoveAt(i); continue; }
+                float pivot = piece.stage < 0 ? 0.12f : 7.5f - piece.stage * 3;
+                float ground = math.max(0.15f, pivot + 2.4f * age - 4.9f * age * age);
+                float tumble = math.min(age, 1.5f);
+                var motion = Matrix4x4.TRS(new Vector3(tumble * 0.7f, ground, tumble * 0.28f),
+                    Quaternion.Euler(24 * tumble, 7 * tumble, 65 * tumble), Vector3.one * Mathf.Clamp01((3 - age) * 2));
+                var matrix = piece.matrix * motion * Matrix4x4.Translate(Vector3.down * pivot);
+                var meshes = piece.stage < 0 ? piece.layer.meshes : boughs[piece.stage];
+                for (int part = 0; part < meshes.Length; part++)
+                    Graphics.RenderMesh(new RenderParams(piece.layer.materials[part]), meshes[part], 0, matrix);
             }
         }
 
@@ -295,7 +352,7 @@ namespace Infinigame
                         {
                             Vector3 foot = tree.GetColumn(3);
                             if (math.distance(math.normalizesafe((float3)foot), crater.xyz) * body.radius > crater.w + 1) continue;
-                            var key = TreeKey(foot); wounds.TryGetValue(key, out float hurt); wounds[key] = hurt + math.max(12, crater.w * 8);
+                            var key = TreeKey(foot); wounds.TryGetValue(key, out float hurt); DamageTree(tree, layer, hurt, math.max(12, crater.w * 8));
                         }
                     }
                     continue;
@@ -309,7 +366,11 @@ namespace Infinigame
                     for (int i = 0; i < cell.things.Length; i++)
                     {
                         var plant = cell.things[i];
-                        if (math.distance(math.normalizesafe((float3)(Vector3)plant.GetColumn(3)), crater.xyz) * body.radius <= reach) continue;
+                        if (math.distance(math.normalizesafe((float3)(Vector3)plant.GetColumn(3)), crater.xyz) * body.radius <= reach)
+                        {
+                            if (layer.name == "tussock of grass" && cutGrass.Add(TreeKey(plant.GetColumn(3)))) ScatterPiece(plant, layer, -1);
+                            continue;
+                        }
                         if (survivors != i) cell.things[survivors] = plant;
                         survivors++;
                     }

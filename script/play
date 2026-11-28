@@ -8,9 +8,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+source script/lib/burst
 app=Build/Infinigame.app
-if [ ! -d $app ] || [ -n "$(find Assets Packages ProjectSettings ThirdParty/Festival script/build-speech STORY.md MISSIONS.md FACTIONS.md COLONIES.md -newer $app -print -quit)" ] ||
-  { [ -r /Volumes ] && [ -z "$(find $app -name "lib_burst_generated*" -print -quit)" ]; }; then
+stamp=Build/.macos-build-complete
+if [ ! -d $app ] || [ ! -f "$stamp" ] || [ -n "$(find Assets Packages ProjectSettings ThirdParty/Festival script/build script/lib/build-target script/lib/burst script/build-speech STORY.md MISSIONS.md FACTIONS.md COLONIES.md -newer "$stamp" -print -quit)" ] ||
+  { burst_required && [ -z "$(burst_library StandaloneOSX || true)" ]; }; then
   script/build
 fi
 mkdir -p Logs

@@ -1,0 +1,14 @@
+# Only Sandvault accounts which hide the macOS host marker may export without Burst.
+burst_required() {
+  [[ -d /Volumes || $(id -un) != sandvault-* ]]
+}
+
+burst_library() {
+  local player pattern
+  case "$1" in
+    StandaloneOSX) player=Build/Infinigame.app/Contents/PlugIns; pattern='lib_burst_generated*.bundle' ;;
+    Win64) player=Build/Windows/Infinigame_Data/Plugins/x86_64; pattern='lib_burst_generated*.dll' ;;
+    iOS) player=Build/iOS/Libraries; pattern='lib_burst_generated*.a' ;;
+  esac
+  find "$player" -type f \( -name "$pattern" -o -path '*/lib_burst_generated*.bundle/Contents/MacOS/lib_burst_generated*' \) -size +0 -print -quit 2>/dev/null
+}

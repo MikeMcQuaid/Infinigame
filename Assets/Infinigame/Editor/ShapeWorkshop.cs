@@ -282,9 +282,13 @@ namespace Infinigame
         // A flat ring in the xz plane. UV x runs from its inner edge to its outer one.
 
 
-        public static Mesh Grazer()
+        public static Mesh[] Grazer(out Vector3[] hips)
         {
             int sides = LodSettings.Tier == 0 ? 24 : 40;
+            var parts = new Mesh[6];
+            hips = new Vector3[4];
+            int index = 0;
+            var eyes = new MeshKit();
             var body = new MeshKit { crease = 70 };
             body.Ball(new Vector3(0, 0.83f, 0), new Vector3(0.31f, 0.34f, 0.65f), sides);
             body.Ball(new Vector3(0, 1, 0.4f), new Vector3(0.27f, 0.38f, 0.32f), sides);
@@ -293,20 +297,25 @@ namespace Infinigame
             body.Ball(new Vector3(0, 1.19f, 1.11f), new Vector3(0.15f, 0.09f, 0.14f), sides);
             foreach (float side in new[] { -1f, 1f })
             {
-                body.Ball(new Vector3(side * 0.15f, 1.32f, 0.98f), new Vector3(0.025f, 0.035f, 0.035f), 24);
+                eyes.Ball(new Vector3(side * 0.162f, 1.32f, 0.98f), new Vector3(0.035f, 0.048f, 0.053f), 24);
                 body.Tube(MeshKit.Path(24, new Vector3(side * 0.13f, 1.37f, 0.77f), new Vector3(side * 0.24f, 1.66f, 0.65f), new Vector3(side * 0.2f, 1.72f, 0.85f)), 0.055f, 24, 0.004f);
                 body.Ball(new Vector3(side * 0.25f, 1.34f, 0.74f), new Vector3(0.15f, 0.035f, 0.075f), sides);
                 foreach (float end in new[] { -1f, 1f })
                 {
                     Vector3 hip = new Vector3(side * 0.22f, 0.79f, end * 0.42f), knee = new Vector3(side * 0.23f, 0.4f, end * 0.34f), hoof = new Vector3(side * 0.22f, 0.06f, end * 0.43f);
-                    body.Ball(hip, new Vector3(0.13f, 0.22f, 0.19f), sides);
-                    body.Tube(MeshKit.Path(24, hip, knee, hoof), 0.11f, sides, 0.055f);
-                    body.Ball(knee, 0.085f, 24);
-                    body.Box(hoof + Vector3.forward * 0.025f, new Vector3(0.12f, 0.11f, 0.19f), 0.025f);
+                    hips[index] = hip;
+                    var leg = new MeshKit { crease = 70 };
+                    leg.Ball(hip, new Vector3(0.13f, 0.22f, 0.19f), sides);
+                    leg.Tube(MeshKit.Path(24, hip, knee, hoof), 0.11f, sides, 0.055f);
+                    leg.Ball(knee, 0.085f, 24);
+                    leg.Box(hoof + Vector3.forward * 0.025f, new Vector3(0.12f, 0.11f, 0.19f), 0.025f);
+                    parts[2 + index++] = leg.Mesh("Hoof and leg " + index);
                 }
             }
             body.Tube(MeshKit.Path(24, new Vector3(0, 0.99f, -0.57f), new Vector3(0.08f, 0.73f, -0.78f), new Vector3(0.13f, 0.6f, -0.72f)), 0.045f, 20, 0.015f);
-            return body.Mesh("Grazer anatomy");
+            parts[0] = body.Mesh("Grazer anatomy");
+            parts[1] = eyes.Mesh("Grazer eyes");
+            return parts;
         }
 
         public static (Mesh body, Mesh wing) Bird()

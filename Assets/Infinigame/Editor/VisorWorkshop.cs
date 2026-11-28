@@ -29,7 +29,7 @@ namespace Infinigame.Editor
                     Stroke(18,10, 51,8, 69,18, 74,32, 66,42, 46,46, 21,40, 16,28, 18,10);
                     Stroke(31,12, 32,35, 52,40, 66,35); Stroke(46,17, 62,20, 68,28);
                     break;
-                case 1: // Focusing lens under the gauntlet.
+                case 1: // Wrist-mounted focusing lens.
                     Stroke(9,12, 47,8, 70,18, 93,21, 94,34, 66,39, 40,44, 14,37, 9,12);
                     Stroke(63,19, 62,33, 76,34, 82,22); Stroke(99,27, 159,27);
                     break;

@@ -7,7 +7,7 @@ using Random = Unity.Mathematics.Random;
 
 namespace Infinigame.Core
 {
-    public enum EncounterCue { Emitter, Threat, Collapse, ShellHit, Footfall, Breacher, Spitter }
+    public enum EncounterCue { Emitter, Threat, Collapse, ShellHit, Footfall, Breacher, Spitter, Countdown }
 
 #if UNITY_EDITOR
     public enum Wave { Sine, Saw, Square }
@@ -454,12 +454,19 @@ namespace Infinigame.Core
         {
             var rnd = new Random(1307u + 193u * (uint)take);
             float pitch = rnd.NextFloat(0.89f, 1.12f);
-            var (left, right) = Blank(cue == EncounterCue.Emitter ? 0.22f : 0.58f);
+            var (left, right) = Blank(cue is EncounterCue.Emitter or EncounterCue.Countdown ? 0.22f : 0.58f);
             if (cue == EncounterCue.Emitter)
             {
                 Place(left, right, Clack(690 * pitch, rnd.NextUInt()), 0.45f);
                 Place(left, right, Thump(0.12f, 1630 * pitch, 260, 26), 0.68f, at: 0.012f);
                 Place(left, right, Scrape(0.10f, 820 * pitch, rnd.NextUInt()), 0.24f, at: 0.07f);
+            }
+            else if (cue == EncounterCue.Countdown)
+            {
+                Place(left, right, Clack(530 * pitch, rnd.NextUInt(), 0.035f), 0.38f);
+                Place(left, right, Fm(Samples(0.16f), _ => 870 * pitch, 1.5f, t => 1.6f * math.exp(-32 * t))
+                    .Shape(t => Hit(t, 0.006f, 0.12f)), 0.66f, at: 0.015f);
+                Place(left, right, Ring(0.10f, 440 * pitch, rnd.NextUInt(), 1, 2.12f), 0.16f, at: 0.06f);
             }
             else if (cue == EncounterCue.Threat)
             {

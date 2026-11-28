@@ -44,6 +44,7 @@ Shader "Infinigame/Stars"
                 UNITY_SETUP_INSTANCE_ID(input);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
                 output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
+                output.positionCS.z = UNITY_RAW_FAR_CLIP_VALUE * output.positionCS.w;
                 output.direction = mul((float3x3)_StarRotation, input.positionOS.xyz);
                 return output;
             }

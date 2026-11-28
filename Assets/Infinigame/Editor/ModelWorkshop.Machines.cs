@@ -128,7 +128,7 @@ namespace Infinigame
             {
                 bool thumb = finger == 0;
                 var link = Child(root, "Digit " + finger);
-                link.localPosition = thumb ? new Vector3(-0.081f, -0.014f, 0.04f) : new Vector3(-0.0675f + (finger - 1) * 0.045f, 0, 0.128f);
+                link.localPosition = thumb ? new Vector3(-0.094f, -0.022f, 0.055f) : GauntletFingers.Knuckles + Vector3.right * (-0.0675f + (finger - 1) * 0.045f);
                 for (int joint = 0; joint < 3; joint++)
                 {
                     float length = (thumb ? 0.047f : finger == 4 ? 0.041f : 0.052f) * (1f - joint * 0.15f);
@@ -161,7 +161,7 @@ namespace Infinigame
             }
             foreach (float side in new[] { -1f, 1f })
             {
-                seal.Place(Move(side * 0.061f, -0.053f, 0.065f) * Turn(0, side * 15, 0), () =>
+                seal.Place(Move(side * 0.061f, -0.039f, 0.065f) * Turn(0, side * 15, 0), () =>
                     Pillow(seal, Vector3.zero, new Vector3(0.062f, 0.046f, 0.135f), Curves / 2));
                 for (int rib = 0; rib < 7; rib++)
                 {
@@ -169,9 +169,9 @@ namespace Infinigame
                     frame.Rod(new Vector3(side * 0.08f, -0.054f, z), new Vector3(side * 0.058f, -0.067f, z + 0.013f), 0.004f, 8);
                 }
             }
-            frame.Place(Move(0, -0.063f, 0.067f) * Turn(180, 0, 0), () =>
+            frame.Place(Move(0, -0.039f, 0.067f) * Turn(180, 0, 0), () =>
                 frame.Lathe(new[] { 0.052f, 0, 0.055f, 0.009f, 0.047f, 0.017f, 0.034f, 0.017f, 0.032f, 0 }, 32));
-            glow.Ball(new Vector3(0, -0.076f, 0.067f), new Vector3(0.034f, 0.009f, 0.034f), 20);
+            glow.Ball(new Vector3(0, -0.052f, 0.067f), new Vector3(0.034f, 0.009f, 0.034f), 20);
             for (int i = 0; i < 10; i++)
             {
                 float angle = 36f * i;
@@ -182,6 +182,73 @@ namespace Infinigame
             Add(root, "Finger joints and heat sinks", frame, Mechanism);
             Add(root, "Tendons", seal, Rubber);
             Add(root, "Emitter", glow, Optics, false);
+        });
+
+        public static Transform WristWeapons() => Machine("Wrist weapons", root =>
+        {
+            foreach (var gear in new[] { Core.Gear.Beams, Core.Gear.Rail, Core.Gear.BackMissiles })
+            {
+                var module = Child(root, Array.Find(Core.Combat.Arms, weapon => weapon.needs == gear).name);
+                var casing = new MeshKit(); var action = new MeshKit(); var glass = new MeshKit();
+                Plate(action, new Vector3(0, 0.094f, -0.08f), new Vector3(0.13f, 0.040f, 0.21f), 16);
+                Vector3 port;
+                Color colour;
+                if (gear == Core.Gear.Beams)
+                {
+                    port = new Vector3(0, 0.152f, 0.088f);
+                    colour = new Color(0.08f, 0.78f, 0.95f);
+                    casing.Rod(new Vector3(0, port.y, -0.13f), port - Vector3.forward * 0.006f, 0.048f, 24, 0.042f);
+                    for (int i = 0; i < 4; i++)
+                    {
+                        var band = new Vector3(0, port.y, -0.095f + i * 0.039f);
+                        action.Rod(band, band + Vector3.forward * 0.014f, 0.053f, 24);
+                        glass.Rod(band + Vector3.forward * 0.014f, band + Vector3.forward * 0.019f, 0.049f, 24);
+                    }
+                    glass.Ball(port - Vector3.forward * 0.006f, new Vector3(0.033f, 0.033f, 0.007f), 20);
+                    port.z += 0.001f;
+                }
+                else if (gear == Core.Gear.Rail)
+                {
+                    port = new Vector3(0, 0.147f, 0.19f);
+                    colour = new Color(0.07f, 0.31f, 0.49f);
+                    var charge = new MeshKit();
+                    charge.Rod(Vector3.zero, Vector3.forward * 0.273f, 0.008f, 16, 0.012f);
+                    charge.Rod(Vector3.forward * 0.273f, Vector3.forward * 0.30f, 0.012f, 16, 0.002f);
+                    foreach (float side in new[] { -1f, 1f })
+                    {
+                        var filament = new Vector3(side * 0.019f, 0.029f, 0.022f);
+                        charge.Rod(filament, filament + Vector3.forward * 0.25f, 0.003f, 8);
+                        var rail = new Vector3(side * 0.039f, port.y, 0.02f);
+                        casing.Box(rail, new Vector3(0.03f, 0.057f, 0.34f), 0.009f);
+                        glass.Box(rail + new Vector3(-side * 0.009f, 0.029f, 0), new Vector3(0.009f, 0.004f, 0.30f), 0.001f);
+                        for (int i = 0; i < 4; i++)
+                            action.Box(new Vector3(rail.x, rail.y, -0.095f + 0.043f * i), new Vector3(0.044f, 0.069f, 0.021f), 0.007f);
+                    }
+                    Shapes.Part(module, "Rail charge", charge.Mesh("Rail charge"), Shapes.Material("Glow", new Color(0.47f, 1.1f, 1.55f)),
+                        new Vector3(0, port.y, -0.118f), Vector3.one, false).SetActive(false);
+                }
+                else
+                {
+                    port = new Vector3(0, 0.153f, 0.043f);
+                    colour = new Color(0.08f, 0.47f, 0.94f);
+                    Plate(casing, new Vector3(0, 0.138f, -0.055f), new Vector3(0.115f, 0.065f, 0.16f), 16);
+                    action.Rod(port - Vector3.forward * 0.055f, port, 0.034f, 16);
+                    glass.Ball(port, new Vector3(0.024f, 0.024f, 0.005f), 16);
+                    port.z += 0.005f;
+                    foreach (float side in new[] { -1f, 1f })
+                    {
+                        var fin = new Vector3(side * 0.049f, 0.17f, -0.075f);
+                        casing.Place(Move(fin) * Turn(-25, 0, -side * 14), () =>
+                            casing.Box(Vector3.zero, new Vector3(0.014f, 0.082f, 0.036f), 0.005f));
+                        glass.Box(new Vector3(side * 0.035f, 0.17f, -0.090f), new Vector3(0.014f, 0.010f, 0.049f), 0.003f);
+                    }
+                }
+                Add(module, "Casing", casing, Titanium);
+                Add(module, "Mechanism", action, Mechanism);
+                Add(module, "Optics", glass, Shapes.Material("Glow", colour), false);
+                Child(module, "Port").localPosition = port;
+                module.gameObject.SetActive(false);
+            }
         });
 
         public static Transform Traveller() => Machine("Traveller", root =>
@@ -198,15 +265,16 @@ namespace Infinigame
             Panels(Breastplate, new[] { 0f, 0.22f, 0.25f, 0.28f, 0.5f, 0.75f, 1f }, new[] { 0f, 0.74f, 1f },
                 0.018f, 0.012f, 0.018f, (i, j) => j == 1 && (i == 0 || i == 3) ? null : shell, frame);
             var plates = new MeshKit();
+            var sockets = new MeshKit(); var pauldrons = new MeshKit();
             foreach (float side in new[] { -1f, 1f })
             {
                 plates.Place(Move(side * 0.145f, 0.095f, 0.155f) * Turn(-10, side * 17, side * -16), () =>
                     Pillow(plates, Vector3.zero, new Vector3(0.266f, 0.32f, 0.115f), Curves));
-                shell.Place(Move(side * 0.29f, 0.17f, -0.01f) * Turn(0, 0, side * -20), () =>
-                    shell.Ball(Vector3.zero, new Vector3(0.14f, 0.14f, 0.18f), Curves));
+                sockets.Place(Move(side * 0.29f, 0.17f, -0.01f) * Turn(0, 0, side * -20), () =>
+                    sockets.Ball(Vector3.zero, new Vector3(0.14f, 0.14f, 0.18f), Curves));
                 FoldedPlate(plates, new Vector3(side * 0.22f, 0.26f, 0.14f), new Vector3(side * 0.055f, -0.13f, 0.20f),
                     new Vector3(1, 0, -side * 0.38f), 0.14f, 0.075f);
-                FoldedPlate(plates, new Vector3(side * 0.23f, 0.23f, -0.11f), new Vector3(side * 0.31f, -0.045f, 0.11f),
+                FoldedPlate(pauldrons, new Vector3(side * 0.23f, 0.23f, -0.11f), new Vector3(side * 0.31f, -0.045f, 0.11f),
                     new Vector3(1, 0, -side * 1.3f), 0.105f, 0.055f);
                 for (int i = 0; i < 4; i++)
                 {
@@ -219,6 +287,9 @@ namespace Infinigame
                 for (int i = 0; i < 3; i++) frame.Ball(new Vector3(side * 0.23f, 0.2f - i * 0.12f, 0.145f), 0.009f, 12);
             }
             Add(torso, "Armour", shell, Ceramic);
+            var shoulders = Child(torso, "Shoulders");
+            Add(shoulders, "Armour", sockets, Ceramic);
+            Add(shoulders, "Pauldrons", pauldrons, Titanium);
             Add(torso, "Breastplates", plates, Titanium);
             Add(torso, "Spine and actuators", frame, Mechanism);
             Add(torso, "Pressure suit", seal, Rubber);
@@ -246,7 +317,7 @@ namespace Infinigame
                 CladLimb(arm, 0.33f, 0.17f);
                 var forearm = Child(arm, "Elbow"); forearm.localPosition = new Vector3(0, -0.34f, 0);
                 CladLimb(forearm, 0.27f, 0.13f);
-                var hand = Gauntlet(); hand.SetParent(forearm, false); hand.localPosition = new Vector3(0, -0.33f, 0.03f); hand.localRotation = Quaternion.Euler(90, 0, side < 0 ? 0 : 180); hand.localScale = Vector3.one * 0.82f;
+                var hand = Gauntlet(); hand.SetParent(forearm, false); hand.localPosition = new Vector3(0, -0.33f, 0.03f); hand.localRotation = Quaternion.Euler(90, 0, 0); hand.localScale = new Vector3(side, 1, 1) * 0.82f;
                 var thigh = Child(root, prefix + " leg"); thigh.localPosition = new Vector3(side * 0.18f, 0.96f, 0);
                 CladLimb(thigh, 0.41f, 0.2f);
                 var calf = Child(thigh, "Knee"); calf.localPosition = new Vector3(0, -0.43f, 0);

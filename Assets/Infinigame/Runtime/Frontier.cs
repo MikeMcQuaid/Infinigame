@@ -14,14 +14,14 @@ namespace Infinigame
         public bool Collapsing => game.Fall.destroyed;
         public float Whiteout => Collapsing ? math.saturate((collapse - Moonfall.Consumption - Moonfall.Infall) / Moonfall.WhiteHole) : arrival;
         public string Ending => !game.Fall.active ? "" : Collapsing
-            ? collapse < 1 ? "IMPACT · THE BURIED MIND IS COLLAPSING" : collapse < Moonfall.Consumption ? $"BLACK HOLE SYSTEM CONSUMPTION {math.ceil(Moonfall.Consumption - collapse):0}s" : collapse < Moonfall.Consumption + Moonfall.Infall ? "BLACK HOLE · SHIP IN FREE FALL" : "WHITE HOLE · HOLD ON"
+            ? collapse < 1 ? "IMPACT · THE BURIED MIND IS COLLAPSING" : collapse < Moonfall.Consumption ? $"BLACK HOLE SYSTEM CONSUMPTION {math.ceil(Moonfall.Consumption - collapse):0}s" : collapse < Moonfall.Consumption + Moonfall.Infall ? $"BLACK HOLE · SHIP IN FREE FALL  {math.ceil(Moonfall.Consumption + Moonfall.Infall - collapse):0}s" : "WHITE HOLE · ATTEMPTING EXIT VECTOR"
             : game.System.Clock - game.Fall.began < Moonfall.Assembly ? "MOON ENGINES BUILT · SHIP FOLLOW LINK ACQUIRED"
             : game.System.Clock - game.Fall.began < Moonfall.Assembly + Moonfall.Ignition ? "IGNITION · MOON ENGINES FIRING"
             : $"MOON IN TRANSIT · SHIP FOLLOWING · IMPACT IN {math.ceil(game.Fall.began + game.Fall.duration - game.System.Clock):0}s";
         float Infall => math.saturate((collapse - Moonfall.Consumption) / Moonfall.Infall);
         bool falling;
         float3 shipOffset;
-        float saved, deployed, collapse, arrival, transfer, assembly;
+        float saved, deployed, collapse, arrival, transfer, kennelAssembly, berthAssembly;
         readonly List<Transform> plumes = new List<Transform>();
         int shownWorld = -1, shownRegion = -1, layout = -1;
         Task<SolarSystemDescriptor> next;
@@ -48,7 +48,7 @@ namespace Infinigame
             if (!CanCallDogs) return;
             game.Escorts.pack = !game.Escorts.pack;
             game.Escorts.packWorld = game.System.Reference;
-            assembly = 0;
+            kennelAssembly = berthAssembly = 0;
             game.Notify(game.Escorts.pack ? "ROBODOG ON THE WAY · GUARDS THE BURROW ENTRANCE" : "ROBODOG RETURNED TO PATROL");
             game.Write();
         }
@@ -60,7 +60,7 @@ namespace Infinigame
         void OnDestroy() { if (game?.System != null) game.System.ReferenceChanged -= Rebase; }
         void Rebase(int from, int to)
         {
-            foreach (var unit in units.Where(unit => unit.escort))
+            foreach (var unit in units.Where(unit => unit.ship))
             {
                 float3 velocity = float3.zero;
                 game.System.Descriptor.Rebase(from, to, game.System.Clock, ref unit.position, ref velocity);
@@ -106,7 +106,16 @@ namespace Infinigame
                 if (hole != null) Destroy(hole.gameObject);
                 if (impact != null) Destroy(impact.gameObject);
             }
-            int signature = game.Colonies.Count * 4 + game.Presence.fronts.Count(front => front.shipyard) + (game.Fall.active ? 1000 : 0);
+            if (game.Fall.active && !game.Fall.destroyed && !worlds.bodies[game.Fall.moon].burnAttitude.HasValue)
+            {
+                var fall = game.Fall;
+                var moon = worlds.bodies[fall.moon];
+                Quaternion rotation = moon.Rotation(fall.began);
+                Vector3 pole = game.EnginePole;
+                Vector3 away = (float3)math.normalize(worlds.OrbitalPosition(fall.moon, fall.began) - worlds.OrbitalPosition(fall.world, fall.began));
+                moon.burnAttitude = (quaternion)(Quaternion.FromToRotation(rotation * pole, away) * rotation);
+            }
+            int signature = game.Colonies.Count * 4 + game.Presence.fronts.Count(front => front.shipyard) + ((game.Fall.armed || game.Fall.active) ? 1000 : 0);
             if (!rebuilt && layout == signature) return;
             layout = signature;
             foreach (var building in buildings) if (building != null) Destroy(building.gameObject);
@@ -133,12 +142,14 @@ namespace Infinigame
                 var defence = model.gameObject.AddComponent<FactoryDefence>(); defence.game = game; defence.world = colony.world;
                 buildings.Add(model);
             }
-            if (game.Fall.active && !game.Fall.destroyed)
+            if ((game.Fall.armed || game.Fall.active) && !game.Fall.destroyed)
                 for (int i = 0; i < 3; i++)
                 {
                     var moon = game.System.Bodies[game.Fall.moon];
                     float angle = i * math.PI * 2 / 3;
-                    float3 up = math.normalize(new float3(math.cos(angle), 0.5f, math.sin(angle)));
+                    float3 pole = game.EnginePole;
+                    float3 side = math.normalizesafe(math.cross(pole, new float3(0, 1, 0)), new float3(1, 0, 0));
+                    float3 up = math.normalize(pole + 0.55f * (side * math.cos(angle) + math.cross(pole, side) * math.sin(angle)));
                     var engine = Shapes.Part(moon.transform, "Moon engine", Models.Parts("Moon engine")[0], Shapes.Solid(Surface.Metal, new Color(0.6f, 0.7f, 0.75f)), up * moon.Descriptor.GroundRadius(up), Vector3.one * math.max(4, moon.Descriptor.radius * 0.025f)).transform;
                     engine.localRotation = Quaternion.FromToRotation(Vector3.up, up);
                     var plume = Shapes.Flame(engine, Vector3.up * 8.8f, Vector3.up, 20, 2.5f);
@@ -160,17 +171,19 @@ namespace Infinigame
             get
             {
                 var site = BuildFront;
-                if (site.shipyard) return "Factory and shipyard built";
+                if (site.shipyard) return "Shipyard built";
                 if (site.factory) return JointSite(site) ? "Upgrade to shipyard" : "Robodog factory built";
-                return JointSite(site) ? "Build factory and shipyard" : "Build robodog factory";
+                return JointSite(site) ? "Build shipyard" : "Build robodog factory";
             }
         }
-        public bool VisibleBuild(int choice) => choice == 0 || choice == 2 && (game.Fall.active || CanBuild(2));
+        public string Construction => CanBuild(2) ? "Build moon engines" : BuildLabel;
+        public bool VisibleBuild(int choice) => choice == 0 || choice == 2 && game.Stage >= Campaign.Won;
         public bool CanBuild(int choice)
         {
+            if (game.Player.flying || game.Player.Altitude >= 5 || game.System.ReferenceBody.kind != BodyKind.Rock) return false;
+            if (choice == 2) return game.Stage == Campaign.Won && !game.Fall.armed && !game.Fall.active && game.System.ReferenceBody.orbit.parent > 0;
+            if (game.System.ReferenceBody.Dry(game.Player.Position)) return false;
             var front = BuildFront;
-            if (choice == 2) return game.Stage >= Campaign.Won && front.shipyard && GroundControlled(front.world) && Total(front.world, state => state.alienShips) <= 0 && !game.Fall.active;
-            if (game.Player.flying || game.System.ReferenceBody.Dry(game.Player.Position) || game.Player.Altitude >= 5 || game.System.ReferenceBody.kind != BodyKind.Rock) return false;
             if (front.factory)
             {
                 var existing = game.Colonies.Find(colony => colony.world == front.world && colony.region == front.region);
@@ -187,16 +200,24 @@ namespace Infinigame
                 : choice == 0 && !game.FactoryUnlocked ? game.Wording("factoryCore")
                 : choice == 0 && (game.Player.flying || game.System.ReferenceBody.Dry(game.Player.Position) || game.Player.Altitude >= 5) ? game.Wording("factoryLand")
                 : choice == 0 && front.mindDead ? $"REGION {front.region + 1} · READY TO BUILD · MIND SILENCED"
-                : choice == 0 ? $"REGION {front.region + 1} · ROBODOG FACTORY · {front.kills}/{War.RequiredKills(front)} ALIENS DEFEATED\nReplicating laser robodogs hunt the remaining {math.ceil(front.aliens):0} bodies. A standing pack keeps new broods in check."
+                : choice == 0 ? $"REGION {front.region + 1} · {(JointSite(front) ? "SHIPYARD" : "ROBODOG FACTORY")} · {front.kills}/{War.RequiredKills(front)} ALIENS DEFEATED\nReplicating laser robodogs hunt the remaining {math.ceil(front.aliens):0} bodies. A standing pack keeps new broods in check."
                 : choice == 1 ? $"SHIPYARD UPGRADE · {(front.shipyard ? "BUILT" : !front.factory ? "BUILD A ROBODOG FACTORY FIRST" : !JointSite(front) ? "BUILD THE THREE REGIONAL FACTORIES" : "READY")}\n{game.Wording("factoryShips")}"
-                : $"MOON ENGINES · {(game.Stage < Campaign.Won ? "DESTROY ALL CITADEL MINDS" : !front.shipyard ? "BUILD THIS WORLD’S SHIPYARD" : Total(front.world, state => state.alienShips) > 0 ? $"{math.ceil(Total(front.world, state => state.alienShips)):0} HOSTILE SHIPS REMAIN" : game.Fall.active ? "ENGINES BUILT" : "READY")}\n{game.Wording("factoryMoon")}";
+                : $"MOON ENGINES · {(game.Stage < Campaign.Won ? "DESTROY ALL CITADEL MINDS" : game.Fall.armed || game.Fall.active ? "ENGINES BUILT" : CanBuild(2) ? "READY HERE" : "LAND ANYWHERE ON ANY MOON")}\n{game.Wording("factoryMoon")}";
         }
         public void BuildFactory(int choice)
         {
             var front = BuildFront;
             if (choice == 2)
             {
-                if (game.Stage >= Campaign.Won && front.shipyard && CanBuild(2)) Launch();
+                if (CanBuild(2))
+                {
+                    game.Fall.moon = game.System.Reference;
+                    game.Fall.site = math.normalize(game.Player.Position);
+                    game.Fall.armed = true;
+                    Settle();
+                    game.Hermit.Remark("Moon engines installed. Board your ship and climb clear. Ignition waits for us.");
+                    game.Write();
+                }
                 else game.Notify(FactoryHint(choice).Split('\n')[0]);
                 return;
             }
@@ -221,7 +242,7 @@ namespace Infinigame
                 colony.site = math.normalizesafe(colony.site) * body.GroundRadius(math.normalizesafe(colony.site));
             }
             front.established = true;
-            assembly = deployed = 0;
+            kennelAssembly = berthAssembly = deployed = 0;
             Settle();
             game.Hermit.Remark(choice == 1 ? game.Wording("shipyard") : game.Outpost.SiteCleared && game.Outpost.World == front.world
                 && front.region == Region(front.world, game.Outpost.Position) ? game.Wording("factoryDelivery") : game.Wording(front.mindDead ? "factoryCleared" : "factory"));
@@ -230,11 +251,13 @@ namespace Infinigame
             game.GetComponent<ForearmConsole>()?.Home();
             game.Write();
         }
+        public float LaunchAltitude => math.max(350, game.System.Descriptor.bodies[game.Fall.moon].radius * 0.85f);
         public void Launch()
         {
             game.Fall.began = game.System.Clock;
             game.Fall.duration = Moonfall.Assembly + Moonfall.Ignition + Moonfall.Transit;
             game.Player.flying = true;
+            game.Fall.armed = false;
             game.Fall.active = true;
             Settle();
             game.Hermit.Remark(game.Wording("ignition"));
@@ -249,10 +272,11 @@ namespace Infinigame
                 { player = unit.position; nearest = math.distancesq(from, player); }
             return player;
         }
-        public void Punch(float3 from, float3 step)
+        public bool Punch(float3 from, float3 step)
         {
             foreach (var unit in units)
-                if (Combat.Crosses(from, step, unit.position + math.normalizesafe(unit.position), unit.ship ? 3 : 1.2f)) { game.Hermit.Punched(); break; }
+                if (Combat.Crosses(from, step, unit.position + math.normalizesafe(unit.position), unit.ship ? 3 : 1.2f)) { game.Hermit.Punched(); return true; }
+            return false;
         }
         public float3? FollowingDog
         {
@@ -274,6 +298,12 @@ namespace Infinigame
         {
             float dt = Mathf.Min(Time.deltaTime, 0.1f);
             arrival = math.max(0, arrival - dt * 0.6f);
+            if (game.Fall.armed && game.Player.flying && !game.Player.ship.landed
+                && math.distance(game.Player.Position, game.System.ToReference(game.Fall.moon)) >= game.System.Descriptor.bodies[game.Fall.moon].radius + LaunchAltitude)
+            {
+                Launch();
+                game.Write();
+            }
             if (Collapsing)
             {
                 collapse += Time.unscaledDeltaTime;
@@ -332,7 +362,8 @@ namespace Infinigame
                 var front = Local;
                 var factory = game.Colonies.FirstOrDefault(colony => colony.world == front.world && colony.region == front.region && math.distance(colony.site, game.Player.Position) < 700);
                 deployed = (factory != null ? 3 : math.max(1.5f, 8 - game.Threat * 0.5f)) / game.Pressure;
-                if (body.kind == BodyKind.Rock && front.aliens > 0 && game.Battle.Foes.Count(foe => foe.patrol) < (factory != null ? 5 : math.min(40, 4 + game.Threat * 3)))
+                int patrols = game.Stage == Campaign.FirstBurrow && game.Challenge <= Difficulty.Normal ? 1 : factory != null ? 5 : math.min(40, 4 + game.Threat * 3);
+                if (body.kind == BodyKind.Rock && front.aliens > 0 && game.Battle.Foes.Count(foe => foe.patrol) < patrols)
                 {
                     var rnd = new Unity.Mathematics.Random((uint)(game.Presence.played * 100 + game.Seed) | 1);
                     float3 up = math.normalizesafe(factory?.site ?? game.Player.Position);
@@ -350,7 +381,7 @@ namespace Infinigame
             {
                 float3 point = game.Player.Position - (float3)Camera.main.transform.forward * 1400 + math.normalizesafe(game.Player.Position) * 180;
                 float3 up = math.normalizesafe(point);
-                if (game.System.ReferenceBody.kind == BodyKind.Rock) point = up * math.max(math.length(point), game.System.ReferenceBody.GroundRadius(up) + 100);
+                if (game.System.ReferenceBody.kind == BodyKind.Rock) point = up * math.max(math.length(point), game.System.ReferenceBody.radius * Shapes.AirTop(game.System.ReferenceBody) + 75);
                 game.Battle.Add(FoeKind.Raider, point);
             }
             if (GroundControlled(game.System.Reference))
@@ -368,22 +399,18 @@ namespace Infinigame
                 float3 direction = math.normalizesafe(planet - moon, new float3(0, 0, 1));
                 float3 above = math.normalizesafe(math.cross(direction, new float3(1, 0, 0)), new float3(0, 1, 0));
                 // Stay in formation throughout the burn.
-                game.Player.ship.position = moon - direction * (radius * 3 + 150)
-                    + math.cross(above, direction) * (radius * 2 + 120) + above * (radius * 2 + 40);
+                game.Player.ship.position = moon - direction * (radius * 4.5f + 180)
+                    + math.cross(above, direction) * (radius * 1.35f + 60) + above * (radius * 0.5f + 30);
                 float ignition = math.saturate((float)(game.System.Clock - game.Fall.began - Moonfall.Assembly) / Moonfall.Ignition);
                 for (int i = 0; i < plumes.Count; i++)
                 {
-                    var plume = plumes[i]; var engine = plume.parent;
-                    float angle = i * math.PI * 2 / 3;
-                    float3 aft = math.normalize(-direction + (above * math.cos(angle) + math.cross(direction, above) * math.sin(angle)) * 0.24f);
-                    engine.position = moon - game.System.Anchor + aft * radius;
-                    engine.rotation = Quaternion.FromToRotation(Vector3.up, aft);
+                    var plume = plumes[i];
                     plume.gameObject.SetActive(ignition > 0);
                     plume.localScale = new Vector3(2.5f, 10 * ignition, 2.5f);
                     plume.localPosition = Vector3.up * (8.8f + 10 * ignition);
                 }
                 game.Player.ship.velocity = (game.System.ToReference(game.Fall.moon, 0.1) - moon) * 10;
-                float3 sightline = math.normalize(moon - game.Player.ship.position) + math.normalize(planet - game.Player.ship.position);
+                float3 sightline = moon - direction * radius - game.Player.ship.position;
                 game.Player.ship.rotation = quaternion.LookRotationSafe(math.normalize(sightline), above);
                 game.Player.ship.landed = false;
             }
@@ -433,24 +460,29 @@ namespace Infinigame
             var packFactory = game.Escorts.pack && !game.Player.flying ? PackFactory : null;
             int pack = packFactory == null ? 0 : 1;
             int escorts = source != null && pack == 0 ? 1 : 0;
-            int dogs = math.min(7 - pack, (int)math.ceil(front.dogs) - (packFactory == front ? pack : 0)), ships = math.min(3 - escorts, (int)front.ships - (source == front ? escorts : 0));
-            assembly -= dt;
+            var yard = game.Presence.fronts.Where(item => item.world == front.world && item.shipyard && item.ships > 0)
+                .OrderByDescending(item => item == front).ThenByDescending(item => item.ships).FirstOrDefault() ?? source;
+            int dogs = math.min(7 - pack, (int)math.ceil(front.dogs) - (packFactory == front ? pack : 0)), ships = yard == null ? 0 : math.min(3 - escorts, (int)math.ceil(yard.ships) - (source == yard ? escorts : 0));
+            kennelAssembly -= dt;
+            berthAssembly -= dt;
             if (shownWorld != game.System.Reference || shownRegion != front.region)
             {
-                foreach (var unit in units.Where(unit => !unit.escort && (!unit.pack || shownWorld != front.world))) Destroy(unit.model.gameObject);
-                units.RemoveAll(unit => !unit.escort && (!unit.pack || shownWorld != front.world));
+                foreach (var unit in units.Where(unit => !unit.ship && (!unit.pack || shownWorld != front.world))) Destroy(unit.model.gameObject);
+                units.RemoveAll(unit => !unit.ship && (!unit.pack || shownWorld != front.world));
                 shownWorld = game.System.Reference; shownRegion = front.region;
             }
             for (int i = units.Count - 1; i >= 0; i--)
             {
                 var unit = units[i];
-                if (unit.health <= 0 || units.Count(other => other.ship == unit.ship && other.escort == unit.escort && other.pack == unit.pack) > (unit.pack ? pack : unit.escort ? escorts : unit.ship ? ships : dogs))
+                if (unit.health <= 0 || unit.ship && !unit.escort && unit.front != yard || units.Count(other => other.ship == unit.ship && other.escort == unit.escort && other.pack == unit.pack) > (unit.pack ? pack : unit.escort ? escorts : unit.ship ? ships : dogs))
                 { Destroy(unit.model.gameObject); units.RemoveAt(i); }
             }
             // Keep assembly staggered, including escorts, and launch the actual AI model.
-            for (int step = 0; step < 4 && assembly <= 0; step++)
+            for (int step = 0; step < 4; step++)
             {
-                bool called = step == 0, escort = step == 1, ship = escort || step == 3;
+                bool called = step == 0, escort = step == 1, ship = escort || step == 2;
+                ref float assembly = ref (ship ? ref berthAssembly : ref kennelAssembly);
+                if (assembly > 0) continue;
                 if (units.Count(unit => unit.ship == ship && unit.escort == escort && unit.pack == called) >= (called ? pack : escort ? escorts : ship ? ships : dogs)) continue;
                 if (ship && shipTemplate == null) { shipTemplate = Models.Ship(); shipTemplate.SetParent(transform, false); shipTemplate.gameObject.SetActive(false); }
                 if (robotTemplate == null) { robotTemplate = Models.Robot(); robotTemplate.SetParent(transform, false); robotTemplate.gameObject.SetActive(false); }
@@ -462,16 +494,21 @@ namespace Infinigame
                 {
                     model.localScale = Vector3.one * 0.35f;
                     var pilot = Instantiate(robotTemplate); pilot.gameObject.SetActive(true); pilot.name = "Robot pilot"; pilot.SetParent(model, false);
-                    pilot.localPosition = new Vector3(0, 0.7f, 1.5f); pilot.localScale = Vector3.one * 0.45f;
+                    pilot.localPosition = Models.PilotEye - new Vector3(0, 0.58f, 0.2f); pilot.localScale = Vector3.one * 0.55f;
+                    var seated = pilot.gameObject.AddComponent<MachineMotion>(); seated.quadruped = seated.seated = true;
                 }
                 var beam = new GameObject("Dorsal laser").AddComponent<LineRenderer>();
                 beam.transform.SetParent(model, false); beam.positionCount = 2; beam.startWidth = beam.endWidth = ship ? 0.18f : 0.06f;
                 beam.sharedMaterial = Shapes.Beam(new Color(0.2f, 2, 3)); beam.enabled = false;
-                var origin = called ? packFactory : escort ? source : front;
+                var origin = called ? packFactory : escort ? source : ship ? yard : front;
                 var colony = game.Colonies.FirstOrDefault(item => item.world == origin.world && item.region == origin.region);
                 float3 position = colony?.site ?? game.Player.Position, velocity = float3.zero;
+                if (colony != null && origin.shipyard && !ship)
+                    position = Models.Kennel(colony.site);
                 if (origin.world != game.System.Reference) game.System.Descriptor.Rebase(origin.world, game.System.Reference, game.System.Clock, ref position, ref velocity);
                 if (called && colony == null) position = PackRally(game.Player.Position);
+                if (colony != null && !ship && called)
+                    position += (float3)(Quaternion.FromToRotation(Vector3.up, math.normalizesafe(colony.site)) * Vector3.forward * 4);
                 if (called)
                     foreach (var burrow in game.System.ReferenceBody.burrows)
                         if (burrow.Contains(position))
@@ -480,6 +517,13 @@ namespace Infinigame
                             position = up * game.System.ReferenceBody.GroundRadius(up);
                         }
                 Transform jets = null;
+                if (ship)
+                {
+                    jets = new GameObject("Patrol drive").transform;
+                    jets.SetParent(model, false);
+                    foreach (float side in new[] { -1f, 1f })
+                        Shapes.Flame(jets, new Vector3(side * 1.3f, 0.02f, -3.44f), Vector3.back, 3.5f, 0.4f);
+                }
                 if (called)
                 {
                     jets = new GameObject("Escort jetpack").transform;
@@ -493,30 +537,53 @@ namespace Infinigame
                     }
                 }
                 units.Add(new Unit { jets = jets, pack = called, age = called ? 5 : 0, model = model, motion = motion, beam = beam, ship = ship, escort = escort, front = origin, health = ship || origin.mindDead ? 350 : 180, position = position });
-                assembly = ship ? 3 : 1.5f;
+                assembly = ship ? 3 : 3.5f;
             }
             foreach (var unit in units)
             {
                 var colony = game.Colonies.FirstOrDefault(item => item.world == unit.front.world && item.region == unit.front.region);
                 float3 home = colony?.site ?? unit.position, homeUp = math.normalizesafe(home), still = float3.zero;
+                if (colony != null && unit.front.shipyard && !unit.ship)
+                    home = Models.Kennel(colony.site);
                 if (unit.front.world != game.System.Reference)
                 {
                     homeUp = math.rotate(game.System.Descriptor.Turn(unit.front.world, game.System.Reference, game.System.Clock), homeUp);
                     game.System.Descriptor.Rebase(unit.front.world, game.System.Reference, game.System.Clock, ref home, ref still);
                 }
                 unit.age += dt;
-                bool following = unit.escort && game.Escorts.order != EscortOrder.Patrol;
+                bool following = unit.escort && game.Player.flying && game.Escorts.order != EscortOrder.Patrol;
                 float patrol = math.min(180, 12 + math.sqrt(unit.front.dogs) * 6);
                 float angle = Time.time * 0.14f + units.IndexOf(unit) * 2.4f;
                 float3 target = home + (float3)(Quaternion.FromToRotation(Vector3.up, homeUp) * new Vector3(math.cos(angle) * patrol, unit.ship ? 130 : 0, math.sin(angle) * patrol));
+                if (unit.ship)
+                {
+                    var world = game.System.Descriptor.bodies[unit.front.world];
+                    float altitude = world.radius * (Shapes.AirTop(world) - 1) + 180;
+                    float3 arc = (float3)(Quaternion.FromToRotation(Vector3.up, homeUp)
+                        * new Vector3(math.cos(angle * 0.22f), 0, math.sin(angle * 0.22f)));
+                    float3 centre = game.System.ToReference(unit.front.world);
+                    target = centre + math.normalize(homeUp + arc * 0.16f) * (world.radius + altitude);
+                }
+                bool docking = unit.ship && !following && unit.front.world == game.System.Reference && unit.age > 78;
+                if (docking)
+                {
+                    float distance = math.length(Walker.Project(unit.position - home, homeUp));
+                    target = home + homeUp * (distance > 5 ? 35 : 0.7f);
+                }
                 if (following)
                     target = game.Player.Position + math.rotate(game.Player.ship.rotation, new float3(-28, 18, -45));
+                if (!unit.ship && !unit.pack && unit.age >= 5)
+                {
+                    var pad = Quaternion.FromToRotation(Vector3.up, homeUp);
+                    float3 atGate = home + (float3)(pad * Vector3.forward) * 4.5f;
+                    if (math.dot(unit.position - atGate, (float3)(pad * Vector3.forward)) < 0 && math.distance(unit.position, home) < 6) target = atGate;
+                }
                 if (unit.pack) target = PackRally(unit.position);
                 int enemy = -1; float nearest = unit.pack ? 55 : unit.ship ? 2500 : patrol + 35;
                 for (int i = 0; i < game.Battle.Foes.Count; i++)
                 {
                     var foe = game.Battle.Foes[i]; float distance = math.distance(foe.position, unit.position);
-                    if (unit.age < 5 || foe.kind == FoeKind.Mind || foe.friendly || foe.health <= 0 || foe.protectedCore || (foe.kind == FoeKind.Raider) != unit.ship || distance >= nearest) continue;
+                    if (unit.age < 5 || docking || foe.kind == FoeKind.Mind || foe.friendly || foe.health <= 0 || foe.protectedCore || (foe.kind == FoeKind.Raider) != unit.ship || distance >= nearest) continue;
                     if (!unit.ship && game.System.ReferenceBody.Dry(foe.position)) continue;
                     if (unit.pack ? math.distance(foe.position, target) > 60 : unit.ship ? math.distance(foe.position, following ? game.Player.Position : home) > (following && game.Escorts.order == EscortOrder.Follow ? 700 : 2500) : math.distance(foe.position, home) > patrol + 35) continue;
                     if (!game.Outpost.Visible(unit.position + math.normalizesafe(unit.position) * 1.4f, foe.position)) continue;
@@ -542,11 +609,17 @@ namespace Infinigame
                     }
                 }
                 if (unit.age < 5)
-                    unit.position = home + homeUp * (unit.age < 3 ? math.lerp(unit.ship ? -3 : -1.6f, 0, unit.age / 3) : unit.ship ? (unit.age - 3) * 20 : 0)
-                        + (float3)(Quaternion.FromToRotation(Vector3.up, homeUp) * Vector3.forward) * math.max(0, unit.age - 3) * 5;
+                {
+                    float launch = math.max(0, unit.age - (unit.ship ? 1.0f : 1.5f));
+                    unit.position = home + homeUp * (unit.ship ? 0.7f + launch * launch * 2.5f : math.lerp(0.42f, 0, math.saturate(launch - 2.5f)))
+                        + (float3)(Quaternion.FromToRotation(Vector3.up, homeUp) * Vector3.forward) * (unit.ship ? launch * 0.8f : math.min(4.5f, launch * 1.6f));
+                }
                 else if (unit.ship)
                 {
-                    if (following || enemy < 0 || nearest > 80) unit.position = War.Follow(unit.position, target, following ? game.Player.Velocity : float3.zero, dt);
+                    if (following || enemy < 0 || nearest > 80)
+                        unit.position = docking && math.distance(unit.position, home) < 45
+                            ? Vector3.MoveTowards(unit.position, target, 8 * dt) : (Vector3)War.Follow(unit.position, target, following ? game.Player.Velocity : float3.zero, dt);
+                    if (docking && math.distance(unit.position, home) < 1) unit.age = 0;
                     float3 velocity = unit.position - before;
                     game.Outpost.Shield.Bounce(before, ref unit.position, ref velocity, 4);
                     if (game.Outpost.World == game.System.Reference && Combat.Crosses(before, unit.position - before, game.Outpost.Position, game.Stage == Campaign.Citadel ? 1500 : 120))
@@ -562,16 +635,18 @@ namespace Infinigame
                 else if (enemy < 0 || nearest > 12)
                     unit.position = game.Outpost.Resolve(before, before + math.normalizesafe(Walker.Project(target - before, math.normalizesafe(before))) * dt * 7, 0.7f, out _);
                 float3 up = math.normalizesafe(unit.position);
-                if (unit.age >= 5 && body.kind == BodyKind.Rock)
+                if (unit.age >= 5 && body.kind == BodyKind.Rock && (!unit.ship || following || unit.front.world == game.System.Reference))
                 {
                     float ground = body.GroundRadius(up);
                     if (unit.pack && ground < body.SeaRadius) unit.airborne = true;
-                    unit.position = up * (unit.pack && unit.airborne ? math.max(math.length(unit.position), math.max(ground, body.SeaRadius + 2)) : unit.ship ? math.max(math.length(unit.position), ground + 20) : ground);
+                    unit.position = up * (unit.pack && unit.airborne ? math.max(math.length(unit.position), math.max(ground, body.SeaRadius + 2)) : unit.ship ? math.max(math.length(unit.position), ground + (docking ? 0.7f : 20)) : ground);
                 }
                 if (!unit.ship && body.Dry(unit.position)) { unit.position = before; unit.velocity = float3.zero; }
-                if (unit.jets != null)
+                if (unit.ship && unit.jets != null) unit.jets.gameObject.SetActive(math.distancesq(before, unit.position) > dt * dt);
+                else if (unit.jets != null)
                     foreach (Transform nozzle in unit.jets) nozzle.GetChild(0).gameObject.SetActive(unit.airborne);
                 float3 forward = math.normalizesafe(unit.ship ? aim - unit.position : Walker.Project(target - unit.position, up), math.cross(up, new float3(1, 0, 0)));
+                if (!unit.ship && unit.age < 5) forward = Quaternion.FromToRotation(Vector3.up, homeUp) * Vector3.forward;
                 if (unit.pack)
                 {
                     float3 bearing = Walker.Project(enemy >= 0 ? aim - unit.position : unit.velocity, up);

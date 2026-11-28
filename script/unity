@@ -32,5 +32,6 @@ if command -v unity &>/dev/null; then
 fi
 # Burst decides it is on a Mac by looking for /Volumes, which some sandboxes hide. It then fails
 # to load, so run without it there: jobs still work, only slower.
-[ -r /Volumes ] || set -- -burst-disable-compilation "$@"
+source script/lib/burst
+burst_required || set -- -burst-disable-compilation "$@"
 exec "$unity" -projectPath "$PWD" "$@"

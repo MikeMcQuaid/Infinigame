@@ -101,6 +101,7 @@ namespace Infinigame
                 air.SetColor("_SkyColour", Shapes.Colour(descriptor.sky));
                 air.SetColor("_DuskColour", Shapes.Colour(descriptor.dusk));
                 air.SetFloat("_PlanetRadius", radius);
+                air.SetFloat("_CloudTop", descriptor.kind == BodyKind.Gas ? 1 : 0);
                 air.SetFloat("_AtmosphereRadius", radius * Shapes.AirTop(descriptor));
                 air.SetFloat("_Density", 2.2f * descriptor.air);
                 Shell("Atmosphere", Shapes.AirTop(descriptor), air);
@@ -182,6 +183,14 @@ namespace Infinigame
             wantedSet.Clear();
             wantedSet.UnionWith(wanted);
 
+            // A finale replay can cut straight to the engines before the first terrain jobs finish.
+            if (Descriptor.burnAttitude.HasValue)
+                for (int face = 0; face < CubeSphere.Faces; face++)
+                {
+                    var root = new NodeId(face, 0, 0, 0);
+                    if (!patches.ContainsKey(root)) patches[root] = Build(root);
+                }
+
             // finish builds within the frame budget, drop patches nobody wants, show the drawn set
             int budget = lod.buildsPerFrame, inFlight = 0;
             scratch.Clear();
@@ -193,7 +202,7 @@ namespace Infinigame
                     scratch.Add(pair.Key);
                     continue;
                 }
-                if (patch.building && patch.job.IsCompleted && budget-- > 0)
+                if (patch.building && (Descriptor.burnAttitude.HasValue && pair.Key.depth == 0 || patch.job.IsCompleted && budget-- > 0))
                 {
                     patch.job.Complete();
                     Mesh.ApplyAndDisposeWritableMeshData(patch.data, patch.mesh, MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices);

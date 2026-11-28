@@ -28,6 +28,14 @@ namespace Infinigame.Tests
             visor.planeDistance = game.Fall.active ? Mathf.Max(100, Mathf.NextPowerOfTwo((int)(camera.transform.position.magnitude * 0.02f))) : camera.nearClipPlane + 0.01f;
             var touch = GameObject.Find("Touch controls").GetComponent<Canvas>();
             touch.renderMode = RenderMode.ScreenSpaceCamera; touch.worldCamera = camera; touch.planeDistance = visor.planeDistance;
+            var startup = GameObject.Find("Loading")?.GetComponent<Canvas>();
+            var loadingMode = startup != null ? startup.renderMode : RenderMode.ScreenSpaceOverlay;
+            if (startup != null && loadingMode == RenderMode.ScreenSpaceOverlay)
+            {
+                startup.renderMode = RenderMode.ScreenSpaceCamera;
+                startup.worldCamera = camera;
+                startup.planeDistance = visor.planeDistance;
+            }
             Canvas.ForceUpdateCanvases();
             camera.Render();
             RenderTexture.active = target;
@@ -36,6 +44,7 @@ namespace Infinigame.Tests
             Directory.CreateDirectory("Logs/Screenshots");
             File.WriteAllBytes("Logs/Screenshots/" + name + ".png", picture.EncodeToPNG());
             RenderTexture.active = null; camera.targetTexture = null; visor.renderMode = visorMode; touch.renderMode = RenderMode.ScreenSpaceOverlay;
+            if (startup != null) startup.renderMode = loadingMode;
             Object.Destroy(target); Object.Destroy(picture);
         }
 
@@ -50,11 +59,6 @@ namespace Infinigame.Tests
             Assert.IsFalse(Player.captive || Player.NearShip || Player.CanRecall);
             Assert.AreEqual(3, Player.energy, 0.01f);
             Assert.AreEqual("Emergency fists", Player.Weapon.name);
-            yield return Press(new Controls { fire = true });
-            Assert.AreEqual(0, game.Dug, "The boot sequence must finish before punching");
-            yield return Seconds(6.5f);
-            yield return ReworkShot("110-suit-boot");
-            yield return Seconds(Game.BootDuration - 6);
             yield return ReworkShot("111-emergency-hud");
             for (int i = 0; i < Game.Digs; i++) yield return Press(new Controls { fire = true });
             Assert.AreEqual(1, game.Stage);
@@ -90,7 +94,7 @@ namespace Infinigame.Tests
             Assert.IsTrue(Body.Dry(game.Outpost.Core));
             Assert.IsFalse(game.Outpost.Use());
             Assert.IsNull(GameObject.Find("Control terminal"));
-            Assert.AreEqual(3, game.Battle.Foes.Count(foe => foe.kind == FoeKind.Sentry));
+            Assert.AreEqual(1, game.Battle.Foes.Count(foe => foe.kind == FoeKind.Sentry));
             Assert.IsTrue(game.Battle.Foes.Where(foe => foe.kind == FoeKind.Sentry).All(foe => foe.caste == MotileCaste.Stalker));
             yield return ReworkShot("112-burrow-entrance");
             Assert.IsFalse(game.Outpost.Rooms.walls.Last().broken, "The burrow starts sealed");
@@ -128,6 +132,8 @@ namespace Infinigame.Tests
         public IEnumerator ReworkFactoryAndOrbitRecoveryArePlayable()
         {
             game.Jump(Campaign.Recovery);
+            float air = Body.radius * Shapes.AirTop(Body);
+            Assert.That(math.length(Player.ship.position) - air, Is.InRange(0.1f, 6f));
             var yard = game.Colonies.Single(colony => colony.world == Home && game.Frontier.State(Home, colony.region).shipyard);
             var up = math.normalize(yard.site);
             Stand(math.normalize(yard.site + World(up) * 25), World(up));
@@ -253,7 +259,8 @@ namespace Infinigame.Tests
                 math.distance((float3)GameObject.Find("Moon impact").transform.position, Solar.ToReference(game.Fall.world) - Solar.Anchor), 1);
             Assert.IsNotNull(GameObject.Find("Rising fire cloud"));
             Assert.GreaterOrEqual(GameObject.Find("Impact ejecta").transform.childCount, 64);
-            Assert.AreEqual(Solar.Bodies[Home].transform.localScale.x, Solar.Bodies[Moon].transform.localScale.x, 0.0001f);
+            int satellite = System.Array.FindIndex(Solar.Descriptor.bodies, body => body.orbit.parent > 0 && Solar.Descriptor.bodies[body.orbit.parent].kind == BodyKind.Gas);
+            Assert.AreEqual(Solar.Bodies[Solar.Descriptor.bodies[satellite].orbit.parent].transform.localScale.x, Solar.Bodies[satellite].transform.localScale.x, 0.0001f);
             yield return Until(() => game.Frontier.Ending.Contains("SYSTEM CONSUMPTION"));
             yield return ReworkShot("117-singularity");
             yield return Until(() => game.Frontier.Ending.Contains("SHIP IN FREE FALL"));
@@ -264,6 +271,7 @@ namespace Infinigame.Tests
             Assert.Less(math.distance(Player.ship.position, Solar.ToReference(game.Fall.world)), 1);
             for (float waited = 0; game.Frontier.Whiteout < 0.95f && waited < 45; waited += Time.unscaledDeltaTime) yield return null;
             Assert.GreaterOrEqual(game.Frontier.Whiteout, 0.95f);
+            Assert.AreEqual("WHITE HOLE · ATTEMPTING EXIT VECTOR", game.Frontier.Ending);
             yield return ReworkShot("118-whiteout");
             for (float t = 0; game.Depth == depth && t < 15; t += Time.unscaledDeltaTime) yield return null;
             Assert.AreEqual(depth + 1, game.Depth); Assert.AreEqual(seed + 1, game.Seed);

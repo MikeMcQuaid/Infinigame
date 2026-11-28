@@ -121,7 +121,7 @@ namespace Infinigame.Tests
             }
             int other = (game.Frontier.Local.region + 1) % 3;
             game.Frontier.State(Home, other).alienShips = 5;
-            Assert.IsFalse(game.Frontier.CanBuild(2), "Moon engines require every local fleet to be cleared");
+            Assert.IsFalse(game.Frontier.CanBuild(2), "Moon engines cannot be installed on a planet");
             yield return null;
         }
         [UnityTest] public IEnumerator ExpeditionRewardsAndRecallFollowThreeBurrows()
@@ -180,7 +180,7 @@ namespace Infinigame.Tests
         {
             game.Jump(Campaign.SecondBurrow);
             Stand(Campaign.Site(Solar.Descriptor, 1), new Unity.Mathematics.float3(0, 0, 1));
-            game.Hermit.Rescue();
+            game.Hermit.Rescue(Player.Position);
             for (int i = 0; i < 4; i++) game.Hermit.Punched();
             Assert.IsFalse(game.Hermit.Provoked);
             game.Hermit.Punched(); Assert.IsTrue(game.Hermit.Provoked);

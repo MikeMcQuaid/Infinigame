@@ -65,7 +65,7 @@ namespace Infinigame
             // the three screens: speed, the gap to the surface that matters and the heat outside
             bool near = r.range < 2000f;
             float load = r.heat / Mathf.Max(r.heatLimit, 1f), hot = math.smoothstep(0.7f, 0.9f, load);
-            At("BOOST").caption.text = "BOOST\n" + DeviceControls.Key("SHIFT", "L3", "STICK ↑", "LT");
+            At("BOOST").caption.text = "BOOST\n" + DeviceControls.Key("SHIFT", "LT", "BOOST", "LT");
             At("AUTO").caption.text = "AUTO\n" + DeviceControls.Key("T", "D→", "RECALL", "R3");
             At("LAND").caption.text = "LAND\n" + DeviceControls.Use;
             foreach (string key in FlightLabels)

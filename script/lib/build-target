@@ -26,6 +26,12 @@ if ! wait "$build_pid"; then
   tail -n 80 "$build_log"
   exit 1
 fi
-if [ ! -r /Volumes ]; then
-  echo 'Built without Burst in this sandbox. Rebuild from your normal Mac account for optimised terrain generation before performance testing.'
+source script/lib/burst
+if ! burst_required; then
+  echo 'Burst compilation was disabled in this sandbox. Rebuild from your normal Mac account for terrain performance testing.'
+elif library=$(burst_library "$build_target") && [ -n "$library" ]; then
+  echo "Verified native Burst library: $library"
+else
+  echo "Build failed: $build_target has no native Burst library. See $build_log." >&2
+  exit 1
 fi

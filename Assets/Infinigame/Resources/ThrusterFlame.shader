@@ -32,7 +32,7 @@ Shader "Infinigame/ThrusterFlame"
                 float t = saturate(i.p.y * 0.5 + 0.5);
                 float filaments = 0.5 + 0.5 * sin(12 * i.p.x + 17 * i.p.z - t * 24 + _Time.y * 18);
                 half3 colour = lerp(half3(0.67,0.93,1), half3(0.08,0.54,0.91), smoothstep(0.08,0.45,t));
-                colour = lerp(colour, half3(0.77,0.29,0.13), smoothstep(0.48,0.95,t) * filaments);
+                colour = lerp(colour, half3(0.07,0.72,0.89), smoothstep(0.48,0.95,t) * filaments);
                 return half4(colour, (1 - t*t) * lerp(0.35,0.94,filaments));
             }
             ENDHLSL

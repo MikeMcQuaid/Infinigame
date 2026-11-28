@@ -21,6 +21,27 @@ namespace Infinigame.Core
         public static float Berth(BodyDescriptor body) => body.kind == BodyKind.Sun ? 4f * body.radius
             : 1.15f * math.max(body.radius + body.terrain.MaxHeight, body.ringOuter);
 
+        // Follow the short arc above the terrain, then frame the objective from the landing area.
+        public static bool Approach(ref ShipState ship, BodyDescriptor body, float3 site, float3 focus, IReadOnlyList<float4> worlds, float dt)
+        {
+            float3 radial = math.normalize(ship.position), destination = math.normalize(site);
+            float cosine = math.clamp(math.dot(radial, destination), -1, 1);
+            float3 side = math.abs(radial.y) < 0.9f ? new float3(0, 1, 0) : new float3(1, 0, 0);
+            float3 tangent = destination - radial * cosine;
+            tangent = math.normalize(math.lengthsq(tangent) > 1e-8f ? tangent : math.cross(radial, side));
+            const float arc = 0.25f;
+            bool overSite = cosine >= math.cos(arc);
+            float3 waypoint = overSite ? site + destination * 110
+                : (radial * math.cos(arc) + tangent * math.sin(arc)) * (body.radius * 1.015f + body.terrain.MaxHeight + 110);
+            var rotation = ship.rotation;
+            bool arrived = Step(ref ship, waypoint, float3.zero, 0, worlds, dt);
+            if (!overSite || math.distancesq(ship.position, waypoint) > 65 * 65) return false;
+            float3 look = math.normalize(focus - ship.position);
+            float3 up = math.abs(math.dot(look, destination)) < 0.98f ? destination : side;
+            ship.rotation = math.slerp(rotation, quaternion.LookRotationSafe(look, up), math.saturate(4 * dt));
+            return arrived && math.dot(math.forward(ship.rotation), look) > 0.99f;
+        }
+
         // One step towards a target whose centre is at centre, moving at drift, both in the frame
         // the ship's state is in. worlds lists everything else to steer round as (centre, berth).
         // Returns true once the ship has arrived.

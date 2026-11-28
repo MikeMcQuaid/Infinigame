@@ -43,14 +43,12 @@ namespace Infinigame
         Renderer[] bodyRenderers;
         public float3 BackpackPort => (float3)missilePort.position + system.Anchor;
         public readonly Transform[] fists = new Transform[2];
+        Quaternion[] wristMounts;
+        const float FistRoll = 90f;
+        float wristRoll = FistRoll;
         void OnDestroy() { if (chartCamera != null) Destroy(chartCamera.targetTexture); }
         public void ShowShipPosition() => model.position = ship.position - system.Anchor;
         public void Calibrate() { tracked = headingTracked = false; }
-        public void Stain(Material material, int index)
-        {
-            Shapes.Part(traveller.Find(index % 2 == 0 ? "Left leg" : "Right leg"), "Violet blood", Shapes.Rock(2), material,
-                new Vector3((index % 3 - 1) * 0.06f, -0.08f * (index / 3), 0.16f), new Vector3(0.09f, 0.12f, 0.018f), false);
-        }
         MachineMotion motion;
         GameObject[] armour;
         GameObject[] outside;
@@ -60,8 +58,15 @@ namespace Infinigame
         float pitch, punch;
         Vector3 feetForward;
         bool chase, submerged, recall, detected;
-        float standing = 1;
-        Transform exhaust, engines;
+        float standing = 1, lastRubblePunch = -1;
+        int diggingHand;
+        public void PunchRubble(int hand)
+        {
+            diggingHand = hand;
+            lastRubblePunch = Time.time;
+        }
+        float3 climbOffset;
+        Transform exhaust, engines, packLights, chestLights;
         public bool InSpace => math.length(Position) > Body.radius * Shapes.AirTop(Body);
         // which of its weapons the ship has live, and which the player has in hand
         int gun, arm;
@@ -105,7 +110,7 @@ namespace Infinigame
         // Where the copilot sits, in a ship that has such a seat.
         public Transform Seat => model.Find("Cockpit/Copilot");
         public bool ShipOverhead => game.Stage <= Campaign.Recovery && system.Reference == SolarSystemDescriptor.Home && !Has(Gear.Ship);
-        public bool NearShip => (Has(Gear.Ship) || captive) && math.distance(walker.position, ship.position) < BoardingRange;
+        public bool NearShip => (Has(Gear.Ship) || captive && Has(Gear.Orbiter)) && math.distance(walker.position, ship.position) < BoardingRange;
 
         public bool Has(Gear gear) => Campaign.Has(Suit.Modules.Contains(gear) ? fitted : kit, gear);
         public float MaxEnergy => Suit.Capacity + (Has(Gear.Capacitor) ? 50 : 0);
@@ -124,7 +129,7 @@ namespace Infinigame
         // The weapon that would fire now, once it has been won: one of the ship's in flight, one of
         // those carried on foot. Arm is which of the latter.
         public bool Powered => Campaign.Has(kit, Gear.Beams);
-        public bool CanRecall => Has(Gear.Ship) || captive && InSpace;
+        public bool CanRecall => Has(Gear.Ship) || captive && Has(Gear.Orbiter) && InSpace;
         public Weapon Weapon
         {
             get
@@ -156,7 +161,7 @@ namespace Infinigame
         public float HurtAt { get; private set; } = float.MinValue;
         // The heat the suit, or in flight the hull, can stand.
         public float HeatLimit => flying ? Climate.HullLimit + (Has(Gear.Plating) ? 300f : 0f) : Has(Gear.Suit) ? Suit.HeatLimit : Climate.SuitLimit;
-        public bool Dead => health <= 0f || hull <= 0f;
+        public bool Dead => (health <= 0f || hull <= 0f) && game?.Challenge != Difficulty.Creative;
         // In the pilot's seat, looking out through the canopy.
         public bool Seated => flying && (!chase || game.Fall.active || game.Frontier.Whiteout > 0) && !SystemView;
         public bool ThirdPerson => !flying && chase && !DeviceControls.VR;
@@ -189,9 +194,12 @@ namespace Infinigame
             motion = traveller.gameObject.AddComponent<MachineMotion>();
             fists[0] = traveller.Find("Torso/Left arm/Elbow/Gauntlet");
             fists[1] = traveller.Find("Torso/Right arm/Elbow/Gauntlet");
+            wristMounts = fists.Select(fist => fist.localRotation).ToArray();
             bodyRenderers = traveller.GetComponentsInChildren<Renderer>();
             armour = traveller.GetComponentsInChildren<Transform>().Where(part => part.name == "Armour").Select(part => part.gameObject).ToArray();
             pack = traveller.Find("Torso/Thruster pack");
+            packLights = pack.Find("Thruster light");
+            chestLights = traveller.Find("Torso/Power indicators");
             exhaust = new GameObject("Suit jets").transform;
             exhaust.SetParent(pack, false);
             engines = new GameObject("Main drive plumes").transform;
@@ -208,8 +216,20 @@ namespace Infinigame
         }
 
         // Stand on a gentle patch of the reference body with the ship parked a few steps ahead.
+        public void ClimbOut(float3 exit)
+        {
+            climbOffset = walker.position - exit;
+            walker.position = exit;
+            walker.velocity = float3.zero;
+            standing = 0;
+            chase = false;
+        }
+
         public void Spawn()
         {
+            climbOffset = float3.zero;
+            standing = game.Buried ? 0 : 1;
+            if (game.Buried) chase = false;
             recall = detected = false;
             feetForward = Vector3.zero;
             float3 direction = system.Reference == SolarSystemDescriptor.Home ? Campaign.Site(system.Descriptor, game.Stage >= 2 && game.Stage <= 4 ? game.Stage - 1 : 0) : Body.FindLanding(system.Descriptor.seed + 1u);
@@ -249,6 +269,7 @@ namespace Infinigame
         public void Hurt(float amount, string cause)
         {
             if (game.GodMode || game.Fall.active || amount <= 0f || Dead) return;
+            amount = Combat.Incoming(amount, game.Challenge);
             if (flying) hull -= amount;
             else
             {
@@ -256,8 +277,25 @@ namespace Infinigame
                 energy -= absorbed;
                 health -= amount - absorbed;
             }
+            if (game.Challenge == Difficulty.Creative)
+            {
+                health = math.max(1, health);
+                hull = math.max(1, hull);
+            }
             Cause = cause;
             HurtAt = Time.time;
+        }
+
+        float3? MissionSite(int world)
+        {
+            if (game.Stage == Campaign.Won && !game.Fall.active && system.Descriptor.bodies[world].orbit.parent > 0)
+            {
+                if (game.Fall.armed && game.Fall.moon == world) return game.EnginePole * system.Descriptor.bodies[world].radius;
+                if (world == system.Reference) return math.normalizesafe(Position) * Body.GroundRadius(math.normalizesafe(Position));
+            }
+            if (world != game.Outpost.World || game.Stage < Campaign.FirstBurrow || game.Stage == Campaign.Recovery || game.Stage >= Campaign.Citadel) return null;
+            if (game.Outpost.SiteCleared) return game.Outpost.DeliverySite;
+            return game.Stage >= Campaign.Tower ? game.Outpost.LandingSite : game.Outpost.Position;
         }
 
         // Sets the autopilot for the world nearest the middle of the view, or switches it off.
@@ -282,8 +320,13 @@ namespace Infinigame
             {
                 float3 to = system.Bodies[i].transform.position - view.transform.position;
                 float facing = math.dot(math.normalize(to), view.transform.forward);
-                // only what has a marker to face, not the one you are already beside, and nowhere the radiation would kill
-                if (!system.Charted(i) || system.Descriptor.bodies[i].kind == BodyKind.Station && game.Stage < Campaign.Citadel || facing < nearest || math.length(to) < Core.Autopilot.Standoff(system.Descriptor.bodies[i]) * 1.1f
+                var site = MissionSite(i);
+                if (site.HasValue)
+                {
+                    Vector3 toSite = system.Bodies[i].transform.TransformPoint(site.Value) - view.transform.position;
+                    facing = math.max(facing, Vector3.Dot(toSite.normalized, view.transform.forward));
+                }
+                if (!system.Charted(i) || system.Descriptor.bodies[i].kind == BodyKind.Station && game.Stage < Campaign.Citadel || facing < nearest || !site.HasValue && math.length(to) < Core.Autopilot.Standoff(system.Descriptor.bodies[i]) * 1.1f
                     || (!Has(Gear.Shield) && system.Descriptor.Planet(i) != SolarSystemDescriptor.Home)) continue;
                 nearest = facing;
                 Destination = i;
@@ -291,6 +334,29 @@ namespace Infinigame
             if (!Autopilot) return "FACE A WORLD'S MARKER TO FLY THERE";
             landing = false;
             return $"AUTOPILOT  ·  {system.Descriptor.bodies[Destination].name.ToUpperInvariant()}";
+        }
+
+        // The citadel and some moons have their own reference frame inside their parent's belt.
+        bool TraceRocks(float3 from, float3 to, float clearance, out Rock rock, out float3 normal, out float3 velocity, out int host)
+        {
+            var systemMap = system.Descriptor;
+            for (host = system.Reference; host >= 0; host = systemMap.bodies[host].orbit.parent)
+            {
+                var body = systemMap.bodies[host];
+                if (body.ringOuter <= 0) continue;
+                bool local = host == system.Reference;
+                var turn = local ? quaternion.identity : systemMap.Turn(system.Reference, host, system.Clock);
+                float3 start = local ? from : systemMap.ToLocal(host, system.Clock, systemMap.ToInertial(system.Reference, system.Clock, from));
+                if (!Rings.Trace(body, start, start + math.rotate(turn, to - from), clearance, system.Clock, rocks, out rock, out normal, out velocity)) continue;
+                if (!local)
+                {
+                    systemMap.Rebase(host, system.Reference, system.Clock, ref rock.position, ref velocity);
+                    normal = math.rotate(math.inverse(turn), normal);
+                }
+                return true;
+            }
+            rock = default; normal = velocity = float3.zero;
+            return false;
         }
 
         public string TravelTo(int world)
@@ -332,7 +398,7 @@ namespace Infinigame
                 }
                 if (next < rack.Length && Has(rack[next].needs)) held = next;
             }
-            if (c.toggleView) chase = !chase;
+            if (c.toggleView && (flying || !game.Buried && standing >= 1)) chase = !chase;
             riding = false;
             if (c.reload && Has(Gear.Stealth)) cloaked = !cloaked;
             cloaked &= Has(Gear.Stealth) && !flying && !c.fire;
@@ -382,9 +448,20 @@ namespace Infinigame
                     for (int i = 0; i < bodies.Length; i++)
                         if (i != Destination && !bodies[i].destroyed)
                             worlds.Add(new float4(system.ToReference(i), Core.Autopilot.Berth(bodies[i])));
+                    float3 course = math.normalizesafe(centre - ship.position, math.forward(ship.rotation));
+                    float speed = math.length(ship.velocity);
+                    float lookAhead = math.min(math.distance(centre, ship.position), math.clamp(120 + speed * 1.2f, 120, 5000));
+                    if (TraceRocks(ship.position, ship.position + math.normalizesafe(ship.velocity, course) * lookAhead,
+                        Combat.ShipRadius * 2, out Rock hazard, out _, out _, out _)
+                        || (speed > 0 && TraceRocks(ship.position, ship.position + course * lookAhead, Combat.ShipRadius * 2, out hazard, out _, out _, out _)))
+                        worlds.Add(new float4(hazard.position, hazard.radius + 3 * Combat.ShipRadius));
+                    float3? site = Destination == system.Reference ? MissionSite(Destination) : null;
                     for (int i = 0; i < steps && Autopilot; i++)
                     {
-                        if (Core.Autopilot.Step(ref ship, centre, drift, Core.Autopilot.Standoff(bodies[Destination]), worlds, dt)) Destination = -1;
+                        bool arrived = site.HasValue
+                            ? Core.Autopilot.Approach(ref ship, Body, site.Value, Destination == game.Outpost.World && !game.Outpost.SiteCleared ? game.Outpost.Position : site.Value, worlds, dt)
+                            : Core.Autopilot.Step(ref ship, centre, drift, Core.Autopilot.Standoff(bodies[Destination]), worlds, dt);
+                        if (arrived) Destination = -1;
                         // whatever its course, it never takes the ship into the ground
                         float3 over = math.normalize(ship.position);
                         ship.position = over * math.max(math.length(ship.position), Ship.Floor(Body, over) + Ship.Clearance + 2f);
@@ -414,16 +491,22 @@ namespace Infinigame
                 // a hard enough landing leaves its mark on the ground
                 if (crash > 0f) system.Bodies[system.Reference].Dig(ship.position, math.clamp(0.08f * ship.impact, 2f, 12f));
                 // the autopilot threads the rocks of a belt or a ring itself
-                if (frame > 0 && !Autopilot && Rings.Hit(Body, ship.position, Combat.ShipRadius, system.Clock, rocks, out float3 normal, out float3 moving))
+                if (frame > 0 && TraceRocks(before, ship.position, Combat.ShipRadius, out Rock rock, out float3 normal, out float3 moving, out int ringWorld))
                 {
                     // a rock in the rings: bounce off it, and pay for how hard
                     float into = math.dot(ship.velocity - moving, normal);
                     if (into < 0f)
                     {
                         ship.velocity -= normal * (into * 1.5f);
-                        Hurt(Combat.Graze(-into, hull), Body.kind == BodyKind.Sun ? "Struck an asteroid in the belt" : $"Struck a rock in the rings of {Body.name}");
+                        if (!Autopilot)
+                        {
+                            bool asteroid = bodies[ringWorld].kind == BodyKind.Sun;
+                            float damage = Combat.RockImpact(-into, rock.radius);
+                            if (!asteroid) damage = math.min(damage, math.max(0, hull - 1) / Combat.Incoming(1, game.Challenge));
+                            Hurt(damage, asteroid ? "Struck an asteroid in the belt" : $"Struck a rock in the rings of {bodies[ringWorld].name}");
+                        }
                     }
-                    ship.position += normal * 0.5f;
+                    ship.position = rock.position + normal * (rock.radius + Combat.ShipRadius + 0.1f);
                 }
             }
             else
@@ -445,7 +528,7 @@ namespace Infinigame
                         walker.position = up * ceiling;
                         walker.velocity -= up * math.max(0, math.dot(walker.velocity, up));
                     }
-                    if (InSpace && captive && !detected) { detected = true; Travel(); }
+                    if (InSpace && captive && Has(Gear.Orbiter) && !detected) { detected = true; Travel(); }
                     if (recall)
                     {
                         float3 destination = walker.position + walker.forward * (InSpace ? 4 : 13) + up * (InSpace ? 0 : 4);
@@ -482,6 +565,16 @@ namespace Infinigame
                 {
                     if (flying) { ship.position = resolved; Hurt(Combat.Graze(math.length(ship.velocity), hull), "Struck a tunnel wall"); ship.velocity *= 0.3f; }
                     else { walker.position = resolved; walker.velocity = (resolved - before) / math.max(frame, 1e-4f); walker.grounded = true; }
+                }
+            }
+            if (!flying && !game.Buried && game.Hermit.Near)
+            {
+                float3 normal = math.normalize(game.Hermit.Position);
+                float3 away = Walker.Project(walker.position - game.Hermit.Position, normal);
+                if (math.lengthsq(away) < 1.65f * 1.65f)
+                {
+                    float3 direction = math.normalize(game.Hermit.Position + 1.65f * math.normalizesafe(away, -walker.forward));
+                    walker.position = direction * math.max(math.length(walker.position), Body.GroundRadius(direction));
                 }
             }
             if (frame > 0 && !flying && game.Outpost.LandingLocked && game.Outpost.Shield.Bounce(before, ref walker.position, ref walker.velocity, 0))
@@ -530,7 +623,16 @@ namespace Infinigame
             landingGear.gameObject.SetActive(gearExtension > 0);
             landingGear.localPosition = Vector3.up * (0.65f * (1 - gearExtension));
             landingGear.localScale = new Vector3(1, Mathf.SmoothStep(0.08f, 1, gearExtension), 1);
-            traveller.gameObject.SetActive(!flying && !game.Buried && !SystemView && !game.Title && !Dead);
+            standing = game.Buried ? 0 : math.min(1, standing + frame * 0.7f);
+            float crouch = 1 - Mathf.SmoothStep(0, 1, standing);
+            float3 feet = walker.position + climbOffset * crouch;
+            if (crouch > 0 && !game.Buried && !flying)
+            {
+                float3 normal = math.normalizesafe(feet);
+                feet = normal * math.max(math.length(feet), Body.GroundRadius(normal));
+            }
+            float hipDrop = 0.90f * (1 - Mathf.Cos(crouch * 66 * Mathf.Deg2Rad));
+            traveller.gameObject.SetActive(!flying && !SystemView && !game.Title && !Dead);
             if (traveller.gameObject.activeSelf)
             {
                 Vector3 up = math.normalizesafe(walker.position), forward = walker.forward;
@@ -543,15 +645,27 @@ namespace Infinigame
                     turn = Vector3.SignedAngle(feetForward, travel, up);
                     feetForward = Quaternion.AngleAxis(turn * (1 - math.exp(-10 * frame)), up) * feetForward;
                 }
-                traveller.SetPositionAndRotation(walker.position - system.Anchor, Quaternion.LookRotation(feetForward, up));
-                foreach (string part in new[] { "Torso/Head", "Torso/Left arm", "Torso/Right arm" })
-                    if (traveller.Find(part) is Transform limb) limb.gameObject.SetActive(ThirdPerson || part != "Torso/Head" && !DeviceControls.VR);
+                traveller.SetPositionAndRotation(feet - (float3)up * hipDrop - (float3)feetForward * (DeviceControls.VR ? 0.18f : 0) - system.Anchor, Quaternion.LookRotation(feetForward, up));
+                traveller.Find("Torso/Head").gameObject.SetActive(ThirdPerson);
+                traveller.Find("Torso/Shoulders").gameObject.SetActive(!DeviceControls.VR);
+                traveller.Find("Torso/Breastplates").gameObject.SetActive(ThirdPerson);
+                traveller.Find("Torso/Collar heat exchangers").gameObject.SetActive(ThirdPerson);
+                wristRoll = Mathf.MoveTowards(wristRoll, !DeviceControls.VR && Weapon.melee ? FistRoll : 0, 540 * frame);
+                for (int i = 0; i < fists.Length; i++)
+                {
+                    fists[i].parent.parent.gameObject.SetActive(!DeviceControls.VR);
+                    fists[i].localRotation = wristMounts[i] * Quaternion.AngleAxis(i == 0 ? wristRoll : -wristRoll, Vector3.forward);
+                }
+                packLights.gameObject.SetActive(!DeviceControls.VR);
+                chestLights.gameObject.SetActive(!DeviceControls.VR);
+                motion.crouch = crouch;
                 foreach (var plate in armour) plate.SetActive(Has(Gear.Suit));
                 bool launcher = Has(Gear.BackMissiles) || Has(Gear.Nova);
-                pack.gameObject.SetActive(Has(Gear.Thrusters) || launcher);
+                pack.gameObject.SetActive(!DeviceControls.VR && (Has(Gear.Thrusters) || launcher));
                 missilePort.gameObject.SetActive(launcher);
                 exhaust.gameObject.SetActive(firingJets && energy > 0 && !walker.grounded);
-                motion.strike = Weapon.melee ? math.saturate(1 - (Time.time - game.Battle.Fired) / 0.35f) : 0;
+                motion.strikingHand = crouch > 0 ? diggingHand : 1;
+                motion.strike = crouch > 0 ? math.saturate(1 - (Time.time - lastRubblePunch) / 0.35f) : Weapon.melee ? math.saturate(1 - (Time.time - game.Battle.Fired) / 0.35f) : 0;
                 motion.recoil = math.saturate(1 - (Time.time - HurtAt) / 0.4f);
                 motion.weapon = Powered ? Arm : 0;
                 motion.aimPitch = pitch + punch;
@@ -628,9 +742,14 @@ namespace Infinigame
             {
                 float3 up = math.normalize(walker.position);
                 Quaternion looking = Quaternion.LookRotation(walker.forward, up) * Quaternion.Euler(-pitch - punch, 0f, 0f);
-                standing = game.Buried ? 0 : math.min(1, standing + frame * 0.7f);
-                if (!DeviceControls.VR) looking *= Quaternion.Euler(-65 * (1 - standing), 0, 12 * (1 - standing));
-                float3 eye = walker.position + up * (DeviceControls.VR ? Walker.EyeHeight : math.lerp(0.45f, Walker.EyeHeight, standing)), camera = eye;
+                // After breaking the roof, the wearer leans over the planted feet to stand.
+                if (!DeviceControls.VR) looking *= Quaternion.Euler(-52 * crouch + 46 * Mathf.Sin(standing * Mathf.PI), 0, 0);
+                float3 eye = feet + up * (Walker.EyeHeight - hipDrop - crouch * 0.12f) + walker.forward * (0.28f * crouch), camera = eye;
+                if (!ThirdPerson && !DeviceControls.VR && pitch < 0)
+                {
+                    float lean = Mathf.SmoothStep(0, 1, -pitch / 75) * (1 - crouch);
+                    camera = game.Outpost.Resolve(eye, eye + walker.forward * (0.43f * lean) + up * (0.10f * lean), 0.10f, out _, false);
+                }
                 if (ThirdPerson)
                 {
                     float3 desired = eye + (float3)(looking * new Vector3(0.55f, 0.55f, -4.8f));
@@ -682,23 +801,23 @@ namespace Infinigame
             {
                 if (DeviceControls.VR)
                 {
-                    Vector3 up = math.normalizesafe(walker.position);
-                    traveller.position = view.transform.position - up * Walker.EyeHeight - feetForward * 0.08f;
+                    motion.FitTrackedHead(traveller.InverseTransformVector(view.transform.position - TrackingPosition), hipDrop);
                 }
-                var torso = traveller.Find("Torso");
-                var leftArm = fists[0].parent.parent;
-                var rightArm = fists[1].parent.parent;
-                foreach (var part in bodyRenderers)
-                {
-                    bool upper = part.transform.IsChildOf(torso) && !part.transform.IsChildOf(leftArm) && !part.transform.IsChildOf(rightArm);
-                    part.forceRenderingOff = !DeviceControls.VR && upper || Vector3.Distance(part.bounds.ClosestPoint(view.transform.position), view.transform.position) < 0.18f;
-                }
+                else motion.lean = Vector3.zero;
             }
-            else foreach (var part in bodyRenderers) part.forceRenderingOff = false;
+            else motion.lean = Vector3.zero;
             if (!DeviceControls.VR && view.targetTexture == null) view.ResetAspect();
             // speed stretches the view a little, and the map of a world closes in until that world fills it
             if (!DeviceControls.VR) view.fieldOfView = Mathf.Lerp(view.fieldOfView, PlanetView ? 26f : !SystemView && Weapon.rail && game.Battle.Charging ? math.lerp(60, 34, game.Battle.RailCharge) : 70f + 25f * math.saturate(math.length(Velocity) / Tuning.ShipSpaceSpeed)
                 + (flying ? 0f : 12f * math.saturate((math.length(Velocity) - Tuning.WalkSpeed) / (Tuning.BikeSpeed - Tuning.WalkSpeed))), 5f * frame);
+        }
+
+        void LateUpdate()
+        {
+            if (bodyRenderers == null || !traveller.gameObject.activeSelf) return;
+            float clearance = DeviceControls.VR ? 0.19f : 0.10f;
+            foreach (var part in bodyRenderers)
+                part.forceRenderingOff = !ThirdPerson && !SystemView && part.bounds.SqrDistance(view.transform.position) < clearance * clearance;
         }
 
         // A blast has gone off here: a ship parked on the edge of the hole has to settle again.

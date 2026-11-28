@@ -246,6 +246,8 @@ namespace Infinigame
         {
             if (MatteCombat)
             {
+                if (eyes == default && Application.platform == RuntimePlatform.WindowsPlayer && !DeviceControls.VR)
+                    return new Material(Resources.Load<Shader>("DiffuseShell")) { color = colour, mainTexture = Textures.Albedo(Surface.Chitin), enableInstancing = true };
                 var matte = eyes == default ? Solid(Surface.Chitin, colour) : Material("Glow", eyes);
                 if (matte.HasProperty("_Smoothness")) matte.SetFloat("_Smoothness", 0);
                 if (matte.HasProperty("_Metallic")) matte.SetFloat("_Metallic", 0);
@@ -260,7 +262,9 @@ namespace Infinigame
 
         public static Material BroodTissue()
         {
-            var skin = Solid(Surface.Chitin, new Color(0.71f, 0.39f, 0.49f), true);
+            Color colour = new Color(0.71f, 0.39f, 0.49f);
+            if (Application.platform == RuntimePlatform.WindowsPlayer && !DeviceControls.VR) return Carapace(colour, 2);
+            var skin = Solid(Surface.Chitin, colour, true);
             skin.SetFloat("_Smoothness", 0.18f);
             skin.SetFloat("_BumpScale", 0.72f);
             skin.EnableKeyword("_SPECULARHIGHLIGHTS_OFF");
@@ -268,7 +272,7 @@ namespace Infinigame
             return skin;
         }
         public static Material PresenceShell(float size) => Carapace(new Color(0.83f, 0.76f, 0.70f), size);
-        public static Material PresenceOptics(float size) => Carapace(Color.black, size, new Color(0.43f, 0.48f, 0.85f));
+        public static Material PresenceOptics(float size) => Carapace(Color.black, size, new Color(0.62f, 0.32f, 0.78f));
 
         public static Material Cutout(Texture2D texture)
         {

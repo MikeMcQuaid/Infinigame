@@ -13,6 +13,323 @@ namespace Infinigame.Tests
 {
     public partial class PlayTests
     {
+        [Test]
+        public void WindowsMonitorRecoversNativeSizeAndHonoursExplicitDisplayChoices()
+        {
+            var native = typeof(DeviceControls).GetMethod("UseNativeMonitor", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(native, "A 720p size left by the headset must not select the monitor resolution");
+            bool Select(params string[] args) => (bool)native.Invoke(null, new object[] { args });
+            Assert.IsTrue(Select());
+            Assert.IsTrue(Select("-monitor", "2"));
+            Assert.IsTrue(Select("-screen-fullscreen", "1", "-window-mode", "borderless"));
+            Assert.IsFalse(Select("-screen-fullscreen", "0"));
+            Assert.IsFalse(Select("-screen-width", "1600", "-screen-height", "900"));
+            Assert.IsFalse(Select("-window-mode", "exclusive"));
+        }
+
+        [UnityTest] public IEnumerator TouchReadoutsStayAboveBothThumbs()
+        {
+            var touch = typeof(DeviceControls).GetProperty("Touch");
+            touch.SetValue(null, true);
+            try
+            {
+                yield return null;
+                var vitals = (RectTransform)typeof(SuitHud).GetField("metersPlate", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(game.GetComponent<SuitHud>());
+                var weapon = (CanvasGroup)typeof(Hud).GetField("weaponCard", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(game.GetComponent<Hud>());
+                var controls = game.GetComponent<DeviceControls>();
+                var area = typeof(DeviceControls).GetMethod("Area", BindingFlags.Instance | BindingFlags.NonPublic);
+                float fireTop = ((Rect)area.Invoke(controls, new object[] { 0 })).yMax;
+                float useTop = ((Rect)area.Invoke(controls, new object[] { 2 })).yMax;
+                foreach (var rect in new[] { vitals, (RectTransform)weapon.transform })
+                {
+                    var corners = new Vector3[4]; rect.GetWorldCorners(corners);
+                    var canvas = rect.GetComponentInParent<Canvas>().rootCanvas;
+                    var point = RectTransformUtility.WorldToScreenPoint(canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera, corners[0]);
+                    Assert.Greater(point.y, Mathf.Max(Screen.safeArea.center.y, rect == vitals ? fireTop : useTop), rect.name + " crosses a thumb zone");
+                }
+            }
+            finally { touch.SetValue(null, false); }
+        }
+
+        [UnityTest] public IEnumerator FirstBurrowLeavesRoomToLearnTheFists()
+        {
+            game.Jump(Campaign.FirstBurrow);
+            yield return null;
+            Assert.AreEqual(Difficulty.Normal, game.Challenge);
+            Assert.AreEqual(1, game.Battle.Foes.Count(foe => foe.kind == FoeKind.Sentry));
+            game.Battle.quiet = false;
+            for (int wave = 0; wave < 4; wave++)
+            {
+                typeof(Frontier).GetField("deployed", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(game.Frontier, 0f);
+                game.Frontier.Tick();
+            }
+            Assert.LessOrEqual(game.Battle.Foes.Count(foe => foe.patrol), 1, "Ambient patrols must leave room to learn");
+        }
+
+        [UnityTest] public IEnumerator OrbitalApproachTargetsTheSiteBeforeChangingGravityFrame()
+        {
+            game.Jump(Campaign.Tower);
+            var world = game.Outpost.World;
+            yield return HoverOver(Home, 100);
+            Assert.AreNotEqual(world, Solar.Reference);
+            float3 site = (float3)Solar.Bodies[world].transform.TransformPoint(game.Outpost.LandingSite) + Solar.Anchor;
+            Assert.Less(math.distance(game.Goal.Value, site), 0.15f);
+        }
+
+        [UnityTest] public IEnumerator MissionAutopilotRoundsLunaAndFacesTheShield()
+        {
+            game.Jump(Campaign.Tower);
+            float3 site = game.Outpost.LandingSite;
+            HoverAt(-math.normalize(site) * (Body.radius + 90));
+            Player.TravelTo(Solar.Reference);
+            Assert.IsTrue(Player.Autopilot);
+            yield return Until(() => !Player.Autopilot, 30);
+            Assert.Greater(math.dot(math.normalize(Player.Position), math.normalize(site)), 0.93f);
+            Assert.Less(math.distance(Player.Position, site), 380);
+            Assert.Greater(math.dot(math.rotate(Player.ship.rotation, new float3(0, 0, 1)), math.normalize(game.Outpost.Position - Player.Position)), 0.92f);
+        }
+
+        [UnityTest] public IEnumerator NormalSurfaceTurretFallsToFourCannonHits()
+        {
+            game.Jump(Campaign.Tower);
+            yield return null;
+            var turret = game.Battle.Foes.First(foe => foe.outerGuard && foe.stationary);
+            for (int shot = 0; shot < 4; shot++) Combat.Hurt(ref turret, Combat.Guns[0].damage, game.Challenge);
+            Assert.LessOrEqual(turret.health, 0);
+        }
+
+        [UnityTest] public IEnumerator MoonFactoryGunsStopAtTheAtmosphere()
+        {
+            game.Jump(Campaign.Won);
+            yield return null;
+            var mount = Object.FindObjectsByType<FactoryDefence>().First(defence => defence.world == Solar.Reference);
+            float3 up = math.normalize((float3)mount.transform.localPosition);
+            float air = Body.radius * Shapes.AirTop(Body);
+            var target = Combat.Spawn(FoeKind.Drone, up * (air + 5), -up, 1, 1);
+            game.Battle.Foes.Clear();
+            game.Battle.Foes.Add(target);
+            typeof(FactoryDefence).GetField("weapon", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(mount, 1);
+            mount.SendMessage("Update");
+            Assert.AreEqual(target.health, game.Battle.Foes[0].health);
+            target.position = up * (air - 3);
+            game.Battle.Foes[0] = target;
+            mount.SendMessage("Update");
+            Assert.Less(game.Battle.Foes[0].health, target.health);
+        }
+
+        [UnityTest] public IEnumerator ReplayingMoonIgnitionShowsGroundUnderTheEnginesOnItsFirstFrame()
+        {
+            game.Jump(Campaign.Won);
+            game.Frontier.Launch();
+            var moon = Solar.Bodies[game.Fall.moon];
+            moon.SendMessage("Update");
+            Assert.GreaterOrEqual(moon.GetComponentsInChildren<MeshFilter>().Count(part => part.name == "Patch"
+                && part.GetComponent<MeshRenderer>().enabled && part.sharedMesh.vertexCount > 0), 6);
+            yield return null;
+        }
+
+#if UNITY_EDITOR
+        [UnityTest] public IEnumerator IndexStrokesBreakTheFirstBurrowPlugAtItsVisibleSurface()
+        {
+            DeviceControls.SimulateHeadset = true;
+            try
+            {
+                game.Jump(Campaign.FirstBurrow);
+                yield return null;
+                var room = game.Outpost;
+                var arms = game.GetComponent<Arms>();
+                var plug = room.Rooms.walls[^1];
+                var contact = plug.centre;
+                contact.y = 1;
+                contact.z -= plug.half.z + 0.35f;
+                float3 direction = math.normalize(room.Place(contact + new float3(0, 0, 1)) - room.Place(contact));
+                for (int count = 0; count < 4 && !room.Rooms.walls[^1].broken; count++)
+                {
+                    int hand = count % 2;
+                    arms.punchOrigins[hand] = room.Place(contact) - direction * 0.4f;
+                    arms.punchDirections[hand] = direction;
+                    arms.punchLengths[hand] = 0.4f;
+                    typeof(Arms).GetProperty("PunchHands").SetValue(arms, 1 << hand);
+                    game.Battle.Tick(default);
+                }
+                Assert.IsTrue(room.Rooms.walls[^1].broken);
+            }
+            finally { DeviceControls.SimulateHeadset = false; }
+        }
+#endif
+
+        [UnityTest] public IEnumerator RocksInTheStarBeltCanHitAShipNearTheCitadel()
+        {
+            game.Jump(Campaign.Citadel);
+            if (Solar.Reference != Solar.Station) yield return HoverOver(Solar.Station, 2000);
+            var map = Solar.Descriptor;
+            var star = map.bodies[0];
+            float3 origin = map.ToLocal(0, 0, map.PositionAt(Solar.Station, 0));
+            const int size = 3;
+            float cell = Rings.Cell(star, size);
+            var rocks = new System.Collections.Generic.List<Rock>();
+            for (int band = (int)((math.length(origin.xz) - star.ringInner) / cell) - 1; band <= (int)((math.length(origin.xz) - star.ringInner) / cell) + 1; band++)
+            {
+                int sectors = Rings.Sectors(star, size, band);
+                int middle = (int)math.floor(math.atan2(origin.z, origin.x) * sectors / (2 * math.PI));
+                for (int j = middle - 2; j <= middle + 2; j++)
+                    Rings.Rocks(star, size, band, (j % sectors + sectors) % sectors, rocks);
+            }
+            var rock = rocks.First(r => math.distance(origin, r.position) > 1400 && math.distance(origin, r.position) < Body.soiRadius - 100);
+            float3 centre = Rings.Now(star, size, 0, Solar.Clock, rock.position);
+            float3 velocity = math.cross(new float3(0, Rings.Turned(star, size, 0, 1), 0), centre);
+            map.Rebase(0, Solar.Reference, Solar.Clock, ref centre, ref velocity);
+            HoverAt(centre + new float3(0, rock.radius + Combat.ShipRadius - 0.25f, 0));
+            Player.ship.velocity = velocity - new float3(0, 45, 0);
+            float hull = Player.hull;
+            Player.Tick(default);
+            Assert.Less(Player.hull, hull);
+            StringAssert.Contains("asteroid", Player.Cause);
+            Assert.Greater(math.distance(centre, Player.ship.position), rock.radius + Combat.ShipRadius);
+        }
+
+        [UnityTest] public IEnumerator TheYardLaunchesItsPilotedShipIntoOrbitWhileYouAreOnFoot()
+        {
+            game.Jump(Campaign.FirstBurrow);
+            var front = game.Frontier.Local;
+            front.factory = front.shipyard = true;
+            front.ships = 1;
+            float3 site = Player.Position;
+            game.Colonies.Add(new Colony { world = Home, region = front.region, site = site });
+            var step = (System.Action<float>)System.Delegate.CreateDelegate(typeof(System.Action<float>), game.Frontier, "DrawUnits");
+            step(0);
+            var escort = GameObject.Find("Fleet escort");
+            Assert.IsNotNull(escort);
+            Assert.IsNotNull(escort.transform.Find("Robot pilot"));
+            Assert.Less(math.distance((float3)escort.transform.position + Solar.Anchor, site), 2);
+            for (int i = 0; i < 600; i++) step(0.05f);
+            Assert.Greater(math.length((float3)escort.transform.position + Solar.Anchor), Body.radius * Shapes.AirTop(Body));
+            yield return null;
+        }
+
+        [UnityTest] public IEnumerator MoonEnginesCanBeBuiltFarFromAnySettlement()
+        {
+            game.Jump(Campaign.Won);
+            int moon = Solar.Reference;
+            float3 up = -math.normalize(game.Colonies.Single(site => site.world == moon).site);
+            Stand(up, World(up));
+            game.Presence.fronts.ForEach(front => { front.shipyard = false; front.alienShips = 4; });
+            StringAssert.Contains("BUILD MOON ENGINES HERE", game.Objective);
+            Player.flying = true;
+            StringAssert.Contains("ANY MOON", game.Objective);
+            Player.flying = false;
+            Assert.IsTrue(game.Frontier.CanBuild(2));
+            game.Frontier.BuildFactory(2);
+            Assert.IsTrue(game.Fall.armed);
+            Assert.AreEqual(moon, game.Fall.moon);
+            Assert.Greater(Vector3.Dot(up, Solar.Bodies[moon].transform.Find("Moon engine").up), 0.7f);
+            yield return null;
+        }
+
+        [UnityTest] public IEnumerator MoonEnginesWaitForThePilotToClearTheirMoon()
+        {
+            game.Jump(Campaign.Won);
+            var moon = game.Fall.moon;
+            Assert.AreEqual(moon, Solar.Reference);
+            var yard = game.Colonies.Single(site => site.world == moon);
+            Stand(math.normalize(yard.site), World(math.normalize(yard.site)));
+            Assert.IsTrue(game.Frontier.CanBuild(2));
+            game.Frontier.BuildFactory(2);
+            Assert.IsFalse(game.Fall.active);
+            Assert.IsFalse(Player.flying);
+            Assert.IsNotNull(Solar.Bodies[moon].transform.Find("Moon engine"));
+            Player.flying = true;
+            HoverAt(math.normalize(yard.site) * (Body.radius + math.max(210, Body.radius * 0.50f)));
+            yield return null;
+            Assert.IsFalse(game.Fall.active);
+            HoverAt(math.normalize(yard.site) * (Body.radius * 2.5f + 1000));
+            yield return null; yield return null;
+            Assert.IsTrue(game.Fall.active);
+            Assert.AreEqual(moon, game.Fall.moon);
+            yield return Seconds(Moonfall.Assembly + 0.3f);
+            Vector3 away = math.normalize(Solar.ToReference(moon) - Solar.ToReference(game.Fall.world));
+            foreach (var engine in Solar.Bodies[moon].GetComponentsInChildren<Transform>().Where(part => part.name == "Moon engine"))
+            {
+                Assert.Greater(Vector3.Dot(engine.up, away), 0.75f);
+                Assert.Greater(Vector3.Dot(Camera.main.transform.forward, (engine.position - Camera.main.transform.position).normalized), 0.90f);
+            }
+        }
+
+        [UnityTest] public IEnumerator NewExpeditionDisplaysZeroBeforeItsFirstFrame()
+        {
+            Game.Start = Campaign.Buried;
+            typeof(Game).GetMethod("Switch", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(game, new object[] { 1, Difficulty.Creative });
+            Assert.IsFalse(game.Ready);
+            var progress = GameObject.Find("Loading/Progress").GetComponent<UnityEngine.UI.Text>();
+            StringAssert.StartsWith("SUIT STARTUP  0%", progress.text);
+            StringAssert.Contains("POWER LOSS RECORDED", progress.text);
+            Vector2 position = progress.rectTransform.anchoredPosition;
+            int font = progress.fontSize;
+            yield return Until(() => game.Ready);
+            yield return null;
+            Assert.IsTrue(progress.isActiveAndEnabled);
+            Assert.AreEqual(position, progress.rectTransform.anchoredPosition);
+            Assert.AreEqual(font, progress.fontSize);
+            StringAssert.StartsWith("SUIT STARTUP  100%", progress.text);
+            Assert.AreEqual(Difficulty.Creative, game.Challenge);
+            yield return Press(new Controls { fire = true });
+            Assert.AreEqual(1, game.Dug, "The first frame of play accepts a punch");
+        }
+
+        [UnityTest] public IEnumerator RecoveringSuitReportsProgressAndSheltersFromRain()
+        {
+            game.Jump(Campaign.Buried);
+            var expedition = typeof(Game).GetField("script", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(game);
+            var waiting = expedition.GetType().GetProperty("WaitingForOpening");
+            waiting.SetValue(expedition, true);
+            try
+            {
+                yield return null;
+                var boot = GameObject.Find("Loading/Progress").GetComponent<UnityEngine.UI.Text>();
+                StringAssert.Contains("100%", boot.text);
+                yield return Press(new Controls { fire = true });
+                StringAssert.Contains("1/2", boot.text);
+                Assert.IsTrue(game.GetComponent<Rainfall>().Sheltered);
+            }
+            finally { waiting.SetValue(expedition, false); }
+        }
+
+        [UnityTest] public IEnumerator DesktopRadarFitsTheCornerWhenZoomed()
+        {
+            Assert.IsFalse(GameObject.Find("Touch controls").GetComponent<Canvas>().enabled);
+            var camera = Camera.main;
+            camera.fieldOfView = 34;
+            var radar = Object.FindAnyObjectByType<Radar>();
+            radar.SendMessage("LateUpdate");
+            Vector3 centre = camera.WorldToViewportPoint(radar.transform.position);
+            Vector3 edge = camera.WorldToViewportPoint(radar.transform.position + camera.transform.up * radar.transform.localScale.y);
+            Assert.Greater(centre.x, 0.75f);
+            Assert.Greater(centre.y, 0.8f);
+            Assert.That(edge.y, Is.InRange(centre.y + 0.04f, 0.98f));
+            yield return null;
+        }
+
+        [UnityTest] public IEnumerator CreativeStillRegistersSuitAndHullHits()
+        {
+            yield return Choose(Game.Settings);
+            Assert.AreEqual(Difficulty.Normal, game.Challenge);
+            yield return Pick("DIFFICULTY");
+            yield return Pick("DIFFICULTY");
+            yield return Pick("DIFFICULTY");
+            Assert.AreEqual(Difficulty.Creative, game.Challenge);
+            foreach (bool flying in new[] { false, true })
+            {
+                Player.flying = flying;
+                Player.energy = 0;
+                Player.health = Player.hull = 0;
+                Assert.IsFalse(Player.Dead);
+                Player.Hurt(10000, "Burned by lava");
+                Player.Hurt(10000, "Gunned down by Skimmers on Luna");
+                Assert.AreEqual(1, flying ? Player.hull : Player.health);
+                Assert.IsFalse(Player.Dead);
+            }
+        }
+
         [UnityTest] public IEnumerator SkippingMissionsBuildsThePrerequisiteColonies()
         {
             game.Jump(Campaign.FirstBurrow);
@@ -59,7 +376,7 @@ namespace Infinigame.Tests
         {
             yield return Press(new Controls { menu = true });
             yield return Press(new Controls { typed = "idgaf" });
-            foreach (string item in new[] { Game.Cheats, "Choose mission", "Citadel destroyed · build moon engines" })
+            foreach (string item in new[] { Game.Cheats, "Choose mission", $"{Campaign.Missions.Length + 1}. Build moon engines" })
             {
                 for (int i = 0; i < game.Items.Length && game.Items[game.Selected] != item; i++)
                     yield return Press(new Controls { down = true });
@@ -69,7 +386,8 @@ namespace Infinigame.Tests
             Assert.IsFalse(game.Fall.active);
             Assert.IsTrue(game.Frontier.CanBuild(2));
             game.Frontier.BuildFactory(2);
-            Assert.IsTrue(game.Fall.active);
+            Assert.IsTrue(game.Fall.armed);
+            Assert.IsFalse(game.Fall.active);
         }
 
         [UnityTest] public IEnumerator WeaponRecoveryStaysWithTheLauncher()
@@ -151,7 +469,7 @@ namespace Infinigame.Tests
             {
                 yield return Press(new Controls { select = 4 });
                 InputSystem.QueueStateEvent(keys, new KeyboardState(Key.W));
-                float unit = Mathf.Clamp(Screen.safeArea.height / 720f, 0.8f, 2.5f);
+                float unit = Mathf.Clamp(Screen.safeArea.height / 720f, 0.5f, 2.5f);
                 InputSystem.QueueStateEvent(screen, new TouchState { touchId = 7, phase = UnityEngine.InputSystem.TouchPhase.Began,
                     position = new Vector2(Screen.safeArea.xMin + 90 * unit, Screen.safeArea.yMin + 330 * unit) });
                 InputSystem.Update();
@@ -184,7 +502,7 @@ namespace Infinigame.Tests
                 meters.GetWorldCorners(gaugeCorners);
                 controls.GetWorldCorners(controlCorners);
                 Assert.Greater(gaugeCorners[0].y, controlCorners[2].y, "The lower-left gauges must clear the touch toolbar");
-                var muzzle = Camera.main.WorldToViewportPoint(game.GetComponent<Arms>().Muzzle(Player.Weapon) - Solar.Anchor);
+                var muzzle = Camera.main.WorldToViewportPoint(game.GetComponent<Arms>().Muzzle(Player.Weapon).position);
                 Assert.That(muzzle.x, Is.InRange(0f, 1f), "The rail gauntlet must be visible when aiming");
                 Assert.That(muzzle.y, Is.InRange(0f, 1f));
                 yield return ReworkShot("revision2-touch");
@@ -261,7 +579,11 @@ namespace Infinigame.Tests
             uint previousSeed = game.Seed;
             yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
-            Assert.IsFalse(game.Confirming, "An empty slot starts without a destructive-action confirmation");
+            Assert.AreEqual("Choose difficulty", game.Page);
+            CollectionAssert.AreEqual(new[] { "Creative", "Easy", "Normal", "Hard", "Realistic", "Back" }, game.Items);
+            yield return Pick("Realistic");
+            Assert.AreEqual(Difficulty.Realistic, game.Challenge);
+            Assert.IsFalse(game.Confirming);
             Assert.IsFalse(game.Title);
             Assert.AreEqual(1, game.Slot);
             Assert.AreNotEqual(previousSeed, game.Seed, "Each new slot starts a fresh procedural Earth");
@@ -317,7 +639,7 @@ namespace Infinigame.Tests
             var site = game.Colonies.Single(colony => colony.world == front.world && colony.region == front.region).site;
             var normal = math.normalize(site);
             var emerging = (float3)dogs[0].transform.position + Solar.Anchor;
-            Assert.Less(math.length(Infinigame.Core.Walker.Project(emerging - site, normal)), 1, "The deployed robot rises from the factory assembly lift");
+            Assert.Less(math.length(Infinigame.Core.Walker.Project(emerging - (float3)Models.Kennel(site), normal)), 1, "The deployed robodog leaves the workshop alongside the berth");
             Stand(math.normalize(site - World(normal) * 14), World(normal));
             Player.walker.position += normal * 9; Player.walker.grounded = false;
             yield return Press(new Controls { look = new Vector2(0, -30) });

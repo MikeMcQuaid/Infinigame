@@ -13,7 +13,8 @@ Shader "Infinigame/Gas"
     }
     SubShader
     {
-        Tags { "RenderType" = "Opaque" "Queue" = "Geometry" "RenderPipeline" = "UniversalPipeline" }
+        // Draw opaque cloud tops after the starfield, before the transparent rings and atmosphere.
+        Tags { "RenderType" = "Opaque" "Queue" = "Transparent-100" "RenderPipeline" = "UniversalPipeline" }
         Pass
         {
             Name "Forward"
@@ -21,6 +22,7 @@ Shader "Infinigame/Gas"
 
             HLSLPROGRAM
             #pragma vertex Vertex
+            #pragma multi_compile_instancing
             #pragma fragment Fragment
             #include_with_pragmas "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Fog.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
@@ -35,26 +37,35 @@ Shader "Infinigame/Gas"
                 float _Haze;
             CBUFFER_END
 
+            struct Attributes
+            {
+                float4 positionOS : POSITION;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
             struct Varyings
             {
                 float4 positionCS : SV_POSITION;
                 float3 positionWS : TEXCOORD0;
                 float3 positionOS : TEXCOORD1;
                 half fogFactor : TEXCOORD2;
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
-            Varyings Vertex(float4 positionOS : POSITION)
+            Varyings Vertex(Attributes input)
             {
+                UNITY_SETUP_INSTANCE_ID(input);
                 Varyings output;
-                output.positionWS = TransformObjectToWorld(positionOS.xyz);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
+                output.positionWS = TransformObjectToWorld(input.positionOS.xyz);
                 output.positionCS = TransformWorldToHClip(output.positionWS);
-                output.positionOS = positionOS.xyz;
+                output.positionOS = input.positionOS.xyz;
                 output.fogFactor = ComputeFogFactor(output.positionCS.z);
                 return output;
             }
 
             half4 Fragment(Varyings input) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
                 float3 direction = normalize(input.positionOS);
                 float drift = _Time.y * 0.01;
                 // stretched along the equator, so eddies are drawn out into streaks
@@ -77,12 +88,14 @@ Shader "Infinigame/Gas"
                 float3 normalWS = TransformObjectToWorldNormal(direction);
                 float facing = dot(normalWS, SunDirection());
                 // the deep air scatters light round the terminator and dims the limb
-                float limb = pow(saturate(dot(normalWS, GetWorldSpaceNormalizeViewDir(input.positionWS))), 0.4);
-                half3 colour = albedo * (_SunLight.rgb * (0.55 * smoothstep(-0.15, 0.9, facing) * limb + 0.012) + SecondStarlight(normalWS) * 0.55 * limb);
-                colour = lerp(colour, MixFog(colour, InitializeInputDataFog(float4(input.positionWS, 1.0), input.fogFactor)), _Haze);
+                float limb = pow(saturate(dot(normalWS, normalize(_WorldSpaceCameraPos - input.positionWS))), 0.4);
+                half3 colour = albedo * (_SunLight.rgb * (0.55 * smoothstep(-0.15, 0.9, facing) * limb + 0.055) + SecondStarlight(normalWS) * 0.55 * limb);
+                if (_Haze > 0) colour = lerp(colour, MixFog(colour, InitializeInputDataFog(float4(input.positionWS, 1.0), input.fogFactor)), _Haze);
                 return half4(Veil(colour, input.positionWS, _Sky, _AirRadius), 1.0);
             }
             ENDHLSL
         }
+        UsePass "Universal Render Pipeline/Lit/DepthOnly"
+        UsePass "Universal Render Pipeline/Lit/DepthNormals"
     }
 }

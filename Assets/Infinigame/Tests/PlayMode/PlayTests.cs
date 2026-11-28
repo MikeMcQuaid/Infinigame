@@ -47,7 +47,7 @@ namespace Infinigame.Tests
             uint nextSeed = 91;
             Game.NewSeed = () => nextSeed++;
             Game.Start = Campaign.Citadel;
-            foreach (string kept in new[] { "detail", "muted", "silent", "voice", "robot", "subtitles", "robotStrength", "automaticQuality", "invertShipPitch", "fistPitch", "fistYaw", "fistRoll", "palmSetback", "wristAlong", "wristHeight", "wristAround", "wristRotation" }) PlayerPrefs.DeleteKey($"{Game.Prefs}.{kept}");
+            foreach (string kept in new[] { "detail", "muted", "silent", "voice", "robot", "subtitles", "robotStrength", "automaticQuality", "invertShipPitch", "difficulty", "fistPitch", "fistYaw", "fistRoll", "palmSetback", "wristAlong", "wristHeight", "wristAround", "wristRotation" }) PlayerPrefs.DeleteKey($"{Game.Prefs}.{kept}");
             foreach (string kept in new[] { "test-save.json", "test-save2.json", "test-save3.json", Oracle.Store }) File.Delete(Path.Combine(Application.persistentDataPath, kept));
             // no test may spend a real player's plan: the oracle answers from a script, and until a
             // test supplies stand-ins there are no tools for it to run
@@ -81,6 +81,7 @@ namespace Infinigame.Tests
             Assert.IsTrue(game.Title);
             yield return Press(new Controls { confirm = true });
             if (game.Confirming) { yield return Press(new Controls { down = true }); yield return Press(new Controls { confirm = true }); }
+            if (game.Page == Game.NewDifficulty) yield return Pick("Normal");
             Player.Spawn();
             yield return null;
         }
@@ -129,6 +130,7 @@ namespace Infinigame.Tests
             yield return null;
             input = held;
             yield return null;
+            while (!game.Ready) yield return null;
         }
 
         // Puts the player in a hovering ship at a point given relative to the reference body.
@@ -410,6 +412,8 @@ namespace Infinigame.Tests
             Assert.IsTrue(game.Confirming);
             yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
+            yield return Pick("Easy");
+            Assert.AreEqual(Difficulty.Easy, game.Challenge);
             Assert.AreNotEqual(seed, game.Seed);
             Assert.IsTrue(before == null, "the old planet is destroyed");
             Assert.AreEqual(SolarSystemDescriptor.Generate(game.Seed).bodies[Home].surfaceGravity, Body.surfaceGravity, "terrain and gravity are rebuilt together");
@@ -421,16 +425,72 @@ namespace Infinigame.Tests
         }
 
         [UnityTest]
+        public IEnumerator FirstLoadShowsWorldProgress()
+        {
+            yield return SceneManager.LoadSceneAsync("Main");
+            game = Object.FindAnyObjectByType<Game>();
+            string shown = null;
+            float changed = 0, began = Time.unscaledTime;
+            int captions = 0;
+            while (!game.Ready)
+            {
+                var label = GameObject.Find("Loading/Progress")?.GetComponent<UnityEngine.UI.Text>();
+                if (label != null && label.text.Length > 0 && label.text != shown)
+                {
+                    if (shown != null) Assert.GreaterOrEqual(Time.unscaledTime - changed + Time.unscaledDeltaTime, 0.499f,
+                        "The whole loading caption, including its dots, must be readable for half a second");
+                    captions++;
+                    shown = label.text;
+                    changed = Time.unscaledTime;
+                }
+                yield return null;
+            }
+            Assert.IsNotNull(shown);
+            if (Time.unscaledTime - began > 1.1f) Assert.Greater(captions, 1);
+        }
+
+        [UnityTest]
+        public IEnumerator LookingDownSeesTheOutsideOfTheSuit()
+        {
+            yield return Press(new Controls { look = new Vector2(0, -89) });
+            var suit = Player.fists[0].root;
+            var eye = Camera.main.transform;
+            Assert.Greater(suit.InverseTransformPoint(eye.position).z, 0.28f, "Looking down leans the visor beyond the breastplate");
+            var chest = suit.Find("Torso/Armour").GetComponent<Renderer>();
+            Assert.IsTrue(chest.gameObject.activeInHierarchy);
+            Assert.IsFalse(chest.forceRenderingOff);
+            var feet = Camera.main.WorldToViewportPoint(suit.position);
+            Assert.That(feet.x, Is.InRange(0f, 1f));
+            Assert.That(feet.y, Is.InRange(0f, 1f));
+            yield return ReworkShot("looking-down-at-suit");
+        }
+
+        [UnityTest]
+        public IEnumerator RechargeSitsAboveExperience()
+        {
+            var labels = GameObject.Find("Helmet instruments").GetComponentsInChildren<UnityEngine.UI.Text>();
+            var recharge = labels.Single(label => label.text == "RECHARGE");
+            var xp = labels.Single(label => label.text.StartsWith("XP "));
+            Assert.Greater(recharge.rectTransform.anchoredPosition.y, xp.rectTransform.anchoredPosition.y);
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator YouWakeBuriedAndDigYourselfOutIntoDaylight()
         {
             game.Jump(Campaign.Buried);
-            // long enough to have dropped to the bottom of the hole
-            yield return Seconds(Game.BootDuration + 0.5f);
             Assert.IsTrue(game.Buried);
+            yield return null;
+            var boot = GameObject.Find("Loading/Progress").GetComponent<UnityEngine.UI.Text>();
+            StringAssert.Contains("100%", boot.text);
+            StringAssert.Contains("PUNCH", boot.text.ToUpperInvariant());
             StringAssert.Contains("PUNCH", game.Objective);
             var ground = Solar.Bodies[Home].Descriptor;
             int holes = ground.blasts.Count(blast => blast.scar != Scar.Pad);
             Assert.Greater(holes, 0, "there is a hole in the ground, and the player is at the bottom of it");
+            var suit = Player.fists[0].root;
+            Assert.IsTrue(suit.gameObject.activeInHierarchy, "The buried body and gauntlets must already be joined");
+            Assert.IsFalse(GameObject.Find("Gauntlets") != null, "Flat-screen punches use the articulated suit");
             float3 woke = Player.walker.position;
             float floor = ground.GroundRadius(math.normalize(woke));
             Assert.Less(math.length(woke), ground.radius + ground.terrain.MaxHeight);
@@ -441,6 +501,7 @@ namespace Infinigame.Tests
             Assert.Less(math.distance(woke, Player.walker.position), 0.5f);
             Assert.IsTrue(Player.Armed);
 
+            Quaternion folded = suit.Find("Left leg/Knee").localRotation;
             // each click tears more of it away, and holding the button down is still only one click
             for (int click = 0; click < Game.Digs; click++)
             {
@@ -453,6 +514,11 @@ namespace Infinigame.Tests
                 Assert.AreEqual(click + 1 == Game.Digs ? 0 : click + 1, game.Dug % Game.Digs);
             }
             Assert.AreEqual(Campaign.Stranger, game.Stage, "daylight");
+            Assert.IsFalse(Player.ThirdPerson);
+            yield return Seconds(0.6f);
+            yield return ReworkShot("emerging-in-first-person");
+            yield return Seconds(1f);
+            Assert.Greater(Quaternion.Angle(folded, suit.Find("Left leg/Knee").localRotation), 40, "The knees straighten as the visor rises");
             Assert.AreEqual(holes, ground.blasts.Count(blast => blast.scar != Scar.Pad));
             Assert.AreEqual(floor, ground.GroundRadius(math.normalize(woke)), 0.02f, "Punching through the roof preserves the ground under your feet");
             StringAssert.Contains("RESTORE YOUR SUIT", game.Objective);
@@ -1401,7 +1467,8 @@ namespace Infinigame.Tests
             int tiers = QualitySettings.names.Length, tier = QualitySettings.GetQualityLevel();
             float look = DesktopControls.Sensitivity;
             yield return Choose(Game.Settings);
-            Assert.AreEqual(9, game.Items.Length);
+            Assert.AreEqual(10, game.Items.Length);
+            CollectionAssert.Contains(game.Items, "DIFFICULTY   ·   NORMAL");
             CollectionAssert.Contains(game.Items, "SHIP STICK PITCH   ·   NORMAL");
             CollectionAssert.Contains(game.Items, Game.Writers);
             Assert.AreEqual("Back", game.Items.Last());
@@ -1444,7 +1511,7 @@ namespace Infinigame.Tests
             Assert.IsFalse(fist.Find("Armour").GetComponent<Renderer>().forceRenderingOff);
             yield return Press(new Controls { toggleView = true });
             Assert.IsTrue(fist.gameObject.activeInHierarchy);
-            Assert.Less(Vector3.Distance(fist.TransformPoint(new Vector3(0, 0, 0.22f)), game.GetComponent<Arms>().Muzzle(Player.Weapon) - Solar.Anchor), 0.02f);
+            Assert.Less(Vector3.Distance(fist.TransformPoint(new Vector3(0, 0, 0.22f)), game.GetComponent<Arms>().Muzzle(Player.Weapon).position), 0.02f);
             yield return Press(new Controls { fire = true });
             Assert.Greater(game.Battle.Fired, 0);
             Player.flying = true;
@@ -1531,13 +1598,13 @@ namespace Infinigame.Tests
             Assert.AreEqual(0, game.Battle.Bolts.Count, "a continuous beam is not a stream of bolts");
             var ray = Object.FindObjectsByType<LineRenderer>().Single(line => line.name == "Weapon beam");
             Assert.Greater(Vector3.Distance(ray.GetPosition(0), ray.GetPosition(1)), 0);
-            var palm = Player.fists[1];
-            var port = new Vector3(0, 0.04f, 0.16f);
-            Assert.Less(Vector3.Distance(ray.GetPosition(0), palm.TransformPoint(port)), 0.05f);
+            var port = Player.fists[1].Find("Wrist weapons/Gauntlet beam/Port");
+            Assert.IsTrue(port.gameObject.activeInHierarchy);
+            Assert.Less(Vector3.Distance(ray.GetPosition(0), port.position), 0.012f);
             yield return Press(new Controls { toggleView = true });
             input.fire = true; yield return Seconds(0.3f); input.fire = false;
             Assert.IsTrue(Player.ThirdPerson && game.Battle.Beaming);
-            Assert.Less(Vector3.Distance(ray.GetPosition(0), palm.TransformPoint(port)), 0.05f);
+            Assert.Less(Vector3.Distance(ray.GetPosition(0), port.position), 0.012f);
             Player.fitted = 1 << (int)Gear.Armour;
             Player.energy = 50;
             float health = Player.health;
@@ -1721,6 +1788,7 @@ namespace Infinigame.Tests
             yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
             Assert.IsFalse(game.Confirming);
+            yield return Pick("Hard");
             Assert.AreEqual(1, game.Slot);
             Assert.IsFalse(game.Title);
             Assert.IsFalse(game.Paused, "choosing a slot starts playing it");
@@ -1736,6 +1804,7 @@ namespace Infinigame.Tests
             yield return Press(new Controls { up = true });
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual(0, game.Slot);
+            Assert.AreEqual(Difficulty.Normal, game.Challenge);
             Assert.AreEqual(3, game.Stage);
             Assert.IsTrue(Player.Has(Gear.Beams) && !Player.Has(Gear.Thrusters));
             Assert.AreEqual(seed, game.Seed);
@@ -1745,6 +1814,7 @@ namespace Infinigame.Tests
             yield return Press(new Controls { down = true });
             yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
+            yield return Pick("Creative");
             Assert.AreEqual(2, game.Slot);
             yield return SceneManager.LoadSceneAsync("Main");
             game = Object.FindAnyObjectByType<Game>();
@@ -1768,13 +1838,22 @@ namespace Infinigame.Tests
             yield return Choose(Game.Cheats);
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual("Missions", game.Page);
+            Canvas.ForceUpdateCanvases();
+            for (int i = 0; i < game.Items.Length - 1; i++)
+            {
+                StringAssert.StartsWith($"{i + 1}. ", game.Items[i]);
+                var row = Object.FindObjectsByType<UnityEngine.UI.Text>().Single(label => label.text == game.Items[i]);
+                Assert.AreEqual(1, row.cachedTextGenerator.lineCount, row.text);
+            }
+            yield return ReworkShot("numbered-missions");
             yield return Press(new Controls { down = true });
             yield return Press(new Controls { confirm = true });
             Assert.AreEqual(3, game.Stage);
             Assert.IsTrue(Player.Powered);
             yield return Choose(Game.Cheats);
-            yield return Press(new Controls { down = true });
-            yield return Press(new Controls { confirm = true });
+            Assert.IsFalse(game.Items.Any(item => item.Contains("finale")));
+            yield return Pick("Choose mission");
+            yield return Pick($"{Campaign.Won + 2}. Replay the moon finale");
             Assert.AreEqual(Campaign.Won, game.Stage);
             Assert.IsTrue(game.Fall.active);
         }
@@ -2254,7 +2333,7 @@ namespace Infinigame.Tests
             // the game as it begins: under the ground, then out to the stranger's fire
             yield return Press(new Controls { confirm = true });
             game.Jump(Campaign.Buried);
-            yield return Seconds(Game.BootDuration + 0.5f);
+            yield return null;
             for (int click = 0; click < 3; click++)
             {
                 input.fire = true;
