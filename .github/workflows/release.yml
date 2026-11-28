@@ -45,17 +45,19 @@ jobs:
           unity-email: ${{ secrets.UNITY_EMAIL }}
           unity-password: ${{ secrets.UNITY_PASSWORD }}
       - name: Package Windows and Steam Deck
-        run: script/package Windows
+        id: package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/package-desktop Windows
       - name: Upload the Windows build
-        if: env.PUBLISH == 'true'
+        if: env.PUBLISH == 'true' && steps.package.outputs.path != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Infinigame-Windows
-          path: Build/Infinigame-Windows.zip
+          path: ${{ steps.package.outputs.path }}
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 90
           compression-level: 0
-          overwrite: true
 
   apple:
     name: macOS and iOS
@@ -139,17 +141,27 @@ jobs:
       - name: Package the archived Mac app for direct download
         id: package
         if: ${{ !cancelled() && steps.verify-mac.outcome != 'skipped' && hashFiles('Build/TestFlight/macOS.xcarchive/Info.plist') != '' }}
-        run: script/package macOS Build/TestFlight/macOS.xcarchive/Products/Applications/Infinigame.app
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TESTFLIGHT_PLATFORM: macOS
+          BUILD_NUMBER: ${{ steps.plan-mac.outputs.build-number }}
+          RELEASE_VERSION: ${{ steps.plan-mac.outputs.release-version }}
+          APP_STORE_KEY: ${{ env.PUBLISH == 'true' && secrets.NOTARIZATION_KEY || '' }}
+          APP_STORE_KEY_ID: ${{ env.PUBLISH == 'true' && secrets.NOTARIZATION_KEY_ID || '' }}
+          APP_STORE_ISSUER_ID: ${{ env.PUBLISH == 'true' && secrets.NOTARIZATION_ISSUER_ID || '' }}
+          DEVELOPER_ID_APPLICATION_CERTIFICATE: ${{ env.PUBLISH == 'true' && secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE || '' }}
+          DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD: ${{ env.PUBLISH == 'true' && secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD || '' }}
+        run: bash .github/package-desktop macOS Build/TestFlight/macOS.xcarchive/Products/Applications/Infinigame.app
       - name: Upload the Mac download
-        if: ${{ !cancelled() && env.PUBLISH == 'true' && steps.package.outcome == 'success' }}
+        id: download-mac
+        if: ${{ !cancelled() && env.PUBLISH == 'true' && steps.package.outcome == 'success' && steps.package.outputs.path != '' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Infinigame-macOS
-          path: Build/Infinigame-macOS.zip
+          path: ${{ steps.package.outputs.path }}
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 90
           compression-level: 0
-          overwrite: true
       - name: Switch the shared Unity workspace to iOS
         id: switch
         if: ${{ !cancelled() && steps.unity.outcome == 'success' && steps.plan-ios.outcome == 'success' && steps.plan-ios.outputs.needed == 'true' }}
@@ -206,7 +218,10 @@ jobs:
         run: script/testflight --verify
       - name: Upload the verified macOS archive
         id: upload-mac
-        if: ${{ !cancelled() && env.PUBLISH == 'true' && steps.groups.outcome == 'success' && steps.verify-mac.outcome == 'success' }}
+        # Once Apple accepts this archive, a rerun skips compiling the Mac app.
+        if: >-
+          ${{ !cancelled() && env.PUBLISH == 'true' && steps.groups.outcome == 'success' && steps.verify-mac.outcome == 'success' &&
+          (steps.download-mac.outcome == 'success' || steps.package.outputs.exists == 'true') }}
         env: *sign-mac
         run: script/testflight --upload-archive
       - name: Upload the verified iOS archive

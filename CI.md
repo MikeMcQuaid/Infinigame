@@ -49,6 +49,18 @@ The repository already has the Unity credentials, App Store Connect API key, cer
 
 3. **Enable the Mac platform.** In the existing Infinigame app record, choose **Distribution > Add Platform > macOS** if needed. Use the same bundle ID, `com.mikemcquaid.Infinigame`. If the Public Beta invitation uses device criteria, include Mac. [Open Apps](https://appstoreconnect.apple.com/apps) · [Add a platform](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-platforms/)
 
+### Sign the Mac download for Gatekeeper
+
+Use a **Developer ID Application** certificate from the same Apple team as the TestFlight archive. If MinMaxCal uses that team, reuse its original password-protected `.p12` and export password. You can also export the identity and its private key from **My Certificates** in Keychain Access. [Export from Keychain Access](https://support.apple.com/guide/keychain-access/import-and-export-keychain-items-kyca35961/mac) · [Create a Developer ID certificate](https://developer.apple.com/help/account/certificates/create-developer-id-certificates/)
+
+Set these two secrets in the **Infinigame** repository. Use the path to your exported file in the first command. The second prompts for that file’s password. CI uses the existing `NOTARIZATION_*` secrets to submit the signed app to Apple. [Infinigame repository secrets](https://github.com/MikeMcQuaid/Infinigame/settings/secrets/actions)
+
+```sh
+base64 -i "$HOME/Downloads/DeveloperID.p12" |
+  gh secret set DEVELOPER_ID_APPLICATION_CERTIFICATE --repo MikeMcQuaid/Infinigame
+gh secret set DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD --repo MikeMcQuaid/Infinigame
+```
+
 ### TestFlight signing secrets
 
 | Secret | Value |
@@ -95,7 +107,9 @@ For signing or upload failures, inspect the job log with `gh run view RUN_ID --l
 
 ## Desktop builds and caching
 
-On a push to `main`, the Actions run keeps **Infinigame-Windows** (also for Steam Deck and SteamVR) and **Infinigame-macOS** for one day. The Mac ZIP contains an ad hoc signed copy of the app from the TestFlight archive. Once Xcode has produced the archive, the ZIP can be downloaded even if Apple validation, upload or tester distribution fails. If macOS prompts on first launch, follow `INSTALL.md` in the ZIP.
+On each push to `main`, Actions keeps **Infinigame-Windows** (also for Steam Deck and SteamVR) and **Infinigame-macOS** for 90 days. Both game ZIPs carry the Unity version and the commit count used as the starting point for Apple build numbers. The run summary links to that run’s downloads and gives the corresponding macOS TestFlight number. Retries keep previously uploaded artifacts. The README uses nightly.link to follow the latest successful run.
+
+For the direct Mac download, Xcode exports a Developer ID signed app from the same hardened-runtime archive used for TestFlight. CI submits it to Apple for notarisation, staples the accepted ticket to the app and checks the staged copy with Gatekeeper before publishing the ZIP. The download can succeed independently of App Store validation or tester distribution. Both desktop downloads are Actions artifacts served by nightly.link. [Apple’s notarisation guide](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)
 
 Windows builds and packages both Windows players in one Unity invocation on Linux. The Apple job can start at the same time on its own runner. TestFlight distribution depends only on the Apple job. macOS and iOS share one Mac runner, editor installation, Bee cache and speech build directory. Each Unity invocation restores its own target’s `Library`. The iOS archive also caches native IL2CPP objects by Unity dependencies, Xcode, SDK, runner image and generated C++ sources. [GameCI caching](https://game.ci/docs/github/builder/#caching) · [GitHub cache access](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache)
 
